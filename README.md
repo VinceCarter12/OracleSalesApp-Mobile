@@ -44,8 +44,10 @@ cd OracleSalesApp-Mobile
 ### 2. Install Dependencies
 
 ```bash
-npm install
+npm ci
 ```
+
+> Use `npm ci` (not `npm install`) — it installs the exact versions from `package-lock.json` and avoids dependency resolution mismatches between teammates.
 
 ### 3. Configure Environment Variables
 
