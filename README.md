@@ -1,19 +1,67 @@
 # Oracle Sales App — Mobile
 
-A field app for sales agents to create clients and log client meetings — the mobile companion to [OracleSalesApp-Web](https://github.com/Cedie99/OracleSalesApp-Web).
+A field app for sales agents to create client records and log client meetings — the mobile companion to [OracleSalesApp-Web](https://github.com/Cedie99/OracleSalesApp-Web).
 
-This README is a **setup guide only** — it describes how the team should scaffold and configure the mobile project. It reuses the tech stack from the team's previous mobile app ([Old-AgentOps-Mobile](https://github.com/VinceCarter12/Old-AgentOps-Mobile)) as a starting point, but is a fresh build scoped to the Sales Client Meeting App PRD, not a fork of the old codebase.
+> **Status:** Scaffolded — project structure is in place. Clone, install, add `.env.local`, and run the dev build. See [Local Setup](#local-setup) below.
+
+---
+
+## What This App Does
+
+Sales agents use this mobile app in the field to:
+
+- **Register clients** — company name, contact person, customer type, sales channel
+- **Log client meetings** — GPS location, selfie photo, timestamp, agenda, and outcome captured at the time of the meeting
+- **Track meeting outcomes** — Successful / Follow-up required / No decision / Lost opportunity
+
+Sales Managers and Admins monitor team activity and download reports via the **web admin dashboard** ([OracleSalesApp-Web](https://github.com/Cedie99/OracleSalesApp-Web)).
+
+---
+
+## User Roles
+
+| Role | What they can access |
+| ---- | -------------------- |
+| Sales Specialist (SS) | Own client accounts and own meeting records only |
+| Sales Manager (SM) | Own accounts + their team's accounts; approves client edits; can record a meeting on behalf of an agent |
+| Admin | All accounts across the organization (2 admin accounts required at launch) |
+
+---
+
+## Core Features (v1 Scope)
+
+| Feature | Notes |
+| ------- | ----- |
+| Create Client | Company name (duplicate check), contact person, customer type, sales channel — auto-stamps agent and timestamp |
+| Client List / Edit | Agents see own clients only; edits require Sales Manager approval before saving |
+| Record Meeting | GPS + selfie + timestamp captured automatically; agenda multi-select; outcome selection |
+| Assist Agent mode | Sales Manager records a meeting alongside / on behalf of an agent |
+| Reports | Excel export; scoped by role (SM = team, Admin = all) |
+
+> **Pending scope confirmation (do not build yet):**
+> - Attendance / Clock In-Out (Office GPS + Event photo+GPS)
+> - Delivery / PO module (PO → deliver, 3-day auto-delete)
+> - Image Capture & Verification module
+> - Survey module
+>
+> See [Open Questions](#open-questions) below.
+
+---
 
 ## Tech Stack
 
-| Layer                | Technology                                                 |
-| --------------------- | ----------------------------------------------------------- |
-| Framework             | Expo (React Native), file-based routing via `expo-router`   |
-| Language              | TypeScript 5                                                 |
-| UI Kit                | Tamagui                                                       |
-| Backend & Auth        | Supabase                                                     |
-| JS Engine             | Hermes                                                        |
-| Build & Distribution  | EAS Build / EAS Submit                                       |
+| Layer | Technology |
+| ----- | ---------- |
+| Framework | Expo (React Native), file-based routing via `expo-router` |
+| Language | TypeScript 5 |
+| UI Kit | Tamagui |
+| Backend & Auth | Supabase |
+| JS Engine | Hermes |
+| Build & Distribution | EAS Build / EAS Submit |
+
+**Web Admin reference stack** (OracleSalesApp-Web): Next.js 16 (App Router) · TypeScript · Tailwind CSS v4 · shadcn/ui · Supabase · TanStack Table v8 · Recharts v3 · xlsx export
+
+---
 
 ## Prerequisites
 
@@ -21,7 +69,9 @@ This README is a **setup guide only** — it describes how the team should scaff
 - [npm](https://www.npmjs.com/) (included with Node.js)
 - Git
 - An [Expo account](https://expo.dev/signup)
-- `eas-cli` (installed in setup below)
+- `eas-cli` — installed in step 3 below
+
+---
 
 ## Local Setup
 
@@ -38,54 +88,126 @@ cd OracleSalesApp-Mobile
 npm install
 ```
 
-### 3. Configure Environment Variables
+### 3. Install EAS CLI
 
-Create a `.env.local` file in the project root and ask the project lead for the values:
-
-```
-EXPO_PUBLIC_SUPABASE_URL=
-EXPO_PUBLIC_SUPABASE_ANON_KEY=
+```bash
+npm install -g eas-cli
+eas login
 ```
 
-### 4. Start the Development Server
+### 4. Configure Environment Variables
+
+A `.env.local.example` file is included in the repo. Copy it and fill in the values:
+
+```bash
+cp .env.local.example .env.local
+```
+
+```
+EXPO_PUBLIC_SUPABASE_URL=       # Get this from the Supabase dashboard → Project Settings → API
+EXPO_PUBLIC_SUPABASE_ANON_KEY=  # Same page — use the anon/public key, NOT the service_role key
+```
+
+**Where to get the keys:**
+- Go to [supabase.com](https://supabase.com) → open the project → **Project Settings → API**
+- Copy `Project URL` and `anon public` key
+- If you don't have access to the Supabase project, ask **Vince Carter** (project lead)
+
+> **Never commit `.env.local`** — it is already in `.gitignore`.
+
+### 5. Set Up a Development Build (Required for Camera & GPS)
+
+`expo-camera` and `expo-location` do **not** work inside Expo Go. You need a development build installed on your physical device.
+
+```bash
+# One-time: link your project to EAS (ask Vince for the project ID if prompted)
+eas init
+
+# Build the dev client and install it on your Android device
+npm run build:dev:android
+```
+
+Once installed, scan the QR code from `npx expo start` using the dev build app (not Expo Go).
+
+### 6. Start the Development Server
 
 ```bash
 npx expo start
 ```
 
-Open the app in a development build, Android emulator, iOS simulator, or Expo Go.
+---
 
 ## Available Scripts
 
-| Command                          | Description                                       |
-| ---------------------------------- | --------------------------------------------------- |
-| `npx expo start`                  | Start the development server                        |
-| `npm run android` / `npm run ios` | Run on a connected device or emulator               |
-| `npm run lint`                    | Run ESLint                                          |
-| `npm run build:dev:android`       | EAS development build (debug tools included)        |
-| `npm run build:preview:android`   | EAS preview build (for internal team testing)        |
-| `npm run build:prod:android`      | EAS production build (AAB, for Play Store)           |
-| `npm run build:prod:apk`          | EAS production build (APK, for direct install)       |
+| Command | Description |
+| ------- | ----------- |
+| `npx expo start` | Start the development server |
+| `npm run android` / `npm run ios` | Run on a connected device or emulator |
+| `npm run lint` | Run ESLint |
+| `npm run build:dev:android` | EAS development build (debug tools, required for camera/GPS) |
+| `npm run build:preview:android` | EAS preview build (internal team testing) |
+| `npm run build:prod:android` | EAS production build (AAB, for Play Store) |
+| `npm run build:prod:apk` | EAS production build (APK, for direct install) |
+
+---
+
+## Project Structure
+
+```
+OracleSalesApp-Mobile/
+├── app/
+│   ├── _layout.tsx              # Root layout: TamaguiProvider + auth gate
+│   ├── (auth)/
+│   │   ├── _layout.tsx
+│   │   └── login.tsx            # Email/password sign-in via Supabase
+│   └── (tabs)/
+│       ├── _layout.tsx          # Tab bar (Clients, Meetings)
+│       ├── clients/
+│       │   ├── index.tsx        # Client list (role-scoped via Supabase RLS)
+│       │   ├── create.tsx       # Create client + duplicate company-name check
+│       │   └── [id].tsx         # Client detail + "Record Meeting" shortcut
+│       └── meetings/
+│           ├── index.tsx        # Meeting history list
+│           └── record.tsx       # Meeting form: GPS + selfie + agenda + outcome
+├── lib/
+│   ├── supabase.ts              # Supabase client (SecureStore adapter)
+│   ├── useAuth.ts               # Session hook + signOut
+│   ├── useClients.ts            # Fetch/refresh clients
+│   └── useMeetings.ts           # Fetch/refresh meetings
+├── types/
+│   ├── index.ts                 # Client, Meeting, UserProfile types + enums
+│   └── database.ts              # Supabase DB type stubs (replace with generated types)
+├── assets/                      # Images, icons, fonts
+├── app.json                     # Expo config (scheme, permissions, EAS project)
+├── babel.config.js              # Tamagui babel plugin
+├── eas.json                     # EAS build profiles
+├── tamagui.config.ts            # Tamagui theme config
+├── tsconfig.json                # TypeScript config + @/* path alias
+├── .env.local                   # Your local env vars — DO NOT COMMIT
+└── .env.local.example           # Template — copy this to .env.local
+```
+
+---
 
 ## Git Workflow
 
-This project follows **GitHub Flow** — a lightweight branch-based workflow suited for a small team with continuous deployment.
+This project follows **GitHub Flow** — branch off `main`, open a PR, get one review, squash-merge.
 
-### Core Rules
+### Rules
 
 1. **`main` is always deployable.** Never push directly to it.
-2. **One branch per task or feature.** Always branch off `main`.
-3. **Keep branches short-lived.** Aim to merge within 1–3 days to avoid drift.
+2. **One branch per task.** Always branch off `main`.
+3. **Keep branches short-lived.** Aim to merge within 1–3 days.
 4. **All merges go through a Pull Request.** At least one teammate must review before merging.
 5. **Delete the branch after it is merged.**
 
 ### Branch Naming
 
-| Type           | Format                        | Example                     |
-| -------------- | ----------------------------- | ---------------------------- |
-| Feature        | `feature/<short-description>` | `feature/meeting-gps-capture` |
-| Bug fix        | `fix/<short-description>`     | `fix/photo-capture-crash`     |
-| Chore / config | `chore/<short-description>`   | `chore/update-expo-sdk`       |
+| Type | Format | Example |
+| ---- | ------ | ------- |
+| Feature | `feature/<short-description>` | `feature/record-meeting-form` |
+| Bug fix | `fix/<short-description>` | `fix/gps-capture-crash` |
+| Chore / config | `chore/<short-description>` | `chore/update-expo-sdk` |
 
 ### Day-to-Day Flow
 
@@ -105,34 +227,72 @@ git commit -m "feat: add GPS capture to meeting form"
 git push origin feature/your-feature
 # → open PR on GitHub, assign at least 1 reviewer
 
-# 5. After approval, merge to main (squash merge recommended)
-# → delete the branch
+# 5. After approval, squash-merge to main, then delete the branch
 ```
 
 ### Commit Message Format
 
-| Prefix      | When to use                         |
-| ----------- | ------------------------------------ |
-| `feat:`     | New feature                          |
-| `fix:`      | Bug fix                              |
-| `chore:`    | Config, deps, tooling                |
-| `refactor:` | Code change with no behavior change  |
-| `style:`    | UI or CSS only                       |
+| Prefix | When to use |
+| ------ | ----------- |
+| `feat:` | New feature |
+| `fix:` | Bug fix |
+| `chore:` | Config, deps, tooling |
+| `refactor:` | Code change with no behavior change |
+| `style:` | UI or styling only |
 
 **Examples:**
 
 ```
-feat: add GPS capture to meeting form
-fix: correct photo capture crash on Android 13
-chore: upgrade Expo SDK
-refactor: extract client form into shared component
+feat: add selfie capture to meeting form
+fix: correct GPS permission handling on Android 13
+chore: upgrade Expo SDK to 52
+refactor: extract client search into shared hook
 ```
 
 ### Pull Request Checklist
 
-Before requesting a review, make sure:
+Before requesting a review:
 
-- [ ] The branch is up to date with `main` (`git pull origin main`)
+- [ ] Branch is up to date with `main` (`git pull origin main`)
 - [ ] `npm run lint` passes with no warnings
-- [ ] The feature works as expected on a device or emulator
+- [ ] Feature works on a physical device or emulator
 - [ ] No `.env.local` or secrets are committed
+
+---
+
+## Open Questions
+
+These are unresolved items from the June 24, 2026 requirements review. **Do not build anything listed here until confirmed.**
+
+| # | Question | Status |
+| - | -------- | ------ |
+| 1 | Is the **delivery/PO module** (PO → deliver, no GPS, 3-day auto-delete on undelivered records) part of this release or a later phase? | Unconfirmed |
+| 2 | Are **Office and Event clock-in/out** (GPS-verified office, photo+GPS+event name for events) part of this app or a separate attendance system? | Unconfirmed |
+| 3 | The Software Development Agreement lists an **Image Capture & Verification module** and a **Survey module** — do these map to the meeting photo/GPS requirements already in scope, or are they additional features with separate reports? | Unconfirmed |
+| 4 | Who holds the **two required Admin accounts** at launch? | Unconfirmed |
+| 5 | Does the dashboard need a **historical/date-range view**, or is month-to-date only sufficient for v1? | Unconfirmed |
+
+---
+
+## Related Repositories
+
+| Repo | Description |
+| ---- | ----------- |
+| [OracleSalesApp-Web](https://github.com/Cedie99/OracleSalesApp-Web) | Web admin dashboard (Next.js 16 + Supabase) — reference implementation |
+| [Old-AgentOps-Mobile](https://github.com/VinceCarter12/Old-AgentOps-Mobile) | Previous mobile app — reference for tech stack patterns, not a fork |
+
+---
+
+## Team
+
+| Name | Role | Who to ask |
+| ---- | ---- | ---------- |
+| Vince Carter | Project Lead | Supabase credentials, EAS project access, repo permissions |
+| Jhon Cedrick Ignacio | Developer | — |
+| Archie Delacruz | Developer | — |
+| Guanez | Developer | — |
+
+**Having trouble getting started?** Contact **Vince Carter** for:
+- Supabase project access (URL + anon key)
+- EAS project ID
+- GitHub repo collaborator invite

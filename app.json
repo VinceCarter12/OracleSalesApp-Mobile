@@ -1,0 +1,69 @@
+{
+  "expo": {
+    "name": "Oracle Sales App",
+    "slug": "OracleSalesApp",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "scheme": "oracle-sales",
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.oracle.salesapp",
+      "infoPlist": {
+        "NSCameraUsageDescription": "Used to capture selfies during client meetings.",
+        "NSLocationWhenInUseUsageDescription": "Used to record GPS location when logging a client meeting.",
+        "NSPhotoLibraryUsageDescription": "Used to save and retrieve meeting photos."
+      }
+    },
+    "android": {
+      "package": "com.oracle.salesapp",
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/icon.png",
+        "backgroundColor": "#003087"
+      },
+      "permissions": [
+        "CAMERA",
+        "ACCESS_FINE_LOCATION",
+        "ACCESS_COARSE_LOCATION",
+        "READ_EXTERNAL_STORAGE",
+        "WRITE_EXTERNAL_STORAGE"
+      ]
+    },
+    "web": {
+      "favicon": "./assets/icon.png",
+      "bundler": "metro"
+    },
+    "plugins": [
+      "expo-router",
+      "expo-status-bar",
+      "expo-secure-store",
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Used to capture selfies during client meetings."
+        }
+      ],
+      [
+        "expo-location",
+        {
+          "locationAlwaysAndWhenInUsePermission": "Used to record GPS when logging a client meeting."
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Used to save meeting photos to your gallery."
+        }
+      ]
+    ],
+    "experiments": {
+      "typedRoutes": true
+    },
+    "extra": {
+      "eas": {
+        "projectId": ""
+      }
+    }
+  }
+}
