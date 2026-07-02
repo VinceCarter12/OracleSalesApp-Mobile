@@ -26,8 +26,9 @@ A field app for sales agents to create client records and log client meetings �
 - [Node.js](https://nodejs.org/) v18 or later
 - [npm](https://www.npmjs.com/) (included with Node.js)
 - Git
-- An [Expo account](https://expo.dev/signup)
-- `eas-cli` — installed in step 3 below
+- [Android Studio](https://developer.android.com/studio) (for local builds and emulator)
+  - During install, make sure **Android SDK**, **Android SDK Platform**, and **Android Virtual Device** are checked
+  - After install, open Android Studio → SDK Manager → install **Android 14 (API 34)** or later
 
 ---
 
@@ -46,14 +47,7 @@ cd OracleSalesApp-Mobile
 npm install
 ```
 
-### 3. Install EAS CLI
-
-```bash
-npm install -g eas-cli
-eas login
-```
-
-### 4. Configure Environment Variables
+### 3. Configure Environment Variables
 
 A `.env.local.example` file is included in the repo. Copy it and fill in the values:
 
@@ -73,21 +67,46 @@ EXPO_PUBLIC_SUPABASE_ANON_KEY=  # Same page — use the anon/public key, NOT the
 
 > **Never commit `.env.local`** — it is already in `.gitignore`.
 
-### 5. Set Up a Development Build (Required for Camera & GPS)
+### 4. Set Up Android Environment Variables
 
-`expo-camera` and `expo-location` do **not** work inside Expo Go. You need a development build installed on your physical device.
+Android Studio needs to be on your PATH. Add these to your system environment variables:
 
-```bash
-# One-time: link your project to EAS (ask Vince for the project ID if prompted)
-eas init
-
-# Build the dev client and install it on your Android device
-npm run build:dev:android
+**Windows:**
+```
+ANDROID_HOME = C:\Users\<your-username>\AppData\Local\Android\Sdk
+PATH += %ANDROID_HOME%\tools
+PATH += %ANDROID_HOME%\tools\bin
+PATH += %ANDROID_HOME%\platform-tools
 ```
 
-Once installed, scan the QR code from `npx expo start` using the dev build app (not Expo Go).
+Verify it works:
+```bash
+adb --version
+```
+
+### 5. Run on a Physical Device or Emulator
+
+**Option A — Physical Android device:**
+1. On your phone: Settings → Developer Options → enable **USB Debugging**
+2. Plug in via USB
+3. Run:
+```bash
+npx expo run:android
+```
+
+**Option B — Android Emulator:**
+1. Open Android Studio → **Device Manager** → create a virtual device (Pixel 6, API 34 recommended)
+2. Start the emulator
+3. Run:
+```bash
+npx expo run:android
+```
+
+> **Note:** This builds the app locally using Android Studio — no EAS cloud credits needed. Camera works on a physical device; GPS works on both physical and emulator (emulator uses simulated location).
 
 ### 6. Start the Development Server
+
+Once the app is installed on your device/emulator, you can start the server and it will auto-reload on code changes:
 
 ```bash
 npx expo start
@@ -99,13 +118,12 @@ npx expo start
 
 | Command | Description |
 | ------- | ----------- |
-| `npx expo start` | Start the development server |
-| `npm run android` / `npm run ios` | Run on a connected device or emulator |
+| `npx expo start` | Start the development server (hot reload) |
+| `npx expo run:android` | Build and run locally on device or emulator (requires Android Studio) |
 | `npm run lint` | Run ESLint |
-| `npm run build:dev:android` | EAS development build (debug tools, required for camera/GPS) |
-| `npm run build:preview:android` | EAS preview build (internal team testing) |
-| `npm run build:prod:android` | EAS production build (AAB, for Play Store) |
-| `npm run build:prod:apk` | EAS production build (APK, for direct install) |
+| `npm run build:preview:android` | EAS cloud preview build (shareable APK for team testing) |
+| `npm run build:prod:android` | EAS cloud production build (AAB, for Play Store) |
+| `npm run build:prod:apk` | EAS cloud production build (APK, for direct install) |
 
 ---
 
