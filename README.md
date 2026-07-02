@@ -218,20 +218,6 @@ Before requesting a review:
 
 ---
 
-## Open Questions
-
-These are unresolved items from the June 24, 2026 requirements review. **Do not build anything listed here until confirmed.**
-
-| # | Question | Status |
-| - | -------- | ------ |
-| 1 | Is the **delivery/PO module** (PO → deliver, no GPS, 3-day auto-delete on undelivered records) part of this release or a later phase? | Unconfirmed |
-| 2 | Are **Office and Event clock-in/out** (GPS-verified office, photo+GPS+event name for events) part of this app or a separate attendance system? | Unconfirmed |
-| 3 | The Software Development Agreement lists an **Image Capture & Verification module** and a **Survey module** — do these map to the meeting photo/GPS requirements already in scope, or are they additional features with separate reports? | Unconfirmed |
-| 4 | Who holds the **two required Admin accounts** at launch? | Unconfirmed |
-| 5 | Does the dashboard need a **historical/date-range view**, or is month-to-date only sufficient for v1? | Unconfirmed |
-
----
-
 ## Related Repositories
 
 | Repo | Description |
