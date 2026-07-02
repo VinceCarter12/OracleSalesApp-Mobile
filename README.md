@@ -6,48 +6,6 @@ A field app for sales agents to create client records and log client meetings �
 
 ---
 
-## What This App Does
-
-Sales agents use this mobile app in the field to:
-
-- **Register clients** — company name, contact person, customer type, sales channel
-- **Log client meetings** — GPS location, selfie photo, timestamp, agenda, and outcome captured at the time of the meeting
-- **Track meeting outcomes** — Successful / Follow-up required / No decision / Lost opportunity
-
-Sales Managers and Admins monitor team activity and download reports via the **web admin dashboard** ([OracleSalesApp-Web](https://github.com/Cedie99/OracleSalesApp-Web)).
-
----
-
-## User Roles
-
-| Role | What they can access |
-| ---- | -------------------- |
-| Sales Specialist (SS) | Own client accounts and own meeting records only |
-| Sales Manager (SM) | Own accounts + their team's accounts; approves client edits; can record a meeting on behalf of an agent |
-| Admin | All accounts across the organization (2 admin accounts required at launch) |
-
----
-
-## Core Features (v1 Scope)
-
-| Feature | Notes |
-| ------- | ----- |
-| Create Client | Company name (duplicate check), contact person, customer type, sales channel — auto-stamps agent and timestamp |
-| Client List / Edit | Agents see own clients only; edits require Sales Manager approval before saving |
-| Record Meeting | GPS + selfie + timestamp captured automatically; agenda multi-select; outcome selection |
-| Assist Agent mode | Sales Manager records a meeting alongside / on behalf of an agent |
-| Reports | Excel export; scoped by role (SM = team, Admin = all) |
-
-> **Pending scope confirmation (do not build yet):**
-> - Attendance / Clock In-Out (Office GPS + Event photo+GPS)
-> - Delivery / PO module (PO → deliver, 3-day auto-delete)
-> - Image Capture & Verification module
-> - Survey module
->
-> See [Open Questions](#open-questions) below.
-
----
-
 ## Tech Stack
 
 | Layer | Technology |
