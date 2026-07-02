@@ -18,7 +18,7 @@
     "expo-secure-store": "~57.0.0",
     "expo-status-bar": "~57.0.0",
     "react": "19.2.3",
-    "react-dom": "^19.2.7",
+    "react-dom": "19.2.3",
     "react-native": "0.86.0",
     "react-native-safe-area-context": "~5.7.0",
     "react-native-screens": "4.25.2",
@@ -27,6 +27,7 @@
   "devDependencies": {
     "@babel/core": "^7.24.0",
     "@types/react": "~19.2.2",
+    "babel-preset-expo": "^57.0.1",
     "typescript": "~6.0.3"
   },
   "scripts": {

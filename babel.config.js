@@ -4,7 +4,7 @@ module.exports = function (api) {
     presets: ['babel-preset-expo'],
     plugins: [
       [
-        '@tamagui/babel-plugin',
+        require('@tamagui/babel-plugin').default,
         {
           components: ['tamagui'],
           config: './tamagui.config.ts',
