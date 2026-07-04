@@ -39,7 +39,8 @@
     "build:dev:android": "eas build --profile development --platform android",
     "build:preview:android": "eas build --profile preview --platform android",
     "build:prod:android": "eas build --profile production --platform android",
-    "build:prod:apk": "eas build --profile production-apk --platform android"
+    "build:prod:apk": "eas build --profile production-apk --platform android",
+    "web:status": "node scripts/sync-web-status.mjs"
   },
   "private": true
 }

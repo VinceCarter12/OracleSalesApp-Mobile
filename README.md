@@ -126,6 +126,58 @@ npx expo start
 | `npm run build:preview:android` | EAS cloud preview build (shareable APK for team testing) |
 | `npm run build:prod:android` | EAS cloud production build (AAB, for Play Store) |
 | `npm run build:prod:apk` | EAS cloud production build (APK, for direct install) |
+| `npm run web:status` | Sync latest web app status into `WEB_STATUS.md` |
+
+---
+
+## Web App Coordination
+
+This mobile app shares the same **Supabase project** with the web admin app at [OracleSalesApp-Web](https://github.com/Cedie99/OracleSalesApp-Web). A change on either side can silently break the other — database schema, RLS policies, and shared types are all common ground.
+
+### When to run `npm run web:status`
+
+Run it **before starting any work** that touches the shared layer:
+
+| Situation | Why |
+| --------- | --- |
+| Adding or renaming a Supabase table/column | The web app may already query that table — confirm the contract first |
+| Changing an RLS policy | Policies apply to both apps; a restrictive change can lock out the web admin |
+| Adding or changing a shared enum or type | `types/` on both sides must stay in sync |
+| Implementing a feature that reads data the web app writes (or vice versa) | Understand what shape the data is already in |
+| After a teammate merges to the web repo's `main` | Catch schema or type drift before it causes a runtime bug |
+
+### How it works
+
+```bash
+npm run web:status
+```
+
+The script calls the GitHub API (no extra dependencies) and writes `WEB_STATUS.md` to the project root. It includes:
+
+- Last 10 commits on `main`
+- Recently merged PRs into `main`
+- Full contents of all `.ts`, `.tsx`, `.js` files inside `app/`, `lib/`, `types/`, `components/`
+- Root-level `package.json` and `.env.local.example`
+
+New files in those directories are picked up automatically — no script edits needed.
+
+### Using it with Claude Code
+
+After running the script, paste this into Claude Code:
+
+> "Read `WEB_STATUS.md` — I'm about to [describe your task]. What shared concerns should I be aware of?"
+
+Claude will use the synced file as context to flag conflicts, mismatched types, or RLS gaps before you write a line of code.
+
+### Rate limits
+
+The script works without authentication (60 requests/hour). For team use or frequent syncs, set a GitHub personal access token:
+
+```bash
+# Windows PowerShell
+$env:GITHUB_TOKEN="ghp_your_token_here"
+npm run web:status
+```
 
 ---
 
