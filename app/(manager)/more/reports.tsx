@@ -9,6 +9,7 @@ import { TopBar } from '../../../components/ui/TopBar';
 import { Card } from '../../../components/ui/Card';
 import { SelectTile } from '../../../components/ui/SelectTile';
 import { DuoButton } from '../../../components/ui/DuoButton';
+import { StatListRow } from '../../../components/ui/StatListRow';
 import { showToast } from '../../../lib/toast';
 
 const TIMEFRAMES = ['This month', 'Last 30 days', 'This quarter', 'Custom'];
@@ -42,10 +43,10 @@ export default function ManagerReportsScreen() {
         </XStack>
 
         <Card>
-          <ReportRow label="Total meetings" value={meetings.length} />
-          <ReportRow label="Successful" value={successful} color={COLORS.ledgeGreen} />
-          <ReportRow label="New clients acquired" value={7} color={COLORS.blue} />
-          <ReportRow label="Lost opportunities" value={lost} color={COLORS.ledgeRed} last />
+          <StatListRow label="Total meetings" value={meetings.length} />
+          <StatListRow label="Successful" value={successful} color={COLORS.ledgeGreen} />
+          <StatListRow label="New clients acquired" value={7} color={COLORS.blue} />
+          <StatListRow label="Lost opportunities" value={lost} color={COLORS.ledgeRed} last />
         </Card>
 
         <YStack marginTop="$4">
@@ -62,19 +63,5 @@ export default function ManagerReportsScreen() {
         </Text>
       </ScrollView>
     </YStack>
-  );
-}
-
-function ReportRow({ label, value, color, last }: { label: string; value: number; color?: string; last?: boolean }) {
-  return (
-    <XStack
-      justifyContent="space-between"
-      paddingVertical={8}
-      borderBottomWidth={last ? 0 : 2}
-      borderBottomColor={COLORS.polar}
-    >
-      <Text fontSize={13} fontWeight="700" color={COLORS.eel}>{label}</Text>
-      <Text fontSize={13} fontWeight="800" color={color ?? COLORS.eel}>{value}</Text>
-    </XStack>
   );
 }

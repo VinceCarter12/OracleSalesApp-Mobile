@@ -4,6 +4,8 @@ import { COLORS } from '../../lib/theme';
 interface AvatarProps {
   initials: string;
   size?: 'sm' | 'md' | 'lg' | 'xl';
+  background?: string;
+  color?: string;
 }
 
 const SIZES = {
@@ -13,19 +15,19 @@ const SIZES = {
   xl: { box: 72, font: 28 },
 } as const;
 
-/** Wireframe .avatar — green-tint circle with initials. */
-export function Avatar({ initials, size = 'md' }: AvatarProps) {
+/** Wireframe .avatar — green-tint circle with initials; background/color are overridable per role. */
+export function Avatar({ initials, size = 'md', background = COLORS.greenTint, color = COLORS.ledgeGreen }: AvatarProps) {
   const s = SIZES[size];
   return (
     <View
       width={s.box}
       height={s.box}
       borderRadius={s.box / 2}
-      backgroundColor={COLORS.greenTint}
+      backgroundColor={background}
       alignItems="center"
       justifyContent="center"
     >
-      <Text fontWeight="800" fontSize={s.font} color={COLORS.ledgeGreen}>{initials}</Text>
+      <Text fontWeight="800" fontSize={s.font} color={color}>{initials}</Text>
     </View>
   );
 }
