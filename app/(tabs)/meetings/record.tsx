@@ -1,25 +1,69 @@
-import { useEffect, useRef, useState } from 'react';
-import { Alert, ScrollView, Image } from 'react-native';
+import { useEffect, useState } from 'react';
+import { Alert, Image, ScrollView, TextInput } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import * as Location from 'expo-location';
 import * as ImagePicker from 'expo-image-picker';
-import { Button, Checkbox, Label, Separator, Spinner, Text, XStack, YStack } from 'tamagui';
+import { Camera, Check, Sparkles, Users } from 'lucide-react-native';
+import { Spinner, Text, XStack, YStack } from 'tamagui';
 import { supabase } from '../../../lib/supabase';
 import { useAuth } from '../../../lib/useAuth';
-import { MEETING_AGENDAS, MEETING_OUTCOMES } from '../../../types';
+import { COLORS } from '../../../lib/theme';
+import { createMeeting, uploadMeetingPhoto } from '../../../lib/meeting-service';
+import { TopBar } from '../../../components/ui/TopBar';
+import { Field } from '../../../components/ui/Field';
+import { SectionHeader } from '../../../components/ui/SectionHeader';
+import { SelectTile } from '../../../components/ui/SelectTile';
+import { DuoButton } from '../../../components/ui/DuoButton';
+import { MeetingModeToggle } from '../../../components/meetings/MeetingModeToggle';
+import { LostOpportunityDialog } from '../../../components/meetings/LostOpportunityDialog';
+import {
+  CLIENT_STATUSES,
+  MEETING_AGENDAS,
+  type ClientStatus,
+  type MeetingMode,
+  type MeetingOutcome,
+} from '../../../types';
+
+const LOCATIONS = ['Client Office', 'Others'] as const;
 
 export default function RecordMeetingScreen() {
   const { clientId } = useLocalSearchParams<{ clientId?: string }>();
   const { session } = useAuth();
 
-  const [selectedAgendas, setSelectedAgendas] = useState<string[]>([]);
-  const [outcome, setOutcome] = useState<string>(MEETING_OUTCOMES[0]);
+  const [clientName, setClientName] = useState<string | null>(null);
+  const [meetingFirst, setMeetingFirst] = useState(!clientId);
+  const [newCompanyName, setNewCompanyName] = useState('');
+  const [tagAlong, setTagAlong] = useState(false);
+
+  const [mode, setMode] = useState<MeetingMode>('in_person');
   const [photoUri, setPhotoUri] = useState<string | null>(null);
   const [location, setLocation] = useState<{ lat: number; lng: number } | null>(null);
   const [loadingLocation, setLoadingLocation] = useState(false);
+
+  const [contactName, setContactName] = useState('');
+  const [contactPosition, setContactPosition] = useState('');
+  const [customerType, setCustomerType] = useState<ClientStatus>('prospect');
+  const [meetingLocation, setMeetingLocation] = useState<(typeof LOCATIONS)[number]>('Client Office');
+  const [otherLocation, setOtherLocation] = useState('');
+  const [selectedAgendas, setSelectedAgendas] = useState<string[]>([]);
+  const [remarks, setRemarks] = useState('');
+  const [outcome, setOutcome] = useState<MeetingOutcome | null>(null);
+  const [lostDialogOpen, setLostDialogOpen] = useState(false);
+
   const [saving, setSaving] = useState(false);
 
-  // Auto-capture GPS on mount
+  useEffect(() => {
+    if (!clientId) return;
+    supabase
+      .from('clients')
+      .select('company_name')
+      .eq('id', clientId)
+      .single()
+      .then(({ data }) => {
+        if (data) setClientName(data.company_name);
+      });
+  }, [clientId]);
+
   useEffect(() => {
     captureLocation();
   }, []);
@@ -59,7 +103,15 @@ export default function RecordMeetingScreen() {
     );
   }
 
-  async function handleSave() {
+  function selectOutcome(next: MeetingOutcome) {
+    if (next === 'Lost Opportunity') {
+      setLostDialogOpen(true);
+      return;
+    }
+    setOutcome(next);
+  }
+
+  async function doSave() {
     if (!location) {
       Alert.alert('GPS Required', 'Wait for GPS location to be captured before saving.');
       return;
@@ -68,140 +120,275 @@ export default function RecordMeetingScreen() {
       Alert.alert('Selfie Required', 'Please capture a selfie before saving.');
       return;
     }
-
-    setSaving(true);
-
-    // Upload photo to Supabase Storage
-    let photoUrl: string | null = null;
-    try {
-      const ext = photoUri.split('.').pop() ?? 'jpg';
-      const fileName = `meetings/${session?.user.id}/${Date.now()}.${ext}`;
-      const response = await fetch(photoUri);
-      const blob = await response.blob();
-      const { data: uploadData, error: uploadError } = await supabase.storage
-        .from('meeting-photos')
-        .upload(fileName, blob, { contentType: `image/${ext}` });
-      if (uploadError) throw uploadError;
-      const { data: publicUrlData } = supabase.storage
-        .from('meeting-photos')
-        .getPublicUrl(fileName);
-      photoUrl = publicUrlData.publicUrl;
-    } catch (err: any) {
-      Alert.alert('Upload Error', err.message ?? 'Failed to upload photo.');
-      setSaving(false);
+    if (!outcome) {
+      Alert.alert('Outcome Required', 'Please select a meeting outcome.');
+      return;
+    }
+    if (!session) {
+      Alert.alert('Not signed in', 'Sign in again before recording a meeting.');
+      return;
+    }
+    if (meetingFirst && !newCompanyName.trim()) {
+      Alert.alert('Company name required', 'Enter the company name for this first meeting.');
       return;
     }
 
-    const { error } = await supabase.from('meetings').insert({
-      client_id: clientId ?? null,
-      agent_id: session?.user.id,
-      gps_lat: location.lat,
-      gps_lng: location.lng,
-      selfie_url: photoUrl,
-      agendas: selectedAgendas,
-      outcome,
-      logged_at: new Date().toISOString(),
-    });
+    setSaving(true);
+    try {
+      let resolvedClientId = clientId ?? null;
 
-    setSaving(false);
-    if (error) {
-      Alert.alert('Error', error.message);
-    } else {
-      router.back();
+      // Meeting-first exception (Rule 4): the info captured here becomes the
+      // client record automatically.
+      if (meetingFirst) {
+        const { data, error } = await supabase
+          .from('clients')
+          .insert({
+            company_name: newCompanyName.trim(),
+            contact_person: contactName.trim(),
+            position: contactPosition.trim() || null,
+            contact_number: null,
+            office_address: null,
+            customer_type: 'Dealer',
+            sales_channel: 'Distributor',
+            status: 'prospect',
+            agent_id: session.user.id,
+          })
+          .select('id')
+          .single();
+        if (error) throw error;
+        resolvedClientId = data.id;
+      }
+
+      const photoUrl = await uploadMeetingPhoto(photoUri, session.user.id, 'selfie');
+      await createMeeting({
+        client_id: resolvedClientId,
+        agent_id: session.user.id,
+        gps_lat: location.lat,
+        gps_lng: location.lng,
+        meeting_mode: mode,
+        selfie_url: photoUrl,
+        agendas: selectedAgendas,
+        outcome,
+        logged_at: new Date().toISOString(),
+      });
+      router.replace('/(tabs)/meetings/celebrate');
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Failed to save the meeting.';
+      Alert.alert('Save Error', message);
+    } finally {
+      setSaving(false);
     }
   }
 
   return (
-    <ScrollView contentContainerStyle={{ flexGrow: 1 }}>
-      <YStack flex={1} padding="$6" gap="$5" backgroundColor="$background">
-        <Text fontSize="$6" fontWeight="700">Record Meeting</Text>
+    <YStack flex={1} backgroundColor={COLORS.snow}>
+      <TopBar title="Record Meeting" />
+      <ScrollView contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 32 }}>
+        <YStack gap="$2.5" marginBottom="$3.5">
+          <SelectTile
+            label="✨ Unang beses ko makausap ang client na ito (meeting-first)"
+            selected={meetingFirst}
+            onPress={() => setMeetingFirst((v) => !v)}
+            fullWidth
+            icon={<Sparkles size={14} color={meetingFirst ? COLORS.blue : COLORS.eel} />}
+          />
+          <SelectTile
+            label="May kasama akong manager ngayon (tag-along)"
+            selected={tagAlong}
+            onPress={() => setTagAlong((v) => !v)}
+            fullWidth
+            icon={<Users size={14} color={tagAlong ? COLORS.blue : COLORS.eel} />}
+          />
+        </YStack>
 
-        {/* GPS */}
-        <YStack gap="$2">
-          <Label>GPS Location</Label>
-          {loadingLocation ? (
-            <XStack gap="$2" alignItems="center">
-              <Spinner size="small" />
-              <Text color="$colorPress">Capturing location…</Text>
-            </XStack>
-          ) : location ? (
-            <Text fontSize="$3" color="$colorPress">
-              {location.lat.toFixed(6)}, {location.lng.toFixed(6)}
+        {tagAlong ? (
+          <YStack
+            backgroundColor={COLORS.greenTint}
+            borderWidth={2}
+            borderColor={COLORS.feather}
+            borderRadius={14}
+            padding="$3"
+            marginBottom="$3.5"
+          >
+            <Text fontSize={12} fontWeight="700" color={COLORS.ledgeGreen} lineHeight={17}>
+              Siguraduhing makikita ang manager sa meeting photo — ito ang proof niya na sumama siya.
+              Ikaw pa rin ang magre-record; siya na lang ang mag-a-approve pagkatapos.
             </Text>
-          ) : (
-            <Button size="$3" onPress={captureLocation}>Retry GPS</Button>
-          )}
-        </YStack>
+          </YStack>
+        ) : null}
 
-        <Separator />
+        {meetingFirst ? (
+          <YStack marginBottom="$2">
+            <Field
+              label="New Company Name"
+              value={newCompanyName}
+              onChangeText={setNewCompanyName}
+              placeholder="Company name"
+            />
+            <Text fontSize={12} fontWeight="600" color={COLORS.hare} marginTop="$-2" marginBottom="$2">
+              Ang info na makukuha mo dito ay awtomatikong magiging client record (Rule 4 — meeting-first exception).
+            </Text>
+          </YStack>
+        ) : (
+          <>
+            <SectionHeader title="Company" />
+            <Text fontWeight="800" fontSize={14} color={COLORS.eel} marginBottom="$3.5">
+              {clientName ?? '—'}
+            </Text>
+          </>
+        )}
 
-        {/* Selfie */}
-        <YStack gap="$2">
-          <Label>Selfie Photo *</Label>
-          {photoUri ? (
-            <YStack gap="$2">
-              <Image
-                source={{ uri: photoUri }}
-                style={{ width: '100%', height: 200, borderRadius: 8 }}
-                resizeMode="cover"
-              />
-              <Button size="$3" onPress={captureSelfie}>Retake</Button>
+        <MeetingModeToggle mode={mode} onChange={setMode} />
+
+        <Text fontSize={10.5} fontWeight="700" color={COLORS.hare} textTransform="uppercase" letterSpacing={0.6} marginTop="$4" marginBottom="$1">
+          Auto-captured
+        </Text>
+        <YStack backgroundColor={COLORS.polar} borderRadius={16} padding="$3.5" gap="$2">
+          <XStack alignItems="center" gap="$2">
+            <Check size={14} color={COLORS.ledgeGreen} />
+            <Text fontSize={12.5} fontWeight="700" color={COLORS.eel}>GPS</Text>
+            <Text fontSize={12.5} fontWeight="600" color={COLORS.hare}>
+              {loadingLocation
+                ? 'Capturing…'
+                : location
+                  ? `${location.lat.toFixed(4)}° N, ${location.lng.toFixed(4)}° E (at capture)`
+                  : 'Not captured'}
+            </Text>
+          </XStack>
+          <XStack alignItems="center" gap="$2">
+            <Check size={14} color={COLORS.ledgeGreen} />
+            <Text fontSize={12.5} fontWeight="700" color={COLORS.eel}>Date & time</Text>
+            <Text fontSize={12.5} fontWeight="600" color={COLORS.hare}>{new Date().toLocaleString()}</Text>
+          </XStack>
+          <XStack alignItems="center" gap="$3">
+            {photoUri ? (
+              <Image source={{ uri: photoUri }} style={{ width: 60, height: 60, borderRadius: 12 }} />
+            ) : (
+              <YStack width={60} height={60} borderRadius={12} backgroundColor={COLORS.swan} alignItems="center" justifyContent="center">
+                <Camera size={20} color={COLORS.wolf} />
+              </YStack>
+            )}
+            <YStack flex={1}>
+              <Text fontSize={12} fontWeight="800" color={COLORS.eel}>Selfie — camera only</Text>
+              <Text fontSize={11} fontWeight="600" color={COLORS.hare}>Compressed ≤3MB · naka-save locally</Text>
+              <YStack marginTop="$1.5">
+                <DuoButton small label={photoUri ? 'Retake' : 'Open Camera'} variant="white" onPress={captureSelfie} />
+              </YStack>
             </YStack>
-          ) : (
-            <Button size="$3" onPress={captureSelfie}>Open Camera</Button>
-          )}
+          </XStack>
         </YStack>
 
-        <Separator />
+        <SectionHeader title="Actual contact person" />
+        <Field label="Name" value={contactName} onChangeText={setContactName} placeholder="Name" />
+        <Field
+          label="Position"
+          value={contactPosition}
+          onChangeText={setContactPosition}
+          placeholder="Position (Purchasing / CEO / Owner…)"
+        />
 
-        {/* Agenda */}
-        <YStack gap="$2">
-          <Label>Agenda (select all that apply)</Label>
+        <SectionHeader title="Customer type" />
+        <XStack gap="$2" flexWrap="wrap">
+          {CLIENT_STATUSES.map((status) => (
+            <SelectTile
+              key={status}
+              label={status.charAt(0).toUpperCase() + status.slice(1)}
+              selected={customerType === status}
+              onPress={() => setCustomerType(status)}
+            />
+          ))}
+        </XStack>
+
+        <SectionHeader title="Meeting location" />
+        <XStack gap="$2" flexWrap="wrap">
+          {LOCATIONS.map((loc) => (
+            <SelectTile key={loc} label={loc} selected={meetingLocation === loc} onPress={() => setMeetingLocation(loc)} />
+          ))}
+        </XStack>
+        {meetingLocation === 'Others' ? (
+          <YStack marginTop="$2">
+            <TextInput
+              value={otherLocation}
+              onChangeText={setOtherLocation}
+              placeholder="e.g. Starbucks Alabang"
+              placeholderTextColor={COLORS.hare}
+              style={{
+                height: 50,
+                borderWidth: 2,
+                borderColor: COLORS.swan,
+                borderRadius: 12,
+                paddingHorizontal: 14,
+                fontWeight: '700',
+                fontSize: 14.5,
+                color: COLORS.eel,
+              }}
+            />
+          </YStack>
+        ) : null}
+
+        <SectionHeader title="Agenda" helper="· piliin lahat" />
+        <Text fontSize={12} fontWeight="600" color={COLORS.hare} marginTop={-6} marginBottom="$2" lineHeight={17}>
+          Ang "Product / company presentation" tick dito ang buong basehan ng progress % ng client — hindi na Complete Info (B-001).
+        </Text>
+        <XStack gap="$2" flexWrap="wrap">
           {MEETING_AGENDAS.map((agenda) => (
-            <XStack key={agenda} gap="$3" alignItems="center">
-              <Checkbox
-                id={agenda}
-                size="$4"
-                checked={selectedAgendas.includes(agenda)}
-                onCheckedChange={() => toggleAgenda(agenda)}
-              >
-                <Checkbox.Indicator>
-                  <Text>✓</Text>
-                </Checkbox.Indicator>
-              </Checkbox>
-              <Label htmlFor={agenda}>{agenda}</Label>
-            </XStack>
+            <SelectTile
+              key={agenda}
+              label={agenda}
+              selected={selectedAgendas.includes(agenda)}
+              onPress={() => toggleAgenda(agenda)}
+            />
           ))}
+        </XStack>
+
+        <SectionHeader title="Remarks" />
+        <TextInput
+          value={remarks}
+          onChangeText={setRemarks}
+          placeholder="Notes / comments…"
+          placeholderTextColor={COLORS.hare}
+          multiline
+          style={{
+            height: 70,
+            borderWidth: 2,
+            borderColor: COLORS.swan,
+            borderRadius: 12,
+            paddingHorizontal: 14,
+            paddingVertical: 12,
+            fontWeight: '700',
+            fontSize: 14.5,
+            color: COLORS.eel,
+            textAlignVertical: 'top',
+          }}
+        />
+
+        <SectionHeader title="Meeting outcome *" />
+        <XStack gap="$2" flexWrap="wrap">
+          <SelectTile label="✓ Successful" tone="ok" selected={outcome === 'Successful'} onPress={() => selectOutcome('Successful')} />
+          <SelectTile label="Follow-up required" selected={outcome === 'Follow-up Required'} onPress={() => selectOutcome('Follow-up Required')} />
+          <SelectTile label="No decision" selected={outcome === 'No Decision'} onPress={() => selectOutcome('No Decision')} />
+          <SelectTile label="Lost opportunity" tone="lost" selected={outcome === 'Lost Opportunity'} onPress={() => selectOutcome('Lost Opportunity')} />
+        </XStack>
+
+        <YStack marginTop="$5">
+          <DuoButton label={saving ? 'Saving…' : 'Save Meeting'} onPress={doSave} disabled={saving} />
         </YStack>
+        <XStack justifyContent="center" marginTop="$2.5">
+          {saving ? <Spinner color={COLORS.feather} /> : null}
+        </XStack>
+        <Text fontSize={12} fontWeight="600" color={COLORS.hare} textAlign="center" marginTop="$2">
+          Gagana kahit walang signal — mase-save locally, auto-sync mamaya.
+        </Text>
+      </ScrollView>
 
-        <Separator />
-
-        {/* Outcome */}
-        <YStack gap="$2">
-          <Label>Meeting Outcome</Label>
-          {MEETING_OUTCOMES.map((o) => (
-            <Button
-              key={o}
-              size="$3"
-              theme={outcome === o ? 'active' : undefined}
-              onPress={() => setOutcome(o)}
-            >
-              {o}
-            </Button>
-          ))}
-        </YStack>
-
-        <Button
-          size="$4"
-          marginTop="$4"
-          onPress={handleSave}
-          disabled={saving}
-          theme="active"
-          icon={saving ? <Spinner /> : undefined}
-        >
-          {saving ? 'Saving…' : 'Save Meeting'}
-        </Button>
-      </YStack>
-    </ScrollView>
+      <LostOpportunityDialog
+        visible={lostDialogOpen}
+        onCancel={() => setLostDialogOpen(false)}
+        onConfirm={() => {
+          setOutcome('Lost Opportunity');
+          setLostDialogOpen(false);
+        }}
+      />
+    </YStack>
   );
 }

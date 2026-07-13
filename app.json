@@ -56,7 +56,8 @@
         {
           "photosPermission": "Used to save meeting photos to your gallery."
         }
-      ]
+      ],
+      "expo-font"
     ],
     "experiments": {
       "typedRoutes": true

@@ -1,5 +1,6 @@
 node_modules/
 .expo/
+.tamagui/
 dist/
 web-build/
 .env.local
