@@ -1,131 +1,148 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Alert, ScrollView } from 'react-native';
 import { router } from 'expo-router';
-import { Button, Input, Label, Select, Spinner, Text, YStack } from 'tamagui';
+import { ClipboardList, Lightbulb } from 'lucide-react-native';
+import { Text, XStack, YStack } from 'tamagui';
 import { supabase } from '../../../lib/supabase';
 import { useAuth } from '../../../lib/useAuth';
-import { CUSTOMER_TYPES, SALES_CHANNELS } from '../../../types';
+import { COLORS } from '../../../lib/theme';
+import { showToast } from '../../../lib/toast';
+import { TopBar } from '../../../components/ui/TopBar';
+import { Field } from '../../../components/ui/Field';
+import { Card } from '../../../components/ui/Card';
+import { DuoButton } from '../../../components/ui/DuoButton';
 
+type DupState = 'idle' | 'checking' | 'duplicate' | 'available';
+
+/**
+ * Two-phase client creation (F-001, Wireframe a-createclient): company name
+ * only. The rest of the info has a 1-month completion window (Complete Info),
+ * or gets captured in the first meeting.
+ */
 export default function CreateClientScreen() {
   const { session } = useAuth();
   const [companyName, setCompanyName] = useState('');
-  const [contactPerson, setContactPerson] = useState('');
-  const [customerType, setCustomerType] = useState<string>(CUSTOMER_TYPES[0]);
-  const [salesChannel, setSalesChannel] = useState<string>(SALES_CHANNELS[0]);
-  const [loading, setLoading] = useState(false);
+  const [dupState, setDupState] = useState<DupState>('idle');
+  const [saving, setSaving] = useState(false);
 
-  async function handleSubmit() {
-    if (!companyName.trim()) {
-      Alert.alert('Validation', 'Company name is required.');
+  // Debounced duplicate check against the server list (ADR-003 — the local
+  // snapshot version arrives with T-005).
+  useEffect(() => {
+    const name = companyName.trim();
+    if (!name) {
+      setDupState('idle');
       return;
     }
-    setLoading(true);
+    setDupState('checking');
+    const timer = setTimeout(() => {
+      supabase
+        .from('clients')
+        .select('id')
+        .ilike('company_name', name)
+        .limit(1)
+        .then(({ data }) => {
+          setDupState(data && data.length > 0 ? 'duplicate' : 'available');
+        });
+    }, 400);
+    return () => clearTimeout(timer);
+  }, [companyName]);
 
-    // Duplicate check
-    const { data: existing } = await supabase
-      .from('clients')
-      .select('id')
-      .ilike('company_name', companyName.trim())
-      .limit(1);
-
-    if (existing && existing.length > 0) {
-      setLoading(false);
-      Alert.alert('Duplicate', 'A client with this company name already exists.');
+  async function handleCreate(): Promise<void> {
+    if (!session) {
+      Alert.alert('Not signed in', 'Sign in again before creating a client.');
       return;
     }
-
+    setSaving(true);
     const { error } = await supabase.from('clients').insert({
       company_name: companyName.trim(),
-      contact_person: contactPerson.trim(),
-      customer_type: customerType,
-      sales_channel: salesChannel,
-      agent_id: session?.user.id,
+      contact_person: '',
+      position: null,
+      contact_number: null,
+      office_address: null,
+      // Legacy column kept for DB compat — the two-phase form no longer asks
+      // for this; Complete Info (a-complete) collects sales_channel instead.
+      customer_type: 'Dealer',
+      sales_channel: 'Distributor',
+      status: 'prospect',
+      agent_id: session.user.id,
     });
-
-    setLoading(false);
+    setSaving(false);
     if (error) {
       Alert.alert('Error', error.message);
     } else {
+      showToast('✓ Client created — kumpletuhin ang info within 1 month');
       router.back();
     }
   }
 
+  const canCreate = dupState === 'available' && !saving;
+
   return (
-    <ScrollView contentContainerStyle={{ flexGrow: 1 }}>
-      <YStack flex={1} padding="$6" gap="$4" backgroundColor="$background">
-        <Text fontSize="$6" fontWeight="700">New Client</Text>
+    <YStack flex={1} backgroundColor={COLORS.snow}>
+      <TopBar title="New Client" />
+      <ScrollView contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 24 }}>
+        <Card flat marginBottom="$4">
+          <XStack gap="$2" alignItems="center">
+            <ClipboardList size={15} color={COLORS.eel} />
+            <Text fontSize={13} fontWeight="800" color={COLORS.eel}>Two-phase creation</Text>
+          </XStack>
+          <Text fontSize={13} fontWeight="600" color={COLORS.hare} marginTop="$1">
+            Company name lang ang kailangan ngayon. May <Text fontWeight="800" color={COLORS.eel}>1 buwan</Text> ka
+            para kumpletuhin ang buong info — o kumpletuhin ito mismo sa unang meeting.
+          </Text>
+        </Card>
 
-        <YStack gap="$2">
-          <Label>Company Name *</Label>
-          <Input
-            placeholder="Acme Corporation"
-            value={companyName}
-            onChangeText={setCompanyName}
-            size="$4"
-          />
-        </YStack>
+        <Field
+          label="Company Name *"
+          value={companyName}
+          onChangeText={setCompanyName}
+          placeholder="e.g. Oracle Petroleum (Pampanga)"
+          hint={
+            dupState === 'duplicate' ? (
+              <Text
+                fontSize={11.5}
+                fontWeight="700"
+                backgroundColor={COLORS.redSoft}
+                color={COLORS.ledgeRed}
+                borderRadius={10}
+                paddingHorizontal={12}
+                paddingVertical={8}
+              >
+                May client nang ganitong pangalan — bawal ang duplicate.
+              </Text>
+            ) : dupState === 'available' ? (
+              <Text
+                fontSize={11.5}
+                fontWeight="700"
+                backgroundColor={COLORS.greenSoft}
+                color={COLORS.ledgeGreen}
+                borderRadius={10}
+                paddingHorizontal={12}
+                paddingVertical={8}
+              >
+                ✓ Available ang pangalang ito.
+              </Text>
+            ) : null
+          }
+        />
 
-        <YStack gap="$2">
-          <Label>Contact Person</Label>
-          <Input
-            placeholder="Juan Dela Cruz"
-            value={contactPerson}
-            onChangeText={setContactPerson}
-            size="$4"
-          />
-        </YStack>
+        <XStack gap="$2" alignItems="flex-start" marginBottom="$4">
+          <Lightbulb size={14} color={COLORS.hare} style={{ marginTop: 2 }} />
+          <Text fontSize={13} fontWeight="600" color={COLORS.hare} flex={1}>
+            Bawal ang duplicate — pero pwede ang parehong company na may ibang area, hal. “Oracle
+            Petroleum (Bataan)” at “Oracle Petroleum (Pampanga)”.
+          </Text>
+        </XStack>
 
-        <YStack gap="$2">
-          <Label>Customer Type</Label>
-          <Select value={customerType} onValueChange={setSalesChannel} disablePreventBodyScroll>
-            <Select.Trigger size="$4">
-              <Select.Value placeholder="Select type" />
-            </Select.Trigger>
-            <Select.Content>
-              <Select.ScrollUpButton />
-              <Select.Viewport>
-                {CUSTOMER_TYPES.map((type, i) => (
-                  <Select.Item key={type} index={i} value={type}>
-                    <Select.ItemText>{type}</Select.ItemText>
-                  </Select.Item>
-                ))}
-              </Select.Viewport>
-              <Select.ScrollDownButton />
-            </Select.Content>
-          </Select>
-        </YStack>
-
-        <YStack gap="$2">
-          <Label>Sales Channel</Label>
-          <Select value={salesChannel} onValueChange={setSalesChannel} disablePreventBodyScroll>
-            <Select.Trigger size="$4">
-              <Select.Value placeholder="Select channel" />
-            </Select.Trigger>
-            <Select.Content>
-              <Select.ScrollUpButton />
-              <Select.Viewport>
-                {SALES_CHANNELS.map((ch, i) => (
-                  <Select.Item key={ch} index={i} value={ch}>
-                    <Select.ItemText>{ch}</Select.ItemText>
-                  </Select.Item>
-                ))}
-              </Select.Viewport>
-              <Select.ScrollDownButton />
-            </Select.Content>
-          </Select>
-        </YStack>
-
-        <Button
-          size="$4"
-          marginTop="$4"
-          onPress={handleSubmit}
-          disabled={loading}
-          theme="active"
-          icon={loading ? <Spinner /> : undefined}
-        >
-          {loading ? 'Saving…' : 'Create Client'}
-        </Button>
-      </YStack>
-    </ScrollView>
+        <DuoButton
+          label={saving ? 'Creating…' : 'Create Client'}
+          onPress={handleCreate}
+          disabled={!canCreate}
+        />
+        <Text fontSize={13} fontWeight="600" color={COLORS.hare} textAlign="center" marginTop="$3">
+          Gagana kahit OFFLINE — sa sync queue mapupunta.
+        </Text>
+      </ScrollView>
+    </YStack>
   );
 }
