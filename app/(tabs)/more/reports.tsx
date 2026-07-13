@@ -1,24 +1,11 @@
 import { ScrollView } from 'react-native';
-import { Text, XStack, YStack } from 'tamagui';
+import { Text, YStack } from 'tamagui';
 import { COLORS } from '../../../lib/theme';
 import { useMeetings } from '../../../lib/useMeetings';
 import { useClients } from '../../../lib/useClients';
 import { TopBar } from '../../../components/ui/TopBar';
 import { Card } from '../../../components/ui/Card';
-
-function StatRow({ label, value, color, last }: { label: string; value: number; color?: string; last?: boolean }) {
-  return (
-    <XStack
-      paddingVertical={10}
-      justifyContent="space-between"
-      borderBottomWidth={last ? 0 : 2}
-      borderBottomColor={COLORS.polar}
-    >
-      <Text fontSize={13} fontWeight="700" color={COLORS.eel}>{label}</Text>
-      <Text fontSize={13} fontWeight="800" color={color ?? COLORS.eel}>{value}</Text>
-    </XStack>
-  );
-}
+import { StatListRow } from '../../../components/ui/StatListRow';
 
 /** Wireframe a-reports — My Performance: own stats only (managers see team-wide elsewhere). */
 export default function MyPerformanceScreen() {
@@ -42,10 +29,10 @@ export default function MyPerformanceScreen() {
       <TopBar title="My Performance" />
       <ScrollView contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 24 }}>
         <Card>
-          <StatRow label="Meetings this month" value={thisMonth.length} />
-          <StatRow label="Successful" value={successful} color={COLORS.ledgeGreen} />
-          <StatRow label="New clients acquired" value={newClients} color={COLORS.blue} />
-          <StatRow label="Lost opportunities" value={lost} color={COLORS.ledgeRed} last />
+          <StatListRow label="Meetings this month" value={thisMonth.length} />
+          <StatListRow label="Successful" value={successful} color={COLORS.ledgeGreen} />
+          <StatListRow label="New clients acquired" value={newClients} color={COLORS.blue} />
+          <StatListRow label="Lost opportunities" value={lost} color={COLORS.ledgeRed} last />
         </Card>
         <Text fontSize={12.5} fontWeight="600" color={COLORS.hare} textAlign="center" marginTop="$3">
           Sariling performance lang — hindi kasama ang ibang agents (yun ay para sa manager na).

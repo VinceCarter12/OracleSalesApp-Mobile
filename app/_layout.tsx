@@ -14,29 +14,29 @@ import { GateProvider } from '../lib/gate-context';
 
 function RootNavigator() {
   const { isSignedIn, role } = useSession();
+  const isManager = role === 'sales_manager' || role === 'rsr_manager';
+  const isExecutive = role === 'executive';
 
-  if (!isSignedIn) {
-    return (
-      <Stack screenOptions={{ headerShown: false }}>
-        <Stack.Screen name="(auth)" />
-      </Stack>
-    );
-  }
-
-  // Sales Manager and RSR Manager share the same (manager) UI — the data layer
-  // scopes it to the right team (ADR-014; rsr_manager is mobile-based as of
-  // 2026-07-11). Executive gets its own view-only group; agents (Sales + RSR)
-  // share (tabs), differing only by the F-012 quota widget (ADR-013).
-  const group =
-    role === 'sales_manager' || role === 'rsr_manager'
-      ? '(manager)'
-      : role === 'executive'
-        ? '(executive)'
-        : '(tabs)';
-
+  // Stack.Protected declares every group up front and toggles access via
+  // `guard` — expo-router handles the redirect itself when a guard flips.
+  // The previous pattern (conditionally rendering a single <Stack.Screen>)
+  // updated this component's state correctly but did not reliably force
+  // React Navigation to switch the visible screen (confirmed via on-device
+  // logging, 2026-07-14) — Stack.Protected is the supported fix for that.
   return (
     <Stack screenOptions={{ headerShown: false }}>
-      <Stack.Screen name={group} />
+      <Stack.Protected guard={!isSignedIn}>
+        <Stack.Screen name="(auth)" />
+      </Stack.Protected>
+      <Stack.Protected guard={isSignedIn && isManager}>
+        <Stack.Screen name="(manager)" />
+      </Stack.Protected>
+      <Stack.Protected guard={isSignedIn && isExecutive}>
+        <Stack.Screen name="(executive)" />
+      </Stack.Protected>
+      <Stack.Protected guard={isSignedIn && !isManager && !isExecutive}>
+        <Stack.Screen name="(tabs)" />
+      </Stack.Protected>
     </Stack>
   );
 }
