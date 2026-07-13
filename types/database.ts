@@ -57,12 +57,15 @@ export type Database = {
       profiles: {
         Row: {
           id: string;
-          email: string;
+          user_id: string;
+          email: string | null;
           full_name: string;
           role: string;
           team_id: string | null;
+          is_active: boolean;
+          created_at: string | null;
         };
-        Insert: Omit<Database['public']['Tables']['profiles']['Row'], 'id'>;
+        Insert: Omit<Database['public']['Tables']['profiles']['Row'], 'id' | 'created_at'>;
         Update: Partial<Database['public']['Tables']['profiles']['Insert']>;
         Relationships: [];
       };
