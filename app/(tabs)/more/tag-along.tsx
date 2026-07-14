@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { ScrollView, TextInput } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Text, XStack, YStack } from 'tamagui';
 import { COLORS } from '../../../lib/theme';
 import { showToast } from '../../../lib/toast';
@@ -26,6 +27,7 @@ interface PendingRequest {
 }
 
 export default function TagAlongScreen() {
+  const insets = useSafeAreaInsets();
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [note, setNote] = useState('');
   const [requests, setRequests] = useState<PendingRequest[]>([]);
@@ -41,7 +43,7 @@ export default function TagAlongScreen() {
   }
 
   return (
-    <YStack flex={1} backgroundColor={COLORS.snow}>
+    <YStack flex={1} backgroundColor={COLORS.snow} paddingTop={insets.top}>
       <TopBar title="Request Tag-Along" />
       <ScrollView contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 32 }}>
         <Text fontSize={13} fontWeight="600" color={COLORS.hare} marginBottom="$2" lineHeight={19}>

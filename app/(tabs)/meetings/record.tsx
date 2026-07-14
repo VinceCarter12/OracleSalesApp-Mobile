@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Alert, Image, ScrollView, TextInput } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router, useLocalSearchParams } from 'expo-router';
 import * as Location from 'expo-location';
 import * as ImagePicker from 'expo-image-picker';
@@ -27,6 +28,7 @@ import {
 const LOCATIONS = ['Client Office', 'Others'] as const;
 
 export default function RecordMeetingScreen() {
+  const insets = useSafeAreaInsets();
   const { clientId } = useLocalSearchParams<{ clientId?: string }>();
   const { session } = useAuth();
 
@@ -181,7 +183,7 @@ export default function RecordMeetingScreen() {
   }
 
   return (
-    <YStack flex={1} backgroundColor={COLORS.snow}>
+    <YStack flex={1} backgroundColor={COLORS.snow} paddingTop={insets.top}>
       <TopBar title="Record Meeting" />
       <ScrollView contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 32 }}>
         <YStack gap="$2.5" marginBottom="$3.5">

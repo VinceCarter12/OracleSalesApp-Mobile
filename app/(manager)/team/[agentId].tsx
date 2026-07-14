@@ -1,4 +1,5 @@
 import { ScrollView } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router, useLocalSearchParams } from 'expo-router';
 import { ChevronRight, Handshake, Inbox } from 'lucide-react-native';
 import { Text, View, XStack, YStack } from 'tamagui';
@@ -15,6 +16,7 @@ import { meetingBadge } from '../../../lib/meeting-badge';
 
 /** Wireframe s-agent — gated (shows the agent's client list, which is sensitive). */
 export default function AgentDetailScreen() {
+  const insets = useSafeAreaInsets();
   const { unlocked } = useGate();
   const { agentId } = useLocalSearchParams<{ agentId: string }>();
   const agent = agentById(agentId);
@@ -33,7 +35,7 @@ export default function AgentDetailScreen() {
   const meetings = meetingsForAgent(agent.id);
 
   return (
-    <YStack flex={1} backgroundColor={COLORS.snow}>
+    <YStack flex={1} backgroundColor={COLORS.snow} paddingTop={insets.top}>
       <TopBar title={agent.name.split(' ')[0]} right={<LockButton />} />
       <ScrollView contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 24 }}>
         <XStack alignItems="center" gap="$3.5" backgroundColor={COLORS.snow} borderWidth={2} borderColor={COLORS.swan} borderRadius={16} padding="$3.5">

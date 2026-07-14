@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Alert, ScrollView } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { ClipboardList, Lightbulb } from 'lucide-react-native';
 import { Text, XStack, YStack } from 'tamagui';
@@ -20,6 +21,7 @@ type DupState = 'idle' | 'checking' | 'duplicate' | 'available';
  * or gets captured in the first meeting.
  */
 export default function CreateClientScreen() {
+  const insets = useSafeAreaInsets();
   const { session } = useAuth();
   const [companyName, setCompanyName] = useState('');
   const [dupState, setDupState] = useState<DupState>('idle');
@@ -78,7 +80,7 @@ export default function CreateClientScreen() {
   const canCreate = dupState === 'available' && !saving;
 
   return (
-    <YStack flex={1} backgroundColor={COLORS.snow}>
+    <YStack flex={1} backgroundColor={COLORS.snow} paddingTop={insets.top}>
       <TopBar title="New Client" />
       <ScrollView contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 24 }}>
         <Card flat marginBottom="$4">

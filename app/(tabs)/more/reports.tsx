@@ -1,4 +1,5 @@
 import { ScrollView } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Text, YStack } from 'tamagui';
 import { COLORS } from '../../../lib/theme';
 import { useMeetings } from '../../../lib/useMeetings';
@@ -9,6 +10,7 @@ import { StatListRow } from '../../../components/ui/StatListRow';
 
 /** Wireframe a-reports — My Performance: own stats only (managers see team-wide elsewhere). */
 export default function MyPerformanceScreen() {
+  const insets = useSafeAreaInsets();
   const { meetings } = useMeetings();
   const { clients } = useClients();
 
@@ -25,7 +27,7 @@ export default function MyPerformanceScreen() {
   const lost = thisMonth.filter((m) => m.outcome === 'Lost Opportunity').length;
 
   return (
-    <YStack flex={1} backgroundColor={COLORS.snow}>
+    <YStack flex={1} backgroundColor={COLORS.snow} paddingTop={insets.top}>
       <TopBar title="My Performance" />
       <ScrollView contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 24 }}>
         <Card>

@@ -1,4 +1,5 @@
 import { Pressable, ScrollView } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router, useLocalSearchParams } from 'expo-router';
 import { Handshake } from 'lucide-react-native';
 import { Text, View, XStack, YStack } from 'tamagui';
@@ -22,6 +23,7 @@ import { execOutcomeBadge } from '../../../../components/executive/exec-badges';
 
 /** Wireframe x-agentdetail — gated, view-only: one agent's stats, clients, meetings. */
 export default function ExecutiveAgentDetailScreen() {
+  const insets = useSafeAreaInsets();
   const { unlocked } = useGate();
   const { agentId } = useLocalSearchParams<{ agentId: string }>();
 
@@ -41,7 +43,7 @@ export default function ExecutiveAgentDetailScreen() {
   const meetings = execMeetingsForAgent(agent.id);
 
   return (
-    <YStack flex={1} backgroundColor={COLORS.snow}>
+    <YStack flex={1} backgroundColor={COLORS.snow} paddingTop={insets.top}>
       <TopBar title={agent.name.split(' ')[0]} right={<LockButton />} />
       <ScrollView contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 24 }}>
         <Card flexDirection="row" alignItems="center" gap="$3.5">

@@ -1,4 +1,5 @@
 import { Pressable, ScrollView } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router, useLocalSearchParams } from 'expo-router';
 import { Calendar, Eye } from 'lucide-react-native';
 import { Text, View, XStack, YStack } from 'tamagui';
@@ -31,6 +32,7 @@ const CHECKLIST_ITEMS: Array<[keyof ExecClientChecklist, string]> = [
 
 /** Wireframe x-detail — gated, view-only client detail: progress % (B-001), checklist, meeting history. */
 export default function ExecutiveClientDetailScreen() {
+  const insets = useSafeAreaInsets();
   const { unlocked } = useGate();
   const { id } = useLocalSearchParams<{ id: string }>();
 
@@ -52,7 +54,7 @@ export default function ExecutiveClientDetailScreen() {
   const badge = CLIENT_STATUS_BADGES[client.status];
 
   return (
-    <YStack flex={1} backgroundColor={COLORS.snow}>
+    <YStack flex={1} backgroundColor={COLORS.snow} paddingTop={insets.top}>
       <TopBar title="Client" right={<LockButton />} />
       <ScrollView contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 24 }}>
         <Card flexDirection="row" alignItems="center" gap="$3.5">

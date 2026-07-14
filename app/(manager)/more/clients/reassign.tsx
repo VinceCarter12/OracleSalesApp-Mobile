@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { ScrollView } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router, useLocalSearchParams } from 'expo-router';
 import { Text, View, XStack, YStack } from 'tamagui';
 import { COLORS } from '../../../../lib/theme';
@@ -12,6 +13,7 @@ import { DuoButton } from '../../../../components/ui/DuoButton';
 
 /** Wireframe s-reassign — gated: pick a new agent, submits a reassignment approval. */
 export default function ReassignClientScreen() {
+  const insets = useSafeAreaInsets();
   const { unlocked } = useGate();
   const { clientId } = useLocalSearchParams<{ clientId: string }>();
   const { clients, requestReassign } = useManagerStore();
@@ -38,7 +40,7 @@ export default function ReassignClientScreen() {
   }
 
   return (
-    <YStack flex={1} backgroundColor={COLORS.snow}>
+    <YStack flex={1} backgroundColor={COLORS.snow} paddingTop={insets.top}>
       <TopBar title="Reassign Client" />
       <ScrollView contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 24 }}>
         <YStack backgroundColor={COLORS.polar} borderRadius={16} padding="$3.5" marginBottom="$3.5">

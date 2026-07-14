@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 import { FlatList } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { Text, XStack, YStack } from 'tamagui';
 import { COLORS } from '../../../../lib/theme';
@@ -17,6 +18,7 @@ type OutcomeFilter = ManagerOutcome | 'all';
 
 /** Wireframe s-meetings — gated, filter by agent + outcome. */
 export default function ManagerMeetingsScreen() {
+  const insets = useSafeAreaInsets();
   const { unlocked } = useGate();
   const { meetings } = useManagerStore();
   const [agentFilter, setAgentFilter] = useState<string | 'all'>('all');
@@ -35,7 +37,7 @@ export default function ManagerMeetingsScreen() {
   if (!unlocked) return <SecurityGate />;
 
   return (
-    <YStack flex={1} backgroundColor={COLORS.snow}>
+    <YStack flex={1} backgroundColor={COLORS.snow} paddingTop={insets.top}>
       <TopBar title="Sales History" right={<LockButton />} />
       <YStack paddingHorizontal="$4" gap="$2">
         <Text fontSize={10.5} fontWeight="800" color={COLORS.wolf} letterSpacing={0.6} textTransform="uppercase">Filter by agent</Text>

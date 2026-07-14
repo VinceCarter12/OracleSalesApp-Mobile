@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { ScrollView } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Download } from 'lucide-react-native';
 import { Text, XStack, YStack } from 'tamagui';
 import { COLORS } from '../../../lib/theme';
@@ -16,6 +17,7 @@ const TIMEFRAMES = ['This month', 'Last 30 days', 'This quarter', 'Custom'];
 
 /** Wireframe s-reports — ungated: team-wide summary + Excel export, no customer contact info shown. */
 export default function ManagerReportsScreen() {
+  const insets = useSafeAreaInsets();
   const { meetings } = useManagerStore();
   const [timeframe, setTimeframe] = useState(TIMEFRAMES[0]);
   const [agentFilter, setAgentFilter] = useState<'all' | string>('all');
@@ -24,7 +26,7 @@ export default function ManagerReportsScreen() {
   const lost = meetings.filter((m) => m.outcome === 'lost').length;
 
   return (
-    <YStack flex={1} backgroundColor={COLORS.snow}>
+    <YStack flex={1} backgroundColor={COLORS.snow} paddingTop={insets.top}>
       <TopBar title="Reports" />
       <ScrollView contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 24 }}>
         <Text fontSize={10.5} fontWeight="800" color={COLORS.wolf} letterSpacing={0.6} textTransform="uppercase" marginBottom="$2">Timeframe</Text>

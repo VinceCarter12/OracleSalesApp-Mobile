@@ -1,4 +1,5 @@
 import { Pressable, ScrollView } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { Text, View, XStack, YStack } from 'tamagui';
 import { COLORS } from '../../../lib/theme';
@@ -10,12 +11,13 @@ import { StatusBadge } from '../../../components/ui/StatusBadge';
 
 /** Wireframe x-teams — gated: ALL managers company-wide, Sales + RSR tracks together (ADR-014). */
 export default function ExecutiveTeamsScreen() {
+  const insets = useSafeAreaInsets();
   const { unlocked } = useGate();
 
   if (!unlocked) return <SecurityGate />;
 
   return (
-    <YStack flex={1} backgroundColor={COLORS.snow}>
+    <YStack flex={1} backgroundColor={COLORS.snow} paddingTop={insets.top}>
       <XStack alignItems="center" paddingHorizontal="$4" paddingTop="$2.5" paddingBottom="$1.5">
         <Text fontSize={21} fontWeight="800" letterSpacing={-0.4} color={COLORS.eel}>Teams</Text>
         <XStack marginLeft="auto"><LockButton /></XStack>

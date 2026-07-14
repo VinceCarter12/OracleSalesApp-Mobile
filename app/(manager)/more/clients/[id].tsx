@@ -1,4 +1,5 @@
 import { ScrollView } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router, useLocalSearchParams } from 'expo-router';
 import { Calendar, Clock, Handshake, Repeat, Users as UsersIcon } from 'lucide-react-native';
 import { Text, View, XStack, YStack } from 'tamagui';
@@ -27,6 +28,7 @@ const CHECKLIST_LABELS: Record<string, string> = {
 
 /** Wireframe s-detail — gated: progress ring, checklist, pending approval banner, meeting history, reassign. */
 export default function ManagerClientDetailScreen() {
+  const insets = useSafeAreaInsets();
   const { unlocked } = useGate();
   const { id } = useLocalSearchParams<{ id: string }>();
   const { clients, meetings, approvals, decideApproval } = useManagerStore();
@@ -49,7 +51,7 @@ export default function ManagerClientDetailScreen() {
   const pending = approvals.find((a) => a.clientId === client.id && a.type !== 'tagalong');
 
   return (
-    <YStack flex={1} backgroundColor={COLORS.snow}>
+    <YStack flex={1} backgroundColor={COLORS.snow} paddingTop={insets.top}>
       <TopBar title="Client" right={<LockButton />} />
       <ScrollView contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 24 }}>
         <Card flexDirection="row" alignItems="center" gap="$3.5">

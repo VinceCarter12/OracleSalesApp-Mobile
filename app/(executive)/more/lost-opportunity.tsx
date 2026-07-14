@@ -1,4 +1,5 @@
 import { ScrollView } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Text, XStack, YStack } from 'tamagui';
 import { COLORS } from '../../../lib/theme';
 import { EXEC_LOST_OPP, execAgentById, execManagerById, type ExecLostOppStatus } from '../../../lib/executive-data';
@@ -14,8 +15,9 @@ const LOST_STATUS_BADGES: Record<ExecLostOppStatus, { label: string; background:
 
 /** Wireframe x-lostopp — company-wide lost-opportunity list, Admin-level visibility. */
 export default function ExecutiveLostOpportunityScreen() {
+  const insets = useSafeAreaInsets();
   return (
-    <YStack flex={1} backgroundColor={COLORS.snow}>
+    <YStack flex={1} backgroundColor={COLORS.snow} paddingTop={insets.top}>
       <TopBar title="Lost Opportunity" />
       <ScrollView contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 24 }}>
         <Text fontSize={13} fontWeight="600" color={COLORS.hare} marginBottom="$3" lineHeight={19}>

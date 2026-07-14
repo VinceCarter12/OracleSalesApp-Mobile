@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 import { FlatList, Pressable, TextInput } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { Eye, Search } from 'lucide-react-native';
 import { Text, View, XStack, YStack } from 'tamagui';
@@ -19,6 +20,7 @@ const STATUS_FILTERS: StatusFilter[] = ['all', 'prospect', 'new', 'existing'];
 
 /** Wireframe x-clients — gated, view-only: ALL clients company-wide, filter by manager + status. */
 export default function ExecutiveClientsScreen() {
+  const insets = useSafeAreaInsets();
   const { unlocked } = useGate();
   const [search, setSearch] = useState('');
   const [managerFilter, setManagerFilter] = useState<string | 'all'>('all');
@@ -37,7 +39,7 @@ export default function ExecutiveClientsScreen() {
   if (!unlocked) return <SecurityGate />;
 
   return (
-    <YStack flex={1} backgroundColor={COLORS.snow}>
+    <YStack flex={1} backgroundColor={COLORS.snow} paddingTop={insets.top}>
       <XStack alignItems="center" paddingHorizontal="$4" paddingTop="$2.5" paddingBottom="$1.5">
         <Text fontSize={21} fontWeight="800" letterSpacing={-0.4} color={COLORS.eel}>Clients</Text>
         <XStack marginLeft="auto"><LockButton /></XStack>

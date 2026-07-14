@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { KeyboardAvoidingView, Platform, ScrollView } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AlertTriangle } from 'lucide-react-native';
 import { Text, View, XStack, YStack } from 'tamagui';
 import { COLORS } from '../../lib/theme';
@@ -30,6 +31,7 @@ function toFriendlyMessage(error: Error): string {
 }
 
 export default function LoginScreen() {
+  const insets = useSafeAreaInsets();
   const { signInWithPassword } = useAuth();
   const { signIn } = useSession();
   const [email, setEmail] = useState('');
@@ -84,10 +86,11 @@ export default function LoginScreen() {
 
   return (
     <KeyboardAvoidingView
-      style={{ flex: 1 }}
+      style={{ flex: 1, backgroundColor: COLORS.snow, paddingTop: insets.top, paddingBottom: insets.bottom }}
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
       <ScrollView
+        style={{ backgroundColor: COLORS.snow }}
         contentContainerStyle={{ flexGrow: 1, justifyContent: 'center', paddingHorizontal: 24 }}
         keyboardShouldPersistTaps="handled"
       >

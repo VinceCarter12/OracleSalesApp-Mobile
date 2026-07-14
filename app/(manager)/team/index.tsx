@@ -1,4 +1,5 @@
 import { ScrollView } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { ChevronRight } from 'lucide-react-native';
 import { Text, View, XStack, YStack } from 'tamagui';
@@ -7,8 +8,9 @@ import { AGENT_COLORS, getManagerAgents } from '../../../lib/manager-data';
 
 /** Wireframe s-team — ungated: staff stats only, no client data, so no fingerprint needed. */
 export default function ManagerTeamScreen() {
+  const insets = useSafeAreaInsets();
   return (
-    <YStack flex={1} backgroundColor={COLORS.snow}>
+    <YStack flex={1} backgroundColor={COLORS.snow} paddingTop={insets.top}>
       <XStack alignItems="center" paddingHorizontal="$4" paddingTop="$2.5" paddingBottom="$1.5">
         <Text fontSize={21} fontWeight="800" letterSpacing={-0.4} color={COLORS.eel}>My Team</Text>
       </XStack>

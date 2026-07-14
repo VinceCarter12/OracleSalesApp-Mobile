@@ -1,4 +1,5 @@
 import { ScrollView } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { CircleCheckBig, Handshake, TriangleAlert } from 'lucide-react-native';
 import { Text, XStack, YStack } from 'tamagui';
@@ -13,11 +14,12 @@ import { StatusBadge } from '../../components/ui/StatusBadge';
  * owns and records the meeting (Meeting-2026-07-08, final single-owner model).
  */
 export default function TagAlongRequestsScreen() {
+  const insets = useSafeAreaInsets();
   const { tagAlongRequests, approvals, acceptTagAlong, declineTagAlong } = useManagerStore();
   const pendingTagAlongApprovals = approvals.filter((a) => a.type === 'tagalong');
 
   return (
-    <YStack flex={1} backgroundColor={COLORS.snow}>
+    <YStack flex={1} backgroundColor={COLORS.snow} paddingTop={insets.top}>
       <XStack alignItems="center" paddingHorizontal="$4" paddingTop="$2.5" paddingBottom="$1.5">
         <Text fontSize={21} fontWeight="800" letterSpacing={-0.4} color={COLORS.eel}>Tag-Along Requests</Text>
       </XStack>

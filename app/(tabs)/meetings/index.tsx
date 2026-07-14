@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 import { FlatList, Pressable, RefreshControl } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { Handshake } from 'lucide-react-native';
 import { Spinner, Text, XStack, YStack } from 'tamagui';
@@ -44,6 +45,7 @@ function MeetingRow({ meeting }: { meeting: Meeting }) {
 }
 
 export default function MeetingsScreen() {
+  const insets = useSafeAreaInsets();
   const { meetings, loading, refresh } = useMeetings();
   const [filter, setFilter] = useState<OutcomeFilter>('all');
 
@@ -53,7 +55,7 @@ export default function MeetingsScreen() {
   );
 
   return (
-    <YStack flex={1} backgroundColor={COLORS.snow}>
+    <YStack flex={1} backgroundColor={COLORS.snow} paddingTop={insets.top}>
       <XStack alignItems="center" paddingHorizontal="$4" paddingTop="$2.5" paddingBottom="$1.5">
         <Text fontSize={21} fontWeight="800" letterSpacing={-0.4} color={COLORS.eel}>My Meetings</Text>
         <XStack marginLeft="auto"><LockButton /></XStack>

@@ -1,4 +1,5 @@
 import { ScrollView } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { Spinner, Text, View, XStack, YStack } from 'tamagui';
 import { Bell, Building2, Ellipsis, Handshake, Hourglass, Magnet, PencilLine, RefreshCw, Users } from 'lucide-react-native';
@@ -11,6 +12,7 @@ import { TeamMeetingRow } from '../../components/manager/TeamMeetingRow';
 import { QuickActionsGrid } from '../../components/manager/QuickActionsGrid';
 
 export default function ManagerDashboardScreen() {
+  const insets = useSafeAreaInsets();
   const { summary, loading } = useManagerDashboard();
   const profile = managerProfile();
 
@@ -23,7 +25,7 @@ export default function ManagerDashboardScreen() {
   }
 
   return (
-    <YStack flex={1} backgroundColor={COLORS.snow}>
+    <YStack flex={1} backgroundColor={COLORS.snow} paddingTop={insets.top}>
       <XStack alignItems="center" gap="$3" paddingHorizontal="$4" paddingTop="$3" paddingBottom="$2">
         <View width={44} height={44} borderRadius={22} alignItems="center" justifyContent="center" backgroundColor={COLORS.greenTint}>
           <Text fontWeight="800" fontSize={16} color={COLORS.ledgeGreen}>

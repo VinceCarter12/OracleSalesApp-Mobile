@@ -1,6 +1,7 @@
 import { TamaguiProvider } from 'tamagui';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
 import {
   useFonts,
   Inter_400Regular,
@@ -53,13 +54,15 @@ export default function RootLayout() {
   if (!fontsLoaded) return null;
 
   return (
-    <TamaguiProvider config={tamaguiConfig} defaultTheme="light">
-      <StatusBar style="auto" />
-      <SessionProvider>
-        <GateProvider>
-          <RootNavigator />
-        </GateProvider>
-      </SessionProvider>
-    </TamaguiProvider>
+    <SafeAreaProvider>
+      <TamaguiProvider config={tamaguiConfig} defaultTheme="light">
+        <StatusBar style="auto" />
+        <SessionProvider>
+          <GateProvider>
+            <RootNavigator />
+          </GateProvider>
+        </SessionProvider>
+      </TamaguiProvider>
+    </SafeAreaProvider>
   );
 }

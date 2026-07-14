@@ -1,4 +1,5 @@
 import { Pressable, ScrollView } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { BarChart3, Bell, Building2, Handshake, Magnet, Map, Pin, Users } from 'lucide-react-native';
 import { Text, View, XStack, YStack } from 'tamagui';
@@ -11,12 +12,13 @@ import { QuickAction } from '../../components/home/QuickAction';
 
 /** Wireframe x-home — company-wide metrics across BOTH tracks (Sales + RSR), view-only. */
 export default function ExecutiveHomeScreen() {
+  const insets = useSafeAreaInsets();
   const totalMeetings = EXEC_MANAGERS.reduce((sum, m) => sum + m.meetings, 0);
   const totalClients = EXEC_MANAGERS.reduce((sum, m) => sum + m.clients, 0);
   const totalAgents = EXEC_MANAGERS.reduce((sum, m) => sum + m.agentCount, 0);
 
   return (
-    <YStack flex={1} backgroundColor={COLORS.snow}>
+    <YStack flex={1} backgroundColor={COLORS.snow} paddingTop={insets.top}>
       <XStack alignItems="center" gap="$3" paddingHorizontal="$4" paddingTop="$2.5" paddingBottom="$1.5">
         <View width={44} height={44} borderRadius={22} alignItems="center" justifyContent="center" backgroundColor={COLORS.purpleSoft}>
           <Text fontWeight="800" fontSize={16} color={COLORS.purple}>EX</Text>
