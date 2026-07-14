@@ -1,4 +1,5 @@
 import { ScrollView } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLocalSearchParams } from 'expo-router';
 import { Camera } from 'lucide-react-native';
 import { Text, View, XStack, YStack } from 'tamagui';
@@ -14,6 +15,7 @@ import { execOutcomeBadge } from '../../../../components/executive/exec-badges';
 
 /** Wireframe x-meetingdetail — gated, view-only: outcome, auto-captured proof, agenda, remarks. */
 export default function ExecutiveMeetingDetailScreen() {
+  const insets = useSafeAreaInsets();
   const { unlocked } = useGate();
   const { id } = useLocalSearchParams<{ id: string }>();
 
@@ -32,7 +34,7 @@ export default function ExecutiveMeetingDetailScreen() {
   const agent = execAgentById(meeting.agentId);
 
   return (
-    <YStack flex={1} backgroundColor={COLORS.snow}>
+    <YStack flex={1} backgroundColor={COLORS.snow} paddingTop={insets.top}>
       <TopBar title="Meeting Detail" />
       <ScrollView contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 24 }}>
         <Card flexDirection="row" alignItems="center" gap="$3">

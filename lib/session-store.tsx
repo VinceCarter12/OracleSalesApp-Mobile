@@ -5,7 +5,7 @@ import type { UserRole } from '../types';
 type SessionStore = {
   isSignedIn: boolean;
   role: UserRole | null;
-  signIn: (role: UserRole) => void;
+  signIn: (role: UserRole, teamId: string | null) => void;
   signOut: () => void;
 };
 
@@ -26,10 +26,11 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     () => ({
       isSignedIn,
       role,
-      signIn: (nextRole: UserRole) => {
-        // Select the manager mock dataset before any (manager) screen mounts
-        // (sales_manager vs rsr_manager share the same UI, ADR-014).
-        setManagerTrack(nextRole);
+      signIn: (nextRole: UserRole, teamId: string | null) => {
+        // Select the manager mock dataset before any (manager) screen mounts —
+        // track is keyed off team_id, not role (ADR-017; there is only one
+        // sales_manager role, no separate rsr_manager).
+        setManagerTrack(teamId);
         setRole(nextRole);
         setIsSignedIn(true);
       },

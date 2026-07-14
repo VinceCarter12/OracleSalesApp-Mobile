@@ -1,4 +1,5 @@
 import { Pressable, ScrollView } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import {
   Bell,
@@ -98,6 +99,7 @@ function ClientPreviewRow({ client }: { client: Client }) {
 }
 
 export default function AgentHomeScreen() {
+  const insets = useSafeAreaInsets();
   const { clients } = useClients();
   const { meetings } = useMeetings();
   const { role } = useSession();
@@ -113,7 +115,7 @@ export default function AgentHomeScreen() {
   const successful = thisMonth.filter((m) => m.outcome === 'Successful');
 
   return (
-    <YStack flex={1} backgroundColor={COLORS.snow}>
+    <YStack flex={1} backgroundColor={COLORS.snow} paddingTop={insets.top}>
       <XStack alignItems="center" gap="$3" paddingHorizontal="$4" paddingTop="$2.5" paddingBottom="$1.5">
         <Avatar initials="MS" />
         <YStack gap="$1">

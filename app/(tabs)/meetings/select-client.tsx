@@ -1,4 +1,5 @@
 import { FlatList, Pressable, RefreshControl } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { Sparkles } from 'lucide-react-native';
 import { Spinner, Text, XStack, YStack } from 'tamagui';
@@ -49,10 +50,11 @@ function ClientRow({ client }: { client: Client }) {
 }
 
 export default function SelectClientScreen() {
+  const insets = useSafeAreaInsets();
   const { clients, loading, refresh } = useClients();
 
   return (
-    <YStack flex={1} backgroundColor={COLORS.snow}>
+    <YStack flex={1} backgroundColor={COLORS.snow} paddingTop={insets.top}>
       <TopBar title="Record Meeting" />
       <YStack paddingHorizontal="$4" paddingBottom="$2" gap="$1">
         <Text fontSize={13} fontWeight="600" color={COLORS.hare}>

@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { ScrollView } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Download } from 'lucide-react-native';
 import { Text, XStack, YStack } from 'tamagui';
 import { COLORS } from '../../../lib/theme';
@@ -15,13 +16,14 @@ const TIMEFRAMES = ['This month', 'Last 30 days', 'This quarter', 'Custom'];
 
 /** Wireframe x-reports — company-wide summary; tanging Executive ang maka-download ng LAHAT. */
 export default function ExecutiveReportsScreen() {
+  const insets = useSafeAreaInsets();
   const [timeframe, setTimeframe] = useState(TIMEFRAMES[0]);
   const [teamFilter, setTeamFilter] = useState<'all' | string>('all');
 
   const totalMeetings = EXEC_MANAGERS.reduce((sum, m) => sum + m.meetings, 0);
 
   return (
-    <YStack flex={1} backgroundColor={COLORS.snow}>
+    <YStack flex={1} backgroundColor={COLORS.snow} paddingTop={insets.top}>
       <TopBar title="Reports" />
       <ScrollView contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 24 }}>
         <Text fontSize={10.5} fontWeight="800" color={COLORS.wolf} letterSpacing={0.6} textTransform="uppercase" marginBottom="$2">Timeframe</Text>

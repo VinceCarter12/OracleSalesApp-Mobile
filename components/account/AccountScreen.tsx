@@ -1,5 +1,6 @@
 import { ReactNode } from 'react';
 import { ScrollView } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Lock } from 'lucide-react-native';
 import { Text, XStack, YStack } from 'tamagui';
 import { COLORS } from '../../lib/theme';
@@ -40,8 +41,9 @@ export function AccountScreen({
   statsSlot,
   sessionPolicyText,
 }: AccountScreenProps) {
+  const insets = useSafeAreaInsets();
   return (
-    <YStack flex={1} backgroundColor={COLORS.snow}>
+    <YStack flex={1} backgroundColor={COLORS.snow} paddingTop={insets.top}>
       <TopBar title="Account & Security" />
       <ScrollView contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 24 }}>
         <Card flexDirection="row" alignItems="center" gap="$3.5">

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Alert, Pressable, ScrollView } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { Camera, Check, Pencil } from 'lucide-react-native';
 import { Spinner, Text, View, XStack, YStack } from 'tamagui';
@@ -18,6 +19,7 @@ import { DuoButton } from '../../../components/ui/DuoButton';
 import type { Client } from '../../../types';
 
 export default function ClientDetailScreen() {
+  const insets = useSafeAreaInsets();
   const { id } = useLocalSearchParams<{ id: string }>();
   const [client, setClient] = useState<Client | null>(null);
   const [loading, setLoading] = useState(true);
@@ -64,7 +66,7 @@ export default function ClientDetailScreen() {
   const progress = total;
 
   return (
-    <YStack flex={1} backgroundColor={COLORS.snow}>
+    <YStack flex={1} backgroundColor={COLORS.snow} paddingTop={insets.top}>
       <TopBar title="Client" right={<LockButton />} />
       <ScrollView contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 24 }}>
         <Card flexDirection="row" alignItems="center" gap="$3.5">

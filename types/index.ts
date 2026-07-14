@@ -99,17 +99,30 @@ export interface Meeting {
   created_at: string;
 }
 
-// Mirrors the web DB role enum (Database.md) + executive. RSR reuses the agent
-// UI with only the F-012 quota widget added (ADR-013); rsr_manager reuses the
-// (manager) UI scoped to the RSR team (2026-07-11 — supersedes the old
-// "rsr_manager is web-only" note).
+// Mirrors the web DB role enum (Database.md) + executive (mobile-only concept,
+// not in the DB). ADR-017 (2026-07-14, client decision): there is no
+// `rsr_manager` — a single `sales_manager` oversees either track, and which
+// track is determined by `team_id` (see RSR_TEAM_IDS below), not by role.
+// RSR remains a distinct agent role (ADR-013), just not a distinct manager
+// role. `superadmin`/`admin` are web-only and have no mobile screens.
 export type UserRole =
   | 'sales_specialist'
   | 'rsr'
   | 'sales_manager'
-  | 'rsr_manager'
   | 'executive'
-  | 'admin';
+  | 'admin'
+  | 'superadmin'
+  | 'collector';
+
+// Fixed Supabase team IDs (mirrors web repo's lib/teams.ts) — never renumber.
+// A sales_manager's `team_id` determines which track's manager UI they see.
+export const RSR_TEAM_1_ID = '00000000-0000-0000-0000-000000000003';
+export const RSR_TEAM_2_ID = '00000000-0000-0000-0000-000000000004';
+export const RSR_TEAM_IDS: readonly string[] = [RSR_TEAM_1_ID, RSR_TEAM_2_ID];
+
+export function isRsrTeam(teamId: string | null | undefined): boolean {
+  return !!teamId && RSR_TEAM_IDS.includes(teamId);
+}
 
 // F-012: minimum daily in-person client visits — RSR role only, never Sales.
 // Configurable target, not hard-coded at call sites.

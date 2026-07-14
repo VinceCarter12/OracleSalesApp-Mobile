@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 import { FlatList, TextInput } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { Search } from 'lucide-react-native';
 import { Text, XStack, YStack } from 'tamagui';
@@ -19,6 +20,7 @@ type StatusFilter = ClientStatus | 'all';
 
 /** Wireframe s-clients — gated: filter by agent + status, manager sees self + whole team. */
 export default function ManagerClientsScreen() {
+  const insets = useSafeAreaInsets();
   const { unlocked } = useGate();
   const { clients, meetings } = useManagerStore();
   const [search, setSearch] = useState('');
@@ -38,7 +40,7 @@ export default function ManagerClientsScreen() {
   if (!unlocked) return <SecurityGate />;
 
   return (
-    <YStack flex={1} backgroundColor={COLORS.snow}>
+    <YStack flex={1} backgroundColor={COLORS.snow} paddingTop={insets.top}>
       <TopBar title="Clients" right={<LockButton />} />
       <YStack paddingHorizontal="$4" gap="$2.5">
         <XStack alignItems="center" borderWidth={2} borderColor={COLORS.swan} borderRadius={12} height={50} paddingHorizontal={14} gap="$2">

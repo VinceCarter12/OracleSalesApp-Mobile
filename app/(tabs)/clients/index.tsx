@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 import { FlatList, Pressable, RefreshControl, TextInput } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { Building2 } from 'lucide-react-native';
 import { Spinner, Text, XStack, YStack } from 'tamagui';
@@ -41,6 +42,7 @@ function ClientRow({ client }: { client: Client }) {
 }
 
 export default function ClientsScreen() {
+  const insets = useSafeAreaInsets();
   const { clients, loading, refresh } = useClients();
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState<StatusFilter>('all');
@@ -55,7 +57,7 @@ export default function ClientsScreen() {
   }, [clients, search, filter]);
 
   return (
-    <YStack flex={1} backgroundColor={COLORS.snow}>
+    <YStack flex={1} backgroundColor={COLORS.snow} paddingTop={insets.top}>
       <XStack alignItems="center" paddingHorizontal="$4" paddingTop="$2.5" paddingBottom="$1.5">
         <Text fontSize={21} fontWeight="800" letterSpacing={-0.4} color={COLORS.eel}>My Clients</Text>
         <XStack marginLeft="auto"><LockButton /></XStack>

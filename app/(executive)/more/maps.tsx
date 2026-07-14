@@ -1,4 +1,5 @@
 import { Pressable, ScrollView } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { Map } from 'lucide-react-native';
 import { Text, View, XStack, YStack } from 'tamagui';
@@ -14,8 +15,9 @@ import { SectionHeader } from '../../../components/ui/SectionHeader';
  * canvas is a placeholder while the meeting-locations list is real mock data.
  */
 export default function ExecutiveMapsScreen() {
+  const insets = useSafeAreaInsets();
   return (
-    <YStack flex={1} backgroundColor={COLORS.snow}>
+    <YStack flex={1} backgroundColor={COLORS.snow} paddingTop={insets.top}>
       <TopBar title="Maps" />
       <ScrollView contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 24 }}>
         <Text fontSize={13} fontWeight="600" color={COLORS.hare} marginBottom="$3" lineHeight={19}>

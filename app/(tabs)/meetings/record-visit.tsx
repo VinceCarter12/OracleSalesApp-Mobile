@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Alert, ScrollView } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router, useLocalSearchParams } from 'expo-router';
 import { Spinner, Text, YStack } from 'tamagui';
 import { supabase } from '../../../lib/supabase';
@@ -22,6 +23,7 @@ import type { Client, MeetingMode } from '../../../types';
  * Duration is computed web-side from the two timestamps, never here.
  */
 export default function RecordVisitScreen() {
+  const insets = useSafeAreaInsets();
   const { clientId } = useLocalSearchParams<{ clientId: string }>();
   const { session } = useAuth();
 
@@ -99,7 +101,7 @@ export default function RecordVisitScreen() {
   }
 
   return (
-    <YStack flex={1} backgroundColor={COLORS.snow}>
+    <YStack flex={1} backgroundColor={COLORS.snow} paddingTop={insets.top}>
       <TopBar title={`Meeting — ${client.company_name}`} />
       <ScrollView contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 32 }}>
         <ClientInfoCard client={client} />

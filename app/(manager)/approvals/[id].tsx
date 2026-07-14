@@ -1,4 +1,5 @@
 import { ScrollView } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router, useLocalSearchParams } from 'expo-router';
 import { Camera } from 'lucide-react-native';
 import { Text, View, XStack, YStack } from 'tamagui';
@@ -14,13 +15,14 @@ import { MANAGER_OUTCOME_LABELS } from '../../../types';
 
 /** Wireframe s-approvaldetail — diff view + Approve/Reject. */
 export default function ApprovalDetailScreen() {
+  const insets = useSafeAreaInsets();
   const { id } = useLocalSearchParams<{ id: string }>();
   const { approvals, meetings, decideApproval } = useManagerStore();
   const approval = approvals.find((a) => a.id === id);
 
   if (!approval) {
     return (
-      <YStack flex={1} backgroundColor={COLORS.snow}>
+      <YStack flex={1} backgroundColor={COLORS.snow} paddingTop={insets.top}>
         <TopBar title="Approval Detail" />
         <YStack flex={1} justifyContent="center" alignItems="center" padding="$6">
           <Text fontSize={13} fontWeight="600" color={COLORS.hare}>Wala nang approval — na-decide na ito.</Text>
@@ -42,7 +44,7 @@ export default function ApprovalDetailScreen() {
     const outcomeLabel = meeting?.outcome ? MANAGER_OUTCOME_LABELS[meeting.outcome] : null;
     const outcomeStyle = outcomeLabel ? OUTCOME_BADGE_STYLES[outcomeLabel] : null;
     return (
-      <YStack flex={1} backgroundColor={COLORS.snow}>
+      <YStack flex={1} backgroundColor={COLORS.snow} paddingTop={insets.top}>
         <TopBar title="Approval Detail" />
         <ScrollView contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 24 }}>
           <Card>
@@ -103,7 +105,7 @@ export default function ApprovalDetailScreen() {
     : { label: 'Reassignment', background: COLORS.blueSoft, color: COLORS.blue };
 
   return (
-    <YStack flex={1} backgroundColor={COLORS.snow}>
+    <YStack flex={1} backgroundColor={COLORS.snow} paddingTop={insets.top}>
       <TopBar title="Approval Detail" />
       <ScrollView contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 24 }}>
         <Card>

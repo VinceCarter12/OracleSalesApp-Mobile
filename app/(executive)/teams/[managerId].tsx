@@ -1,4 +1,5 @@
 import { Pressable, ScrollView } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router, useLocalSearchParams } from 'expo-router';
 import { Text, View, XStack, YStack } from 'tamagui';
 import { COLORS } from '../../../lib/theme';
@@ -12,6 +13,7 @@ import { SectionHeader } from '../../../components/ui/SectionHeader';
 
 /** Wireframe x-managerdetail — gated, view-only: one manager's team stats + agent list. */
 export default function ExecutiveManagerDetailScreen() {
+  const insets = useSafeAreaInsets();
   const { unlocked } = useGate();
   const { managerId } = useLocalSearchParams<{ managerId: string }>();
 
@@ -29,7 +31,7 @@ export default function ExecutiveManagerDetailScreen() {
   const agents = execAgentsForManager(manager.id);
 
   return (
-    <YStack flex={1} backgroundColor={COLORS.snow}>
+    <YStack flex={1} backgroundColor={COLORS.snow} paddingTop={insets.top}>
       <TopBar title={manager.name.split(' ')[0]} right={<LockButton />} />
       <ScrollView contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 24 }}>
         <Card flexDirection="row" alignItems="center" gap="$3.5">

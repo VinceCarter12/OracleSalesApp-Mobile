@@ -1,4 +1,5 @@
 import { ScrollView } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLocalSearchParams } from 'expo-router';
 import { Camera, Check, MapPin, Tag, User, Users as UsersIcon, Video } from 'lucide-react-native';
 import { Text, View, XStack, YStack } from 'tamagui';
@@ -17,6 +18,7 @@ import { MANAGER_OUTCOME_LABELS } from '../../../../types';
 
 /** Wireframe s-meetingdetail — gated. Branches on fastPath (ADR-015) and meetingMode (ADR-012). */
 export default function ManagerMeetingDetailScreen() {
+  const insets = useSafeAreaInsets();
   const { unlocked } = useGate();
   const { id } = useLocalSearchParams<{ id: string }>();
   const { meetings } = useManagerStore();
@@ -45,7 +47,7 @@ export default function ManagerMeetingDetailScreen() {
 
   if (meeting.fastPath) {
     return (
-      <YStack flex={1} backgroundColor={COLORS.snow}>
+      <YStack flex={1} backgroundColor={COLORS.snow} paddingTop={insets.top}>
         <TopBar title="Meeting Detail" />
         <ScrollView contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 24 }}>
           <HeaderCard agentName={agent?.name} clientName={client?.name} />
@@ -93,7 +95,7 @@ export default function ManagerMeetingDetailScreen() {
       : 'Location bound at shutter time';
 
   return (
-    <YStack flex={1} backgroundColor={COLORS.snow}>
+    <YStack flex={1} backgroundColor={COLORS.snow} paddingTop={insets.top}>
       <TopBar title="Meeting Detail" />
       <ScrollView contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 24 }}>
         <HeaderCard agentName={agent?.name} clientName={client?.name} />

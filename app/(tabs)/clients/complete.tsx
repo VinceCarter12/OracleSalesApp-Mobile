@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Alert, ScrollView } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router, useLocalSearchParams } from 'expo-router';
 import { Spinner, Text, XStack, YStack } from 'tamagui';
 import { supabase } from '../../../lib/supabase';
@@ -19,6 +20,7 @@ import { SALES_CHANNELS, type Client, type SalesChannel } from '../../../types';
  * (approval flow itself is T-006 — for now edits save with a notice).
  */
 export default function CompleteInfoScreen() {
+  const insets = useSafeAreaInsets();
   const { clientId } = useLocalSearchParams<{ clientId: string }>();
   const [client, setClient] = useState<Client | null>(null);
   const [loading, setLoading] = useState(true);
@@ -86,7 +88,7 @@ export default function CompleteInfoScreen() {
   }
 
   return (
-    <YStack flex={1} backgroundColor={COLORS.snow}>
+    <YStack flex={1} backgroundColor={COLORS.snow} paddingTop={insets.top}>
       <TopBar title={firstTime ? 'Complete Info' : 'Edit Info'} />
       <ScrollView contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 24 }}>
         <Text fontSize={13} fontWeight="600" color={COLORS.hare} marginBottom="$3.5" lineHeight={19}>
