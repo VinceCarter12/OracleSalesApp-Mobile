@@ -1,5 +1,6 @@
 import { COLORS } from './theme';
-import type { TeamAgent, TeamApproval, TeamClient, TeamMeeting, TagAlongRequest, UserRole } from '../types';
+import { isRsrTeam } from '../types';
+import type { TeamAgent, TeamApproval, TeamClient, TeamMeeting, TagAlongRequest } from '../types';
 
 /**
  * Manager team mock data — mirrors Wireframe.html's mock arrays 1:1 (agents,
@@ -7,18 +8,19 @@ import type { TeamAgent, TeamApproval, TeamClient, TeamMeeting, TagAlongRequest,
  * record (ADR-010) never disagree. No manager aggregate tables exist in
  * Supabase yet (Sprint.md) — swap for real queries once that's scoped.
  *
- * Track-aware (2026-07-11): sales_manager and rsr_manager share every screen
- * (ADR-014; rsr_manager is mobile-based — supersedes the old web-only note).
- * The active track is set once at sign-in via setManagerTrack(); all getters
- * below read the matching dataset, so screens never branch on role themselves.
+ * Track-aware (ADR-017, 2026-07-14): there is one `sales_manager` role, not a
+ * separate `rsr_manager` — which track a manager sees is determined by their
+ * `team_id` (RSR_TEAM_IDS), not by role. The active track is set once at
+ * sign-in via setManagerTrack(); all getters below read the matching
+ * dataset, so screens never branch on role or team_id themselves.
  */
 
 export type ManagerTrack = 'sales' | 'rsr';
 
 let activeTrack: ManagerTrack = 'sales';
 
-export function setManagerTrack(role: UserRole | null): void {
-  activeTrack = role === 'rsr_manager' ? 'rsr' : 'sales';
+export function setManagerTrack(teamId: string | null): void {
+  activeTrack = isRsrTeam(teamId) ? 'rsr' : 'sales';
 }
 
 export function getManagerTrack(): ManagerTrack {
@@ -169,7 +171,7 @@ const SALES_TAG_ALONG_REQUESTS: TagAlongRequest[] = [
   { id: 'ta2', agentId: 'a4', clientId: 'c8', note: 'Closing meeting sa Greenline — kasama sana kita para sa renewal talks.' },
 ];
 
-// ─── RSR track dataset (ADR-013/ADR-014) ───────────────────────────────────────
+// ─── RSR track dataset (ADR-013/ADR-017) ───────────────────────────────────────
 // Same shapes, dealer/motorshop-flavored: RSR agents are field-based and carry
 // the 12-visits/day quota (F-012) — reflected in denser meeting volume.
 

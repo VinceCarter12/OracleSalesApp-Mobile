@@ -13,8 +13,6 @@ import { Field } from '../../components/ui/Field';
 import { DuoButton } from '../../components/ui/DuoButton';
 import type { UserRole } from '../../types';
 
-const MANAGER_ROLES: UserRole[] = ['sales_manager', 'rsr_manager'];
-
 /** Maps raw Supabase/network errors to the wireframe's login-error copy (a-loginErr). */
 function toFriendlyMessage(error: Error): string {
   const msg = error.message.toLowerCase();
@@ -52,7 +50,7 @@ export default function LoginScreen() {
 
       const { data: profile, error: profileError } = await withTimeout(
         Promise.resolve(
-          supabase.from('profiles').select('role, is_active').eq('user_id', userId).maybeSingle()
+          supabase.from('profiles').select('role, is_active, team_id').eq('user_id', userId).maybeSingle()
         ),
         10000,
         'profiles lookup'
@@ -70,10 +68,12 @@ export default function LoginScreen() {
       }
 
       const role = profile.role as UserRole;
-      if (MANAGER_ROLES.includes(role)) {
-        setManagerTrack(role);
+      // Track (Sales vs RSR) is keyed off team_id, not role — ADR-017: there
+      // is only one sales_manager role, no separate rsr_manager.
+      if (role === 'sales_manager') {
+        setManagerTrack(profile.team_id);
       }
-      signIn(role);
+      signIn(role, profile.team_id);
       // No manual navigation — RootNavigator's Stack.Protected guards
       // (app/_layout.tsx) switch to the matching route group as soon as
       // isSignedIn/role update above.

@@ -2,6 +2,7 @@ import { TamaguiProvider } from 'tamagui';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { SQLiteProvider } from 'expo-sqlite';
 import {
   useFonts,
   Inter_400Regular,
@@ -12,10 +13,13 @@ import {
 import tamaguiConfig from '../tamagui.config';
 import { SessionProvider, useSession } from '../lib/session-store';
 import { GateProvider } from '../lib/gate-context';
+import { DATABASE_NAME, migrateDbIfNeeded } from '../lib/db';
 
 function RootNavigator() {
   const { isSignedIn, role } = useSession();
-  const isManager = role === 'sales_manager' || role === 'rsr_manager';
+  // ADR-017 (2026-07-14): one sales_manager role covers both tracks — which
+  // team (Sales vs RSR) they manage is set via team_id, not a separate role.
+  const isManager = role === 'sales_manager';
   const isExecutive = role === 'executive';
 
   // Stack.Protected declares every group up front and toggles access via
@@ -55,14 +59,19 @@ export default function RootLayout() {
 
   return (
     <SafeAreaProvider>
-      <TamaguiProvider config={tamaguiConfig} defaultTheme="light">
-        <StatusBar style="auto" />
-        <SessionProvider>
-          <GateProvider>
-            <RootNavigator />
-          </GateProvider>
-        </SessionProvider>
-      </TamaguiProvider>
+      {/* T-001: local SQLite is the primary write path (ADR-001/002/004) —
+          onInit runs the versioned migration once per launch, before any
+          screen underneath can read/write the local DB. */}
+      <SQLiteProvider databaseName={DATABASE_NAME} onInit={migrateDbIfNeeded}>
+        <TamaguiProvider config={tamaguiConfig} defaultTheme="light">
+          <StatusBar style="auto" />
+          <SessionProvider>
+            <GateProvider>
+              <RootNavigator />
+            </GateProvider>
+          </SessionProvider>
+        </TamaguiProvider>
+      </SQLiteProvider>
     </SafeAreaProvider>
   );
 }
