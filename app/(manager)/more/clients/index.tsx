@@ -14,6 +14,7 @@ import { TopBar } from '../../../../components/ui/TopBar';
 import { LockButton } from '../../../../components/security/LockButton';
 import { SelectTile } from '../../../../components/ui/SelectTile';
 import { StatusBadge } from '../../../../components/ui/StatusBadge';
+import { DuoButton } from '../../../../components/ui/DuoButton';
 import { CLIENT_STATUSES, type ClientStatus, type TeamClient } from '../../../../types';
 
 type StatusFilter = ClientStatus | 'all';
@@ -86,6 +87,10 @@ export default function ManagerClientsScreen() {
           </Text>
         }
       />
+
+      <YStack paddingHorizontal="$4" paddingBottom="$3" paddingTop="$2">
+        <DuoButton label="+ New Client" onPress={() => router.push('/(manager)/more/clients/create')} />
+      </YStack>
     </YStack>
   );
 }

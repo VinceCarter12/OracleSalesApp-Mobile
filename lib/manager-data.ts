@@ -28,6 +28,8 @@ export function getManagerTrack(): ManagerTrack {
 }
 
 export interface ManagerProfile {
+  /** Stable id for clients the manager creates themselves — see `managerAsAgent()`. */
+  id: string;
   firstName: string;
   fullName: string;
   title: string;
@@ -35,8 +37,8 @@ export interface ManagerProfile {
 }
 
 const MANAGER_PROFILES: Record<ManagerTrack, ManagerProfile> = {
-  sales: { firstName: 'Erika', fullName: 'Erika Bautista', title: 'Sales Manager', team: 'North Luzon Team' },
-  rsr: { firstName: 'Rommel', fullName: 'Rommel Aquino', title: 'RSR Manager', team: 'RSR Team' },
+  sales: { id: 'mgr-sales', firstName: 'Erika', fullName: 'Erika Bautista', title: 'Sales Manager', team: 'North Luzon Team' },
+  rsr: { id: 'mgr-rsr', firstName: 'Rommel', fullName: 'Rommel Aquino', title: 'RSR Manager', team: 'RSR Team' },
 };
 
 export function managerProfile(): ManagerProfile {
@@ -53,7 +55,22 @@ export const AGENT_COLORS: Record<string, { background: string; color: string }>
   r3: { background: COLORS.amberSoft, color: COLORS.orange },
   r4: { background: COLORS.purpleSoft, color: COLORS.purple },
   r5: { background: COLORS.greenTint, color: COLORS.ledgeGreen },
+  'mgr-sales': { background: COLORS.purpleSoft, color: COLORS.purple },
+  'mgr-rsr': { background: COLORS.purpleSoft, color: COLORS.purple },
 };
+
+/** A manager can create their own clients (no SM approval needed — they ARE the approver). Represented as a pseudo-`TeamAgent` so ClientRow/agentById lookups work without special-casing "is this the manager" everywhere. */
+export function managerAsAgent(): TeamAgent {
+  const profile = managerProfile();
+  return {
+    id: profile.id,
+    name: profile.fullName,
+    initials: profile.firstName.slice(0, 2).toUpperCase(),
+    meetingsThisMonth: 0,
+    activeClients: 0,
+    successRate: 0,
+  };
+}
 
 const SALES_AGENTS: TeamAgent[] = [
   { id: 'a1', name: 'Miguel Santos', initials: 'MS', meetingsThisMonth: 14, activeClients: 22, successRate: 72 },
@@ -303,6 +320,8 @@ export function getManagerTagAlongRequests(): TagAlongRequest[] {
 }
 
 export function agentById(id: string): TeamAgent | undefined {
+  const managerSelf = managerAsAgent();
+  if (id === managerSelf.id) return managerSelf;
   return dataset().agents.find((a) => a.id === id);
 }
 export function clientById(id: string): TeamClient | undefined {
