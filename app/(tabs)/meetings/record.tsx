@@ -2,14 +2,17 @@ import { useEffect, useState } from 'react';
 import { Alert, Image, ScrollView, TextInput } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router, useLocalSearchParams } from 'expo-router';
-import * as Location from 'expo-location';
+import { useSQLiteContext } from 'expo-sqlite';
 import * as ImagePicker from 'expo-image-picker';
 import { Camera, Check, Sparkles, Users } from 'lucide-react-native';
 import { Spinner, Text, XStack, YStack } from 'tamagui';
-import { supabase } from '../../../lib/supabase';
+import { rowToClient, type LocalClientRow } from '../../../lib/local-client-mapper';
 import { useAuth } from '../../../lib/useAuth';
+import { useSession } from '../../../lib/session-store';
+import { captureGps } from '../../../lib/gps';
 import { COLORS } from '../../../lib/theme';
 import { createMeeting, uploadMeetingPhoto } from '../../../lib/meeting-service';
+import { createClient } from '../../../lib/client-service';
 import { TopBar } from '../../../components/ui/TopBar';
 import { Field } from '../../../components/ui/Field';
 import { SectionHeader } from '../../../components/ui/SectionHeader';
@@ -29,12 +32,15 @@ const LOCATIONS = ['Client Office', 'Others'] as const;
 
 export default function RecordMeetingScreen() {
   const insets = useSafeAreaInsets();
+  const db = useSQLiteContext();
   const { clientId } = useLocalSearchParams<{ clientId?: string }>();
   const { session } = useAuth();
+  const { profileId } = useSession();
 
   const [clientName, setClientName] = useState<string | null>(null);
   const [meetingFirst, setMeetingFirst] = useState(!clientId);
   const [newCompanyName, setNewCompanyName] = useState('');
+  const [newCompanyCity, setNewCompanyCity] = useState('');
   const [tagAlong, setTagAlong] = useState(false);
 
   const [mode, setMode] = useState<MeetingMode>('in_person');
@@ -56,15 +62,13 @@ export default function RecordMeetingScreen() {
 
   useEffect(() => {
     if (!clientId) return;
-    supabase
-      .from('clients')
-      .select('company_name')
-      .eq('id', clientId)
-      .single()
-      .then(({ data }) => {
-        if (data) setClientName(data.company_name);
-      });
-  }, [clientId]);
+    // Local SQLite is the primary read path (ADR-001) — a `pending`
+    // (not-yet-synced) client only exists here. This used to query Supabase
+    // directly, so a just-created client's name never showed at all.
+    db.getFirstAsync<LocalClientRow>('SELECT * FROM clients WHERE id = ?', [clientId]).then((row) => {
+      if (row) setClientName(rowToClient(row).company_name);
+    });
+  }, [db, clientId]);
 
   useEffect(() => {
     captureLocation();
@@ -72,15 +76,14 @@ export default function RecordMeetingScreen() {
 
   async function captureLocation() {
     setLoadingLocation(true);
-    const { status } = await Location.requestForegroundPermissionsAsync();
-    if (status !== 'granted') {
-      Alert.alert('Permission denied', 'Location permission is required to record a meeting.');
+    try {
+      const gps = await captureGps();
+      setLocation(gps);
+    } catch (err) {
+      Alert.alert('Location Error', err instanceof Error ? err.message : 'Failed to get GPS location.');
+    } finally {
       setLoadingLocation(false);
-      return;
     }
-    const pos = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High });
-    setLocation({ lat: pos.coords.latitude, lng: pos.coords.longitude });
-    setLoadingLocation(false);
   }
 
   async function captureSelfie() {
@@ -126,12 +129,16 @@ export default function RecordMeetingScreen() {
       Alert.alert('Outcome Required', 'Please select a meeting outcome.');
       return;
     }
-    if (!session) {
+    if (!session || !profileId) {
       Alert.alert('Not signed in', 'Sign in again before recording a meeting.');
       return;
     }
     if (meetingFirst && !newCompanyName.trim()) {
       Alert.alert('Company name required', 'Enter the company name for this first meeting.');
+      return;
+    }
+    if (meetingFirst && !newCompanyCity.trim()) {
+      Alert.alert('City required', 'Enter the company\'s city for this first meeting.');
       return;
     }
 
@@ -140,31 +147,26 @@ export default function RecordMeetingScreen() {
       let resolvedClientId = clientId ?? null;
 
       // Meeting-first exception (Rule 4): the info captured here becomes the
-      // client record automatically.
+      // client record automatically. Goes through the same offline-first
+      // dup-check + local write + outbox enqueue as Create Client (T-005) —
+      // this used to be a direct, un-queued Supabase insert with zero
+      // duplicate check.
       if (meetingFirst) {
-        const { data, error } = await supabase
-          .from('clients')
-          .insert({
-            company_name: newCompanyName.trim(),
-            contact_person: contactName.trim(),
-            position: contactPosition.trim() || null,
-            contact_number: null,
-            office_address: null,
-            customer_type: 'Dealer',
-            sales_channel: 'Distributor',
-            status: 'prospect',
-            agent_id: session.user.id,
-          })
-          .select('id')
-          .single();
-        if (error) throw error;
-        resolvedClientId = data.id;
+        resolvedClientId = await createClient({
+          companyName: newCompanyName,
+          city: newCompanyCity,
+          agentId: profileId,
+          contactPerson: contactName,
+          position: contactPosition.trim() || null,
+        });
       }
 
+      // Storage path convention keys by the Auth uid (matches Storage RLS'
+      // `auth.uid()` check) — deliberately session.user.id, not profileId.
       const photoUrl = await uploadMeetingPhoto(photoUri, session.user.id, 'selfie');
       await createMeeting({
         client_id: resolvedClientId,
-        agent_id: session.user.id,
+        agent_id: profileId,
         gps_lat: location.lat,
         gps_lng: location.lng,
         meeting_mode: mode,
@@ -172,10 +174,18 @@ export default function RecordMeetingScreen() {
         agendas: selectedAgendas,
         outcome,
         logged_at: new Date().toISOString(),
+        contactPerson: contactName || null,
+        contactPosition: contactPosition || null,
+        locationType: meetingLocation,
+        locationName: meetingLocation === 'Others' ? otherLocation : null,
+        remarks: remarks || null,
       });
       router.replace('/(tabs)/meetings/celebrate');
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Failed to save the meeting.';
+      // PostgrestError isn't an Error instance — log the raw object (code/
+      // details/hint) so on-device debugging isn't limited to err.message.
+      console.error('[RecordMeeting] Save Error:', JSON.stringify(err, null, 2));
+      const message = err instanceof Error ? err.message : (err as { message?: string })?.message ?? 'Failed to save the meeting.';
       Alert.alert('Save Error', message);
     } finally {
       setSaving(false);
@@ -226,6 +236,12 @@ export default function RecordMeetingScreen() {
               value={newCompanyName}
               onChangeText={setNewCompanyName}
               placeholder="Company name"
+            />
+            <Field
+              label="City"
+              value={newCompanyCity}
+              onChangeText={setNewCompanyCity}
+              placeholder="e.g. Cabanatuan"
             />
             <Text fontSize={12} fontWeight="600" color={COLORS.hare} marginTop="$-2" marginBottom="$2">
               Ang info na makukuha mo dito ay awtomatikong magiging client record (Rule 4 — meeting-first exception).

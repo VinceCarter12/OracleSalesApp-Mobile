@@ -2,9 +2,10 @@ import { useEffect, useState } from 'react';
 import { Alert, Image, ScrollView } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLocalSearchParams } from 'expo-router';
+import { useSQLiteContext } from 'expo-sqlite';
 import { MapPin } from 'lucide-react-native';
 import { Spinner, Text, XStack, YStack } from 'tamagui';
-import { supabase } from '../../../lib/supabase';
+import { rowToMeeting, type LocalMeetingRow } from '../../../lib/local-meeting-mapper';
 import { COLORS, OUTCOME_BADGE_STYLES } from '../../../lib/theme';
 import { TopBar } from '../../../components/ui/TopBar';
 import { Card } from '../../../components/ui/Card';
@@ -12,28 +13,33 @@ import { SectionHeader } from '../../../components/ui/SectionHeader';
 import { StatusBadge } from '../../../components/ui/StatusBadge';
 import type { Meeting } from '../../../types';
 
+/**
+ * Local SQLite is the primary read path (ADR-001/T-004) — a meeting only
+ * ever exists here until the outbox pushes it. This used to read a single
+ * row directly from Supabase via `.single()`, which threw "Cannot coerce the
+ * result to a single JSON object" for any meeting not yet synced — same bug
+ * class as B-004 (Complete/Edit Info), just never fixed on this screen.
+ */
 export default function MeetingDetailScreen() {
   const insets = useSafeAreaInsets();
+  const db = useSQLiteContext();
   const { id } = useLocalSearchParams<{ id: string }>();
   const [meeting, setMeeting] = useState<Meeting | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     if (!id) return;
-    supabase
-      .from('meetings')
-      .select('*, clients ( company_name )')
-      .eq('id', id)
-      .single()
-      .then(({ data, error }) => {
-        if (error) Alert.alert('Error', error.message);
-        else if (data) {
-          const row = data as unknown as Meeting & { clients?: { company_name: string } | null };
-          setMeeting({ ...row, client_name: row.clients?.company_name ?? null });
-        }
-        setLoading(false);
-      });
-  }, [id]);
+    db.getFirstAsync<LocalMeetingRow>(
+      `SELECT m.*, c.company_name as client_name
+       FROM meetings m LEFT JOIN clients c ON c.id = m.client_id
+       WHERE m.id = ?`,
+      [id]
+    ).then((row) => {
+      if (!row) Alert.alert('Error', 'Meeting not found.');
+      else setMeeting(rowToMeeting(row));
+      setLoading(false);
+    });
+  }, [db, id]);
 
   if (loading) {
     return (

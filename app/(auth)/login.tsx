@@ -50,7 +50,7 @@ export default function LoginScreen() {
 
       const { data: profile, error: profileError } = await withTimeout(
         Promise.resolve(
-          supabase.from('profiles').select('role, is_active, team_id').eq('user_id', userId).maybeSingle()
+          supabase.from('profiles').select('id, role, is_active, team_id').eq('user_id', userId).maybeSingle()
         ),
         10000,
         'profiles lookup'
@@ -73,7 +73,7 @@ export default function LoginScreen() {
       if (role === 'sales_manager') {
         setManagerTrack(profile.team_id);
       }
-      signIn(role, profile.team_id);
+      signIn(role, profile.team_id, profile.id);
       // No manual navigation — RootNavigator's Stack.Protected guards
       // (app/_layout.tsx) switch to the matching route group as soon as
       // isSignedIn/role update above.

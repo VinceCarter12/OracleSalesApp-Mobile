@@ -1,7 +1,7 @@
-import { useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { FlatList, Pressable, RefreshControl } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { router } from 'expo-router';
+import { router, useFocusEffect } from 'expo-router';
 import { Handshake } from 'lucide-react-native';
 import { Spinner, Text, XStack, YStack } from 'tamagui';
 import { COLORS, OUTCOME_BADGE_STYLES } from '../../../lib/theme';
@@ -47,6 +47,7 @@ function MeetingRow({ meeting }: { meeting: Meeting }) {
 export default function MeetingsScreen() {
   const insets = useSafeAreaInsets();
   const { meetings, loading, refresh } = useMeetings();
+  useFocusEffect(useCallback(() => { refresh(); }, [refresh]));
   const [filter, setFilter] = useState<OutcomeFilter>('all');
 
   const filtered = useMemo(
