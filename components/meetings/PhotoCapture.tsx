@@ -1,8 +1,8 @@
 import { useState } from 'react';
 import { Alert, Image } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
-import * as Location from 'expo-location';
 import { Button, Spinner, Text, YStack } from 'tamagui';
+import { captureGps } from '../../lib/gps';
 import { COLORS } from '../../lib/theme';
 
 export interface CapturedPhoto {
@@ -27,11 +27,6 @@ async function takePhotoWithGps(): Promise<CapturedPhoto | null> {
     Alert.alert('Permission denied', 'Camera permission is required.');
     return null;
   }
-  const gps = await Location.requestForegroundPermissionsAsync();
-  if (gps.status !== 'granted') {
-    Alert.alert('Permission denied', 'Location permission is required — GPS is bound to every photo.');
-    return null;
-  }
   // Camera only — no gallery (F-010/ADR-008).
   const result = await ImagePicker.launchCameraAsync({
     mediaTypes: ImagePicker.MediaTypeOptions.Images,
@@ -39,15 +34,18 @@ async function takePhotoWithGps(): Promise<CapturedPhoto | null> {
     allowsEditing: false,
   });
   if (result.canceled || result.assets.length === 0) return null;
-  const position = await Location.getCurrentPositionAsync({
-    accuracy: Location.Accuracy.High,
-  });
-  return {
-    uri: result.assets[0].uri,
-    capturedAt: new Date().toISOString(),
-    gpsLat: position.coords.latitude,
-    gpsLng: position.coords.longitude,
-  };
+  try {
+    const gps = await captureGps();
+    return {
+      uri: result.assets[0].uri,
+      capturedAt: new Date().toISOString(),
+      gpsLat: gps.lat,
+      gpsLng: gps.lng,
+    };
+  } catch (err) {
+    Alert.alert('Location Error', err instanceof Error ? err.message : 'Failed to get GPS location.');
+    return null;
+  }
 }
 
 /**

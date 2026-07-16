@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Alert, Pressable, ScrollView } from 'react-native';
+import { Pressable, ScrollView } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
+import { useSQLiteContext } from 'expo-sqlite';
 import { Camera, Check, Pencil } from 'lucide-react-native';
 import { Spinner, Text, View, XStack, YStack } from 'tamagui';
-import { supabase } from '../../../lib/supabase';
+import { rowToClient, type LocalClientRow } from '../../../lib/local-client-mapper';
 import { COLORS, OUTCOME_BADGE_STYLES } from '../../../lib/theme';
 import { CLIENT_STATUS_BADGES, getClientStatus } from '../../../lib/client-status';
 import { getClientProgressBreakdown, getInfoChecklist } from '../../../lib/client-progress';
@@ -20,28 +21,30 @@ import type { Client } from '../../../types';
 
 export default function ClientDetailScreen() {
   const insets = useSafeAreaInsets();
+  const db = useSQLiteContext();
   const { id } = useLocalSearchParams<{ id: string }>();
   const [client, setClient] = useState<Client | null>(null);
   const [loading, setLoading] = useState(true);
   const { meetings } = useMeetings(id);
 
-  const loadClient = useCallback(() => {
+  // Local SQLite is the primary read path (ADR-001/T-003) — a `pending`
+  // (not-yet-synced) client only ever exists here until the outbox pushes it.
+  const loadClient = useCallback(async () => {
     if (!id) return;
-    supabase
-      .from('clients')
-      .select('*')
-      .eq('id', id)
-      .single()
-      .then(({ data, error }) => {
-        if (error) Alert.alert('Error', error.message);
-        else setClient(data);
-        setLoading(false);
-      });
-  }, [id]);
+    const row = await db.getFirstAsync<LocalClientRow>('SELECT * FROM clients WHERE id = ?', [id]);
+    setClient(row ? rowToClient(row) : null);
+    setLoading(false);
+  }, [db, id]);
 
-  useEffect(loadClient, [loadClient]);
+  useEffect(() => {
+    loadClient();
+  }, [loadClient]);
   // Refresh after Complete Info saves and navigates back.
-  useFocusEffect(useCallback(() => loadClient(), [loadClient]));
+  useFocusEffect(
+    useCallback(() => {
+      loadClient();
+    }, [loadClient])
+  );
 
   if (loading) {
     return (

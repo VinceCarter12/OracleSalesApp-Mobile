@@ -2,8 +2,11 @@ import { useEffect, useState } from 'react';
 import { Alert, ScrollView } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router, useLocalSearchParams } from 'expo-router';
+import { useSQLiteContext } from 'expo-sqlite';
 import { Spinner, Text, XStack, YStack } from 'tamagui';
-import { supabase } from '../../../lib/supabase';
+import { useSession } from '../../../lib/session-store';
+import { rowToClient, type LocalClientRow } from '../../../lib/local-client-mapper';
+import { updateClientInfo } from '../../../lib/client-service';
 import { COLORS } from '../../../lib/theme';
 import { showToast } from '../../../lib/toast';
 import { isInfoComplete } from '../../../lib/client-progress';
@@ -18,9 +21,17 @@ import { SALES_CHANNELS, type Client, type SalesChannel } from '../../../types';
  * Complete Info (Wireframe a-complete, F-001 Phase B / F-002): first-time
  * completion applies directly; edits AFTER completion need manager approval
  * (approval flow itself is T-006 — for now edits save with a notice).
+ *
+ * Local SQLite is the primary read/write path (ADR-001/T-003) — a `pending`
+ * (not-yet-synced) client only ever exists here until the outbox pushes it,
+ * same as clients/[id].tsx. This used to read/write Supabase directly via
+ * `.single()`, which threw "Cannot coerce the result to a single JSON
+ * object" whenever the client hadn't synced to Supabase yet.
  */
 export default function CompleteInfoScreen() {
   const insets = useSafeAreaInsets();
+  const db = useSQLiteContext();
+  const { profileId } = useSession();
   const { clientId } = useLocalSearchParams<{ clientId: string }>();
   const [client, setClient] = useState<Client | null>(null);
   const [loading, setLoading] = useState(true);
@@ -33,24 +44,21 @@ export default function CompleteInfoScreen() {
 
   useEffect(() => {
     if (!clientId) return;
-    supabase
-      .from('clients')
-      .select('*')
-      .eq('id', clientId)
-      .single()
-      .then(({ data, error }) => {
-        if (error) Alert.alert('Error', error.message);
-        else if (data) {
-          setClient(data);
-          setContactPerson(data.contact_person ?? '');
-          setPosition(data.position ?? '');
-          setContactNumber(data.contact_number ?? '');
-          setOfficeAddress(data.office_address ?? '');
-          if (data.sales_channel) setChannel(data.sales_channel);
-        }
-        setLoading(false);
-      });
-  }, [clientId]);
+    db.getFirstAsync<LocalClientRow>('SELECT * FROM clients WHERE id = ?', [clientId]).then((row) => {
+      if (!row) {
+        Alert.alert('Error', 'Client not found.');
+      } else {
+        const mapped = rowToClient(row);
+        setClient(mapped);
+        setContactPerson(mapped.contact_person ?? '');
+        setPosition(mapped.position ?? '');
+        setContactNumber(mapped.contact_number ?? '');
+        setOfficeAddress(mapped.office_address ?? '');
+        setChannel(mapped.sales_channel ?? 'Distributor');
+      }
+      setLoading(false);
+    });
+  }, [db, clientId]);
 
   if (loading || !client) {
     return (
@@ -63,27 +71,28 @@ export default function CompleteInfoScreen() {
   const firstTime = !isInfoComplete(client);
 
   async function handleSubmit(): Promise<void> {
+    if (!profileId || !clientId) return;
     setSaving(true);
-    const { error } = await supabase
-      .from('clients')
-      .update({
-        contact_person: contactPerson.trim(),
-        position: position.trim(),
-        contact_number: contactNumber.trim(),
-        office_address: officeAddress.trim(),
-        sales_channel: channel,
-      })
-      .eq('id', clientId);
-    setSaving(false);
-    if (error) {
-      Alert.alert('Error', error.message);
-    } else {
+    try {
+      await updateClientInfo({
+        clientId,
+        agentId: profileId,
+        contactPerson,
+        position,
+        contactNumber,
+        officeAddress,
+        salesChannel: channel,
+      });
       showToast(
         firstTime
           ? '✓ Nakumpleto ang info — direktang na-apply'
           : 'Naisumite — approval flow (T-006) ang bahala sa susunod'
       );
       router.back();
+    } catch (err) {
+      Alert.alert('Error', err instanceof Error ? err.message : 'Failed to save.');
+    } finally {
+      setSaving(false);
     }
   }
 

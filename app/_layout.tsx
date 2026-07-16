@@ -14,9 +14,15 @@ import tamaguiConfig from '../tamagui.config';
 import { SessionProvider, useSession } from '../lib/session-store';
 import { GateProvider } from '../lib/gate-context';
 import { DATABASE_NAME, migrateDbIfNeeded } from '../lib/db';
+import { useSync } from '../lib/use-sync';
 
 function RootNavigator() {
-  const { isSignedIn, role } = useSession();
+  const { isSignedIn, role, profileId } = useSession();
+  // T-002: fires an outbox push + sync-down whenever connectivity comes back,
+  // for as long as a signed-in session exists. Uses `profiles.id`, not the
+  // Supabase Auth uid — every clients/meetings ownership FK points at
+  // `profiles.id` (see lib/session-store.tsx).
+  useSync(isSignedIn ? profileId : null);
   // ADR-017 (2026-07-14): one sales_manager role covers both tracks — which
   // team (Sales vs RSR) they manage is set via team_id, not a separate role.
   const isManager = role === 'sales_manager';

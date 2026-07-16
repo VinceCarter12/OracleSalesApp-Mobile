@@ -1,7 +1,7 @@
-import { useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { FlatList, Pressable, RefreshControl, TextInput } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { router } from 'expo-router';
+import { router, useFocusEffect } from 'expo-router';
 import { Building2 } from 'lucide-react-native';
 import { Spinner, Text, XStack, YStack } from 'tamagui';
 import { COLORS } from '../../../lib/theme';
@@ -46,6 +46,11 @@ export default function ClientsScreen() {
   const { clients, loading, refresh } = useClients();
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState<StatusFilter>('all');
+
+  // Refreshes on every return to this screen — e.g. right after Create
+  // Client saves locally (client-service.ts), so the new row shows up
+  // without needing a manual pull-to-refresh.
+  useFocusEffect(useCallback(() => { refresh(); }, [refresh]));
 
   const filtered = useMemo(() => {
     const query = search.trim().toLowerCase();

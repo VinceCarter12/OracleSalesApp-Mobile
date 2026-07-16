@@ -1,5 +1,6 @@
 import * as SQLite from 'expo-sqlite';
 import type { SQLiteDatabase } from 'expo-sqlite';
+import { normalizeCompanyName } from './company-name';
 
 // T-001: local-first data layer (ADR-001/002/004). This is the PRIMARY write
 // path — clients/meetings are read/written here first, then queued in
@@ -11,7 +12,7 @@ export const DATABASE_NAME = 'oracle-sales-app.db';
 
 // Bump this and add a new `case` below whenever the schema changes — never
 // edit an already-shipped case, since devices may have already run it.
-const LATEST_SCHEMA_VERSION = 1;
+const LATEST_SCHEMA_VERSION = 5;
 
 /**
  * Runs once per app launch via `SQLiteProvider`'s `onInit` (see app/_layout.tsx).
@@ -106,7 +107,123 @@ export async function migrateDbIfNeeded(db: SQLiteDatabase): Promise<void> {
     currentVersion = 1;
   }
 
-  // Next schema change: `if (currentVersion === 1) { ...; currentVersion = 2; }`
+  // T-005: duplicate-detection + sync-conflict state machine. Adds columns
+  // only — never edits the v1 block above, since devices may already be on
+  // version 1.
+  if (currentVersion === 1) {
+    await db.execAsync(`
+      ALTER TABLE clients ADD COLUMN normalized_name TEXT;
+      ALTER TABLE clients ADD COLUMN sync_error TEXT;
+      ALTER TABLE meetings ADD COLUMN sync_error TEXT;
+
+      ALTER TABLE outbox ADD COLUMN status TEXT NOT NULL DEFAULT 'pending'
+        CHECK (status IN ('pending', 'synced', 'conflict', 'failed'));
+      ALTER TABLE outbox ADD COLUMN last_error TEXT;
+      ALTER TABLE outbox ADD COLUMN last_attempt_at TEXT;
+      ALTER TABLE outbox ADD COLUMN next_attempt_at TEXT;
+    `);
+
+    // SQLite can't call the TS normalizer, so backfill row-by-row here —
+    // must stay identical to lib/company-name.ts's normalizeCompanyName().
+    const existingClients = await db.getAllAsync<{ id: string; company_name: string }>(
+      'SELECT id, company_name FROM clients'
+    );
+    for (const client of existingClients) {
+      await db.runAsync('UPDATE clients SET normalized_name = ? WHERE id = ?', [
+        normalizeCompanyName(client.company_name),
+        client.id,
+      ]);
+    }
+
+    await db.runAsync("UPDATE outbox SET status = 'synced' WHERE synced_at IS NOT NULL");
+    await db.runAsync("UPDATE outbox SET status = 'pending' WHERE synced_at IS NULL");
+
+    // Breaking shape change (client_id becomes the key, name column added) —
+    // this is a pure cache table repopulated wholesale by the next
+    // sync-down, so dropping it is safe (ADR: see Migration-014-Report.md).
+    await db.execAsync(`
+      DROP TABLE IF EXISTS company_names_snapshot;
+      CREATE TABLE company_names_snapshot (
+        client_id TEXT PRIMARY KEY NOT NULL,
+        company_name TEXT NOT NULL,
+        normalized_name TEXT NOT NULL,
+        synced_at TEXT NOT NULL
+      );
+      CREATE INDEX idx_company_names_snapshot_normalized ON company_names_snapshot (normalized_name);
+    `);
+
+    currentVersion = 2;
+  }
+
+  // T-006: Complete/Edit Info needs a single free-text office address column
+  // — the structured address_line1/2/landmark/province/city columns above
+  // are unused by any current screen and out of scope to wire up here.
+  if (currentVersion === 2) {
+    await db.execAsync(`ALTER TABLE clients ADD COLUMN office_address TEXT;`);
+    currentVersion = 3;
+  }
+
+  // Existing-client fast path revision (2026-07-16, revises ADR-015): the
+  // start step drops its photo requirement (GPS+timestamp only, via a Start
+  // button); the end step keeps photo+GPS+timestamp. Admin (web) manually
+  // validates the meeting by matching start GPS to end GPS, so both need
+  // their own columns — `gps_lat`/`gps_lng` above stay the START location.
+  if (currentVersion === 3) {
+    await db.execAsync(`
+      ALTER TABLE meetings ADD COLUMN end_gps_lat REAL;
+      ALTER TABLE meetings ADD COLUMN end_gps_lng REAL;
+    `);
+    currentVersion = 4;
+  }
+
+  // T-014 (ADR-022, Phase A): outbox 5-state machine — adds `syncing` (an
+  // in-flight state so a row being pushed right now isn't indistinguishable
+  // from one that's never been attempted) — and drops the hardcoded
+  // `table_name CHECK IN ('clients','meetings')` constraint in favor of the
+  // TypeScript entity registry (lib/sync/entity-registry.ts), so adding a
+  // future synced entity is a registry entry, not a DB migration. Also adds
+  // `priority` (lower = pushed first; the registry assigns it on enqueue,
+  // not this migration) for push ordering across entity types. SQLite can't
+  // ALTER a CHECK constraint, so this follows the same create-new →
+  // copy-data → drop-old → rename pattern already used for
+  // `company_names_snapshot` in the v1 block above.
+  if (currentVersion === 4) {
+    await db.execAsync(`
+      CREATE TABLE outbox_new (
+        id TEXT PRIMARY KEY NOT NULL,
+        record_id TEXT NOT NULL,
+        table_name TEXT NOT NULL,
+        operation TEXT NOT NULL CHECK (operation IN ('insert', 'update')),
+        payload TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        synced_at TEXT,
+        retry_count INTEGER NOT NULL DEFAULT 0,
+        status TEXT NOT NULL DEFAULT 'pending'
+          CHECK (status IN ('pending', 'syncing', 'synced', 'conflict', 'failed')),
+        last_error TEXT,
+        last_attempt_at TEXT,
+        next_attempt_at TEXT,
+        priority INTEGER NOT NULL DEFAULT 100
+      );
+
+      INSERT INTO outbox_new
+        (id, record_id, table_name, operation, payload, created_at, synced_at,
+         retry_count, status, last_error, last_attempt_at, next_attempt_at, priority)
+      SELECT
+        id, record_id, table_name, operation, payload, created_at, synced_at,
+        retry_count, status, last_error, last_attempt_at, next_attempt_at,
+        CASE table_name WHEN 'clients' THEN 10 WHEN 'meetings' THEN 20 ELSE 100 END
+      FROM outbox;
+
+      DROP TABLE outbox;
+      ALTER TABLE outbox_new RENAME TO outbox;
+
+      CREATE INDEX idx_outbox_pending ON outbox (synced_at) WHERE synced_at IS NULL;
+    `);
+    currentVersion = 5;
+  }
+
+  // Next schema change: `if (currentVersion === 5) { ...; currentVersion = 6; }`
 
   await db.execAsync(`PRAGMA user_version = ${currentVersion}`);
 }
