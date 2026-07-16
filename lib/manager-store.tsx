@@ -4,8 +4,16 @@ import {
   getManagerClients,
   getManagerMeetings,
   getManagerTagAlongRequests,
+  managerAsAgent,
 } from './manager-data';
 import type { TagAlongRequest, TeamApproval, TeamClient, TeamMeeting } from '../types';
+
+export class DuplicateTeamClientNameError extends Error {
+  constructor(name: string) {
+    super(`A client named "${name}" already exists on the team.`);
+    this.name = 'DuplicateTeamClientNameError';
+  }
+}
 
 interface ManagerStore {
   clients: TeamClient[];
@@ -16,6 +24,8 @@ interface ManagerStore {
   declineTagAlong: (id: string) => void;
   decideApproval: (id: string, approve: boolean) => void;
   requestReassign: (clientId: string, toAgentId: string) => void;
+  /** Manager-created clients apply directly — no SM approval needed, since the manager IS the approver. */
+  addClient: (companyName: string, channel: string) => TeamClient;
 }
 
 const ManagerStoreContext = createContext<ManagerStore | null>(null);
@@ -81,9 +91,30 @@ export function ManagerStoreProvider({ children }: { children: ReactNode }) {
     });
   }, [clients]);
 
+  const addClient = useCallback(
+    (companyName: string, channel: string): TeamClient => {
+      const trimmed = companyName.trim();
+      const duplicate = clients.some((c) => c.name.trim().toLowerCase() === trimmed.toLowerCase());
+      if (duplicate) throw new DuplicateTeamClientNameError(trimmed);
+
+      const newClient: TeamClient = {
+        id: `c-mgr-${Date.now()}`,
+        name: trimmed,
+        agentId: managerAsAgent().id,
+        status: 'prospect',
+        channel,
+        checklist: { name: true, contact: false, number: false, address: false, channel: false },
+        deadline: '1 month to complete info',
+      };
+      setClients((prev) => [newClient, ...prev]);
+      return newClient;
+    },
+    [clients]
+  );
+
   return (
     <ManagerStoreContext.Provider
-      value={{ clients, meetings, approvals, tagAlongRequests, acceptTagAlong, declineTagAlong, decideApproval, requestReassign }}
+      value={{ clients, meetings, approvals, tagAlongRequests, acceptTagAlong, declineTagAlong, decideApproval, requestReassign, addClient }}
     >
       {children}
     </ManagerStoreContext.Provider>
