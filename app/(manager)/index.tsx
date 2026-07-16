@@ -150,27 +150,29 @@ export default function ManagerDashboardScreen() {
           </YStack>
         </XStack>
 
-        <XStack
-          alignItems="center"
-          gap="$2"
-          backgroundColor={COLORS.amberSoft}
-          borderWidth={2}
-          borderColor="#D9B168"
-          borderRadius={14}
-          padding="$3"
-          marginTop="$2.5"
-          onPress={() => router.push('/(manager)/more/clients')}
-        >
-          <Hourglass size={18} color={COLORS.orange} />
-          <YStack flex={1}>
-            <Text fontSize={12.5} fontWeight="800" color={COLORS.orange}>
-              {summary.deadlineWarningCount} prospects across the team: info deadline malapit na
-            </Text>
-            <Text fontSize={11} fontWeight="600" color="#8C6A2E">
-              1-month rule — kumpletuhin o auto-delete
-            </Text>
-          </YStack>
-        </XStack>
+        {summary.deadlineWarningCount > 0 ? (
+          <XStack
+            alignItems="center"
+            gap="$2"
+            backgroundColor={COLORS.amberSoft}
+            borderWidth={2}
+            borderColor="#D9B168"
+            borderRadius={14}
+            padding="$3"
+            marginTop="$2.5"
+            onPress={() => router.push('/(manager)/more/clients')}
+          >
+            <Hourglass size={18} color={COLORS.orange} />
+            <YStack flex={1}>
+              <Text fontSize={12.5} fontWeight="800" color={COLORS.orange}>
+                {summary.deadlineWarningCount} prospects across the team: info deadline malapit na
+              </Text>
+              <Text fontSize={11} fontWeight="600" color="#8C6A2E">
+                1-month rule — kumpletuhin o auto-delete
+              </Text>
+            </YStack>
+          </XStack>
+        ) : null}
 
         <SectionHeader title="My Team" onPress={() => router.push('/(manager)/team')} />
         <TeamAvatarStrip agents={summary.agents} onSelectAgent={(agentId) => router.push(`/(manager)/team/${agentId}`)} />
