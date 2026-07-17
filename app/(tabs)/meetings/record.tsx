@@ -4,7 +4,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
 import * as ImagePicker from 'expo-image-picker';
-import { Camera, Check, Sparkles, Users } from 'lucide-react-native';
+import { Camera, Check, Users } from 'lucide-react-native';
 import { Spinner, Text, XStack, YStack } from 'tamagui';
 import { rowToClient, type LocalClientRow } from '../../../lib/local-client-mapper';
 import { useAuth } from '../../../lib/useAuth';
@@ -12,7 +12,6 @@ import { useSession } from '../../../lib/session-store';
 import { captureGps } from '../../../lib/gps';
 import { BIZLINK_COLORS, BIZLINK_ON_INK, BIZLINK_FONTS } from '../../../lib/theme';
 import { createMeeting, uploadMeetingPhoto } from '../../../lib/meeting-service';
-import { createClient } from '../../../lib/client-service';
 import { BizTopBar } from '../../../components/bizlink/BizTopBar';
 import { BizField } from '../../../components/bizlink/BizField';
 import { BizSectionHeader } from '../../../components/bizlink/BizSectionHeader';
@@ -38,9 +37,6 @@ export default function RecordMeetingScreen() {
   const { profileId } = useSession();
 
   const [clientName, setClientName] = useState<string | null>(null);
-  const [meetingFirst, setMeetingFirst] = useState(!clientId);
-  const [newCompanyName, setNewCompanyName] = useState('');
-  const [newCompanyCity, setNewCompanyCity] = useState('');
   const [tagAlong, setTagAlong] = useState(false);
 
   const [mode, setMode] = useState<MeetingMode>('in_person');
@@ -132,31 +128,14 @@ export default function RecordMeetingScreen() {
       Alert.alert('Not signed in', 'Sign in again before recording a meeting.');
       return;
     }
-    if (meetingFirst && !newCompanyName.trim()) {
-      Alert.alert('Company name required', 'Enter the company name for this first meeting.');
-      return;
-    }
-    if (meetingFirst && !newCompanyCity.trim()) {
-      Alert.alert('City required', 'Enter the company\'s city for this first meeting.');
+    if (!clientId) {
+      Alert.alert('Client Required', 'Select a client from the client picker before recording a meeting.');
       return;
     }
 
     setSaving(true);
     try {
-      let resolvedClientId = clientId ?? null;
-
-      // Meeting-first exception (Rule 4): the info captured here becomes the
-      // client record automatically. Goes through the same offline-first
-      // dup-check + local write + outbox enqueue as Create Client (T-005).
-      if (meetingFirst) {
-        resolvedClientId = await createClient({
-          companyName: newCompanyName,
-          city: newCompanyCity,
-          agentId: profileId,
-          contactPerson: contactName,
-          position: contactPosition.trim() || null,
-        });
-      }
+      const resolvedClientId = clientId;
 
       // Storage path convention keys by the Auth uid (matches Storage RLS'
       // `auth.uid()` check) — deliberately session.user.id, not profileId.
@@ -195,13 +174,6 @@ export default function RecordMeetingScreen() {
       <ScrollView contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 32 }}>
         <YStack gap="$2.5" marginBottom="$3.5">
           <BizChip
-            label="Unang beses ko makausap ang client na ito (meeting-first)"
-            selected={meetingFirst}
-            onPress={() => setMeetingFirst((v) => !v)}
-            fullWidth
-            icon={<Sparkles size={14} color={meetingFirst ? BIZLINK_COLORS.card : BIZLINK_COLORS.muted} strokeWidth={1.75} />}
-          />
-          <BizChip
             label="May kasama akong manager ngayon (tag-along)"
             selected={tagAlong}
             onPress={() => setTagAlong((v) => !v)}
@@ -219,32 +191,10 @@ export default function RecordMeetingScreen() {
           </YStack>
         ) : null}
 
-        {meetingFirst ? (
-          <YStack marginBottom="$2">
-            <BizField
-              label="New Company Name"
-              value={newCompanyName}
-              onChangeText={setNewCompanyName}
-              placeholder="Company name"
-            />
-            <BizField
-              label="City"
-              value={newCompanyCity}
-              onChangeText={setNewCompanyCity}
-              placeholder="e.g. Cabanatuan"
-            />
-            <Text fontSize={12} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} marginTop="$-2" marginBottom="$2">
-              Ang info na makukuha mo dito ay awtomatikong magiging client record (Rule 4 — meeting-first exception).
-            </Text>
-          </YStack>
-        ) : (
-          <>
-            <BizSectionHeader title="Company" />
-            <Text fontFamily={BIZLINK_FONTS.semibold} fontSize={14} color={BIZLINK_COLORS.text} marginBottom="$3.5">
-              {clientName ?? '—'}
-            </Text>
-          </>
-        )}
+        <BizSectionHeader title="Company" />
+        <Text fontFamily={BIZLINK_FONTS.semibold} fontSize={14} color={BIZLINK_COLORS.text} marginBottom="$3.5">
+          {clientName ?? '—'}
+        </Text>
 
         <MeetingModeToggle mode={mode} onChange={setMode} />
 

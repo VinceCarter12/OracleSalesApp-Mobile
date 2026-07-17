@@ -2,7 +2,7 @@ import { useCallback, useMemo, useState } from 'react';
 import { FlatList, Pressable, RefreshControl, TextInput } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router, useFocusEffect } from 'expo-router';
-import { Handshake, Plus } from 'lucide-react-native';
+import { Calendar, Handshake, Plus } from 'lucide-react-native';
 import { Spinner, Text, XStack, YStack } from 'tamagui';
 import { OUTCOME_BADGE_STYLES, BIZLINK_COLORS, BIZLINK_FONTS } from '../../../lib/theme';
 import { useMeetings } from '../../../lib/useMeetings';
@@ -17,6 +17,14 @@ import { MEETING_OUTCOMES, type Meeting, type MeetingOutcome } from '../../../ty
 // the Phase 2 handoff report rather than invented here.
 
 type OutcomeFilter = MeetingOutcome | 'all';
+
+// Wireframe a-meetings' static "Jul 2026"-style month chip (~line 722) — a
+// decorative/informational label, not an interactive picker (confirmed
+// non-interactive in the wireframe JS: no onclick handler). Computed from
+// the current date, matching the wireframe's simplicity.
+function currentMonthLabel(): string {
+  return new Date().toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
+}
 
 function MeetingRow({ meeting }: { meeting: Meeting }) {
   const outcomeStyle = meeting.outcome ? OUTCOME_BADGE_STYLES[meeting.outcome] : null;
@@ -94,7 +102,23 @@ export default function MeetingsScreen() {
         </XStack>
       </XStack>
 
-      <YStack paddingHorizontal="$4" marginBottom="$2.5">
+      <XStack paddingHorizontal="$4" justifyContent="flex-end">
+        <XStack
+          alignItems="center"
+          gap="$1.5"
+          backgroundColor={BIZLINK_COLORS.card}
+          borderRadius={999}
+          paddingHorizontal={13}
+          paddingVertical={7}
+        >
+          <Calendar size={12} color={BIZLINK_COLORS.muted} strokeWidth={1.75} />
+          <Text fontSize={11.5} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted}>
+            {currentMonthLabel()}
+          </Text>
+        </XStack>
+      </XStack>
+
+      <YStack paddingHorizontal="$4" marginTop="$2" marginBottom="$2.5">
         <TextInput
           value={search}
           onChangeText={setSearch}

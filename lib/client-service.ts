@@ -6,7 +6,7 @@ import { normalizeCompanyName } from './company-name';
 import { runSync } from './sync-engine';
 import { enqueueOutboxRow } from './sync/entity-registry';
 import { toRemoteCustomerType, toRemoteSalesChannel, toRemoteStatus } from './remote-client-mapping';
-import type { SalesChannel } from '../types';
+import type { ClientStatus, SalesChannel } from '../types';
 
 // T-005: single write path for client creation — both Create Client
 // (app/(tabs)/clients/create.tsx) and Record Meeting's meeting-first branch
@@ -195,6 +195,10 @@ export interface UpdateClientInfoInput {
   contactNumber: string;
   officeAddress: string;
   salesChannel: SalesChannel;
+  // Wireframe a-complete's "Customer type" segmented control (New/Prospect/
+  // Existing) — binds to mobile's local lifecycle `status` field, NOT the
+  // legacy `customer_type` column (unused, see remote-client-mapping.ts).
+  status: ClientStatus;
 }
 
 /**
@@ -221,6 +225,8 @@ export async function updateClientInfo(input: UpdateClientInfoInput): Promise<vo
     contact_number: contactNumber,
     office_address: officeAddress,
     sales_channel: toRemoteSalesChannel(input.salesChannel),
+    customer_type: toRemoteCustomerType(input.status),
+    status: toRemoteStatus(input.status),
     updated_at: now,
   };
 
@@ -228,9 +234,9 @@ export async function updateClientInfo(input: UpdateClientInfoInput): Promise<vo
     await db.runAsync(
       `UPDATE clients
         SET contact_person = ?, position = ?, contact_number = ?, office_address = ?,
-            sales_channel = ?, updated_at = ?, local_updated_at = ?, sync_status = 'pending'
+            sales_channel = ?, status = ?, updated_at = ?, local_updated_at = ?, sync_status = 'pending'
        WHERE id = ?`,
-      [contactPerson, position, contactNumber, officeAddress, input.salesChannel, now, now, input.clientId]
+      [contactPerson, position, contactNumber, officeAddress, input.salesChannel, input.status, now, now, input.clientId]
     );
     await enqueueOutboxRow(db, {
       outboxId,

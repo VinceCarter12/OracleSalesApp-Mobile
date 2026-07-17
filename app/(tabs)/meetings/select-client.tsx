@@ -2,7 +2,6 @@ import { useCallback, useMemo, useState } from 'react';
 import { FlatList, Pressable, RefreshControl } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router, useFocusEffect } from 'expo-router';
-import { Sparkles } from 'lucide-react-native';
 import { Spinner, Text, XStack, YStack } from 'tamagui';
 import { BIZLINK_COLORS, BIZLINK_FONTS } from '../../../lib/theme';
 import { useClients } from '../../../lib/useClients';
@@ -29,7 +28,9 @@ const RECORD_PICKER_FILTERS: Array<{ value: RecordPickerFilter; label: string }>
  * selection — customer type is derived from the record, never asked:
  *   existing        → photo-only fast path (record-visit)
  *   prospect / new  → full form (record)
- *   meeting-first   → full form with no client preselected (stays prospect)
+ * Meeting-first (quick-create inline on the record form) was removed
+ * 2026-07-15 — a brand-new company is created via Create Client first, then
+ * shows up here under Prospect/New.
  */
 function openRecordFlow(client: Client): void {
   const status = getClientStatus(client);
@@ -122,19 +123,6 @@ export default function SelectClientScreen() {
           }
         />
       )}
-
-      <YStack paddingHorizontal="$4" paddingBottom="$3" paddingTop="$2">
-        <BizChip
-          label="First time meeting this client (meeting-first)"
-          selected={false}
-          onPress={() => router.push('/(tabs)/meetings/record')}
-          fullWidth
-          icon={<Sparkles size={14} color={BIZLINK_COLORS.muted} strokeWidth={1.75} />}
-        />
-        <Text fontSize={11.5} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} textAlign="center" marginTop="$2">
-          Meeting-first clients are recorded as prospects automatically.
-        </Text>
-      </YStack>
     </YStack>
   );
 }

@@ -151,6 +151,18 @@ export default function CompleteInfoScreen() {
           placeholder="Complete address"
         />
 
+        <BizSectionHeader title="Customer type" />
+        <XStack gap="$2" flexWrap="wrap">
+          {CUSTOMER_TYPE_OPTIONS.map((option) => (
+            <BizChip
+              key={option}
+              label={CUSTOMER_TYPE_LABELS[option]}
+              selected={customerType === option}
+              onPress={() => setCustomerType(option)}
+            />
+          ))}
+        </XStack>
+
         <BizSectionHeader title="Sales channel" />
         <XStack gap="$2" flexWrap="wrap">
           {SALES_CHANNELS.map((option) => (

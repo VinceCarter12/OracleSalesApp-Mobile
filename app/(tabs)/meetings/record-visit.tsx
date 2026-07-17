@@ -3,7 +3,8 @@ import { Alert, ScrollView } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
-import { Spinner, Text, YStack } from 'tamagui';
+import { TriangleAlert } from 'lucide-react-native';
+import { Spinner, Text, XStack, YStack } from 'tamagui';
 import { useAuth } from '../../../lib/useAuth';
 import { useSession } from '../../../lib/session-store';
 import { rowToClient, type LocalClientRow } from '../../../lib/local-client-mapper';
@@ -26,6 +27,13 @@ interface StartCapture {
   gpsLng: number;
 }
 
+/** mm:ss, matching the wireframe's `id="a-visitElapsed"` format. */
+function formatElapsed(seconds: number): string {
+  const m = Math.floor(seconds / 60);
+  const s = seconds % 60;
+  return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+}
+
 /**
  * Existing-client fast path (revises ADR-015, 2026-07-16): select client →
  * Start button (GPS + timestamp only, no photo) → meeting (agenda ticks) →
@@ -34,13 +42,11 @@ interface StartCapture {
  * matching the Start GPS to the End photo's GPS; duration is computed
  * web-side from the two timestamps, never here.
  *
- * NOTE (flagged, not implemented here): the wireframe's a-recordvisit screen
- * shows the End photo button DISABLED until at least one Agenda tile is
- * selected (`#a-visitEndBtn disabled` + `#a-visitAgendaGateNote` warning
- * text). The real PhotoCapture component below has no such gate — its
- * capture button is always enabled once the meeting has started. This is a
- * small behavior addition beyond a pure visual reskin, so it was
- * deliberately NOT added in this pass — see the Phase 2 handoff report.
+ * Live elapsed timer (Wireframe `id="a-visitElapsed"`, `aVisitTick()`) and
+ * the End Photo agenda-gate (`#a-visitEndBtn disabled` +
+ * `#a-visitAgendaGateNote`) are both implemented below — pure UI-feedback,
+ * the timer itself is never persisted (real duration calc stays server-side
+ * per the wireframe's own footer note).
  */
 export default function RecordVisitScreen() {
   const insets = useSafeAreaInsets();
@@ -56,6 +62,19 @@ export default function RecordVisitScreen() {
   const [start, setStart] = useState<StartCapture | null>(null);
   const [selectedAgendas, setSelectedAgendas] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
+  const [elapsedSeconds, setElapsedSeconds] = useState(0);
+
+  // Live "mm:ss" ticker while the meeting is in progress (Wireframe
+  // `aVisitTick()`) — UI feedback only, never persisted; the real duration
+  // is computed server-side from start/end timestamps (web Excel export).
+  useEffect(() => {
+    if (!start) return;
+    const startMs = new Date(start.capturedAt).getTime();
+    const tick = () => setElapsedSeconds(Math.max(0, Math.floor((Date.now() - startMs) / 1000)));
+    tick();
+    const handle = setInterval(tick, 1000);
+    return () => clearInterval(handle);
+  }, [start]);
 
   // Local SQLite is the primary read path (ADR-001/T-003).
   useEffect(() => {
@@ -162,7 +181,7 @@ export default function RecordVisitScreen() {
             <BizCard flat borderRadius={20}>
               <Text fontFamily={BIZLINK_FONTS.semibold} fontSize={14} color={BIZLINK_COLORS.ink}>Meeting in progress</Text>
               <Text fontSize={12.5} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.ink} marginTop="$1">
-                Started {new Date(start.capturedAt).toLocaleTimeString()} · GPS locked
+                Started {new Date(start.capturedAt).toLocaleTimeString()} · {formatElapsed(elapsedSeconds)} · GPS locked
               </Text>
             </BizCard>
 
@@ -170,6 +189,14 @@ export default function RecordVisitScreen() {
             <Text fontSize={12} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} marginTop={-6} marginBottom="$2" lineHeight={17}>
               Ang "Product / company presentation" tick dito ang buong basehan ng progress % ng client — hindi na Complete Info (B-001).
             </Text>
+            {selectedAgendas.length === 0 ? (
+              <XStack alignItems="center" gap="$1.5" marginBottom="$2">
+                <TriangleAlert size={14} color="#B4740A" strokeWidth={1.75} />
+                <Text fontSize={12} fontFamily={BIZLINK_FONTS.medium} color="#B4740A" flex={1} lineHeight={16}>
+                  Pumili ng kahit isang agenda bago maaktibo ang "Tapusin" button.
+                </Text>
+              </XStack>
+            ) : null}
             <AgendaChecklist selected={selectedAgendas} onToggle={toggleAgenda} />
 
             {saving ? (
@@ -183,6 +210,7 @@ export default function RecordVisitScreen() {
                 captureButtonLabel="Finish — take END photo"
                 confirmButtonLabel="Confirm — end the meeting"
                 onConfirm={finishMeeting}
+                disabled={selectedAgendas.length === 0}
               />
             )}
           </YStack>

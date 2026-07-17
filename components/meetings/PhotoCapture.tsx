@@ -20,6 +20,8 @@ interface PhotoCaptureProps {
   confirmButtonLabel: string;
   /** Fires once the photo is confirmed — after this the photo is locked. */
   onConfirm: (photo: CapturedPhoto) => void;
+  /** Gates the initial capture button (e.g. Wireframe's agenda-gate on End Photo, `#a-visitEndBtn disabled`). Defaults to enabled. */
+  disabled?: boolean;
 }
 
 async function takePhotoWithGps(): Promise<CapturedPhoto | null> {
@@ -59,6 +61,7 @@ export function PhotoCapture({
   captureButtonLabel,
   confirmButtonLabel,
   onConfirm,
+  disabled = false,
 }: PhotoCaptureProps) {
   const [photo, setPhoto] = useState<CapturedPhoto | null>(null);
   const [busy, setBusy] = useState(false);
@@ -112,7 +115,7 @@ export function PhotoCapture({
           label={busy ? 'Opening camera…' : captureButtonLabel}
           variant="brand"
           onPress={capture}
-          disabled={busy}
+          disabled={busy || disabled}
           icon={busy ? <Spinner color={BIZLINK_COLORS.card} /> : undefined}
         />
       )}
