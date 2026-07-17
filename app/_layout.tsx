@@ -53,12 +53,20 @@ function RootNavigator() {
 }
 
 export default function RootLayout() {
-  // Inter is the official app typeface (ADR-011).
+  // Inter is retained (ADR-011) until each screen's own ADR-024 migration
+  // phase; General Sans (ADR-024, Fontshare ITF Free Font License) loads
+  // alongside it — the keys below must match lib/theme.ts's BIZLINK_FONTS
+  // values exactly, since expo-font uses the useFonts key as the runtime
+  // font-family name for locally-bundled files.
   const [fontsLoaded] = useFonts({
     Inter_400Regular,
     Inter_600SemiBold,
     Inter_700Bold,
     Inter_800ExtraBold,
+    'GeneralSans-Regular': require('../assets/fonts/GeneralSans-Regular.otf'),
+    'GeneralSans-Medium': require('../assets/fonts/GeneralSans-Medium.otf'),
+    'GeneralSans-Semibold': require('../assets/fonts/GeneralSans-Semibold.otf'),
+    'GeneralSans-Bold': require('../assets/fonts/GeneralSans-Bold.otf'),
   });
 
   if (!fontsLoaded) return null;

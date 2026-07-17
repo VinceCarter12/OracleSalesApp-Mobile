@@ -1,16 +1,14 @@
 import { useState } from 'react';
-import { KeyboardAvoidingView, Platform, ScrollView } from 'react-native';
+import { KeyboardAvoidingView, Platform, Pressable, ScrollView, TextInput } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { AlertTriangle } from 'lucide-react-native';
+import { AlertTriangle, Eye, EyeOff } from 'lucide-react-native';
 import { Text, View, XStack, YStack } from 'tamagui';
-import { COLORS } from '../../lib/theme';
+import { BIZLINK_COLORS, BIZLINK_FONTS, BIZLINK_ON_INK } from '../../lib/theme';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../lib/useAuth';
 import { useSession } from '../../lib/session-store';
 import { setManagerTrack } from '../../lib/manager-data';
 import { withTimeout } from '../../lib/with-timeout';
-import { Field } from '../../components/ui/Field';
-import { DuoButton } from '../../components/ui/DuoButton';
 import type { UserRole } from '../../types';
 
 /** Maps raw Supabase/network errors to the wireframe's login-error copy (a-loginErr). */
@@ -84,36 +82,46 @@ export default function LoginScreen() {
     }
   }
 
+  const canSubmit = !submitting && Boolean(email.trim()) && Boolean(password);
+
   return (
     <KeyboardAvoidingView
-      style={{ flex: 1, backgroundColor: COLORS.snow, paddingTop: insets.top, paddingBottom: insets.bottom }}
+      style={{ flex: 1, backgroundColor: BIZLINK_COLORS.ink, paddingTop: insets.top, paddingBottom: insets.bottom }}
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
       <ScrollView
-        style={{ backgroundColor: COLORS.snow }}
+        style={{ backgroundColor: BIZLINK_COLORS.ink }}
         contentContainerStyle={{ flexGrow: 1, justifyContent: 'center', paddingHorizontal: 24 }}
         keyboardShouldPersistTaps="handled"
       >
-        <YStack backgroundColor={COLORS.snow}>
-          <YStack alignItems="center" marginBottom="$6">
+        <YStack backgroundColor={BIZLINK_COLORS.ink}>
+          <YStack alignItems="center" marginBottom="$5">
             <View
-              width={72}
-              height={72}
-              borderRadius={36}
-              backgroundColor={COLORS.greenTint}
+              width={96}
+              height={96}
+              borderRadius={48}
+              backgroundColor={BIZLINK_ON_INK.circleFill}
+              borderWidth={2}
+              borderColor={BIZLINK_ON_INK.circleBorder}
               alignItems="center"
               justifyContent="center"
-              marginBottom="$3"
+              marginBottom="$3.5"
             >
-              <Text fontSize={28} fontWeight="800" color={COLORS.ledgeGreen}>
-                O
+              <Text fontSize={34} fontFamily={BIZLINK_FONTS.bold} color={BIZLINK_COLORS.card} letterSpacing={-1}>
+                OS
               </Text>
             </View>
-            <Text fontSize={26} fontWeight="800" letterSpacing={-0.4} color={COLORS.eel}>
+            <Text fontSize={26} fontFamily={BIZLINK_FONTS.semibold} letterSpacing={-0.6} color={BIZLINK_COLORS.card}>
               Oracle Sales
             </Text>
-            <Text fontSize={13} fontWeight="600" color={COLORS.hare} marginTop="$1" textAlign="center">
-              Sign in to continue
+            <Text
+              fontSize={13}
+              fontFamily={BIZLINK_FONTS.regular}
+              color={BIZLINK_ON_INK.textMuted}
+              marginTop="$1"
+              textAlign="center"
+            >
+              Field Agent App — i-track ang clients, meetings at prospects sa isang app
             </Text>
           </YStack>
 
@@ -121,43 +129,120 @@ export default function LoginScreen() {
             <XStack
               gap="$2"
               alignItems="center"
-              backgroundColor={COLORS.redSoft}
-              borderRadius={12}
+              backgroundColor={BIZLINK_COLORS.tintB}
+              borderRadius={16}
               paddingHorizontal={14}
-              paddingVertical={10}
+              paddingVertical={12}
               marginBottom="$3.5"
             >
-              <AlertTriangle size={16} color={COLORS.ledgeRed} />
-              <Text fontSize={13} fontWeight="700" color={COLORS.ledgeRed} flex={1}>
+              <AlertTriangle size={16} color={BIZLINK_COLORS.red} strokeWidth={1.75} />
+              <Text fontSize={13} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.red} flex={1}>
                 {errorMessage}
               </Text>
             </XStack>
           ) : null}
 
-          <Field
+          <LoginField
             label="Email"
             value={email}
             onChangeText={setEmail}
-            placeholder="you@company.com"
+            placeholder="agent@oraclecorp.com"
             keyboardType="email-address"
           />
-          <Field
+          <LoginField
             label="Password"
             value={password}
             onChangeText={setPassword}
             placeholder="••••••••"
             secureTextEntry
-            showToggle
           />
 
-          <DuoButton
-            label={submitting ? 'Signing in…' : 'Sign In'}
+          <Pressable
             onPress={handleSignIn}
-            disabled={submitting || !email.trim() || !password}
-            style={{ marginTop: 8 }}
-          />
+            disabled={!canSubmit}
+            style={{
+              marginTop: 8,
+              height: 52,
+              borderRadius: 999,
+              backgroundColor: BIZLINK_COLORS.card,
+              alignItems: 'center',
+              justifyContent: 'center',
+              opacity: canSubmit ? 1 : 0.5,
+            }}
+          >
+            <Text fontSize={15} fontFamily={BIZLINK_FONTS.semibold} color={BIZLINK_COLORS.ink}>
+              {submitting ? 'Signing in…' : 'Sign in'}
+            </Text>
+          </Pressable>
+
+          <Text
+            fontSize={12}
+            fontFamily={BIZLINK_FONTS.regular}
+            color={BIZLINK_ON_INK.textMutedFooter}
+            textAlign="center"
+            marginTop="$4"
+          >
+            Sessions last the whole workday — auto-logout at 12:00 midnight only
+          </Text>
         </YStack>
       </ScrollView>
     </KeyboardAvoidingView>
+  );
+}
+
+interface LoginFieldProps {
+  label: string;
+  value: string;
+  onChangeText: (text: string) => void;
+  placeholder: string;
+  secureTextEntry?: boolean;
+  keyboardType?: 'default' | 'email-address';
+}
+
+/** BizLink-styled dark-onboarding input — translucent-white fill, matches Wireframe-Sales-BizLink.html's #a-login .inp. */
+function LoginField({ label, value, onChangeText, placeholder, secureTextEntry, keyboardType }: LoginFieldProps) {
+  const [revealed, setRevealed] = useState(false);
+  const isSecure = secureTextEntry && !revealed;
+
+  return (
+    <YStack marginBottom="$3.5" gap="$1.5">
+      <Text fontSize={12} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_ON_INK.textMutedFooter}>
+        {label}
+      </Text>
+      <View position="relative">
+        <TextInput
+          value={value}
+          onChangeText={onChangeText}
+          placeholder={placeholder}
+          placeholderTextColor={BIZLINK_ON_INK.placeholder}
+          secureTextEntry={isSecure}
+          keyboardType={keyboardType}
+          autoCapitalize="none"
+          style={{
+            height: 52,
+            borderRadius: 16,
+            paddingHorizontal: 16,
+            paddingRight: secureTextEntry ? 48 : 16,
+            fontFamily: BIZLINK_FONTS.medium,
+            fontSize: 14.5,
+            color: BIZLINK_COLORS.card,
+            backgroundColor: BIZLINK_ON_INK.inputFill,
+          }}
+        />
+        {secureTextEntry ? (
+          <Pressable
+            onPress={() => setRevealed((prev) => !prev)}
+            style={{ position: 'absolute', right: 14, top: 0, height: 52, width: 44, justifyContent: 'center', alignItems: 'flex-end' }}
+            hitSlop={8}
+          >
+            {revealed ? (
+              <EyeOff size={18} color={BIZLINK_ON_INK.textMuted} strokeWidth={1.75} />
+            ) : (
+              <Eye size={18} color={BIZLINK_ON_INK.textMuted} strokeWidth={1.75} />
+            )}
+          </Pressable>
+        ) : null}
+      </View>
+    </YStack>
   );
 }
