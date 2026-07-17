@@ -4,17 +4,18 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { Search } from 'lucide-react-native';
 import { Text, XStack, YStack } from 'tamagui';
-import { COLORS } from '../../../../lib/theme';
+import { BIZLINK_COLORS, BIZLINK_FONTS } from '../../../../lib/theme';
 import { CLIENT_STATUS_BADGES } from '../../../../lib/client-status';
 import { AGENT_COLORS, getManagerAgents, agentById, computeTeamClientProgress } from '../../../../lib/manager-data';
 import { useManagerStore } from '../../../../lib/manager-store';
 import { useGate } from '../../../../lib/gate-context';
 import { SecurityGate } from '../../../../components/security/SecurityGate';
-import { TopBar } from '../../../../components/ui/TopBar';
-import { LockButton } from '../../../../components/security/LockButton';
-import { SelectTile } from '../../../../components/ui/SelectTile';
+import { BizTopBar } from '../../../../components/bizlink/BizTopBar';
+import { BizLockButton } from '../../../../components/bizlink/BizLockButton';
+import { BizChip } from '../../../../components/bizlink/BizChip';
+import { BizButton } from '../../../../components/bizlink/BizButton';
 import { StatusBadge } from '../../../../components/ui/StatusBadge';
-import { DuoButton } from '../../../../components/ui/DuoButton';
+import { Avatar } from '../../../../components/ui/Avatar';
 import { CLIENT_STATUSES, type ClientStatus, type TeamClient } from '../../../../types';
 
 type StatusFilter = ClientStatus | 'all';
@@ -41,31 +42,31 @@ export default function ManagerClientsScreen() {
   if (!unlocked) return <SecurityGate />;
 
   return (
-    <YStack flex={1} backgroundColor={COLORS.snow} paddingTop={insets.top}>
-      <TopBar title="Clients" right={<LockButton />} />
+    <YStack flex={1} backgroundColor={BIZLINK_COLORS.canvas} paddingTop={insets.top}>
+      <BizTopBar title="Clients" right={<BizLockButton />} />
       <YStack paddingHorizontal="$4" gap="$2.5">
-        <XStack alignItems="center" borderWidth={2} borderColor={COLORS.swan} borderRadius={12} height={50} paddingHorizontal={14} gap="$2">
-          <Search size={16} color={COLORS.hare} />
+        <XStack alignItems="center" backgroundColor={BIZLINK_COLORS.card} borderRadius={16} height={52} paddingHorizontal={16} gap="$2">
+          <Search size={16} color={BIZLINK_COLORS.muted} strokeWidth={1.75} />
           <TextInput
             value={search}
             onChangeText={setSearch}
             placeholder="Search company name…"
-            placeholderTextColor={COLORS.hare}
-            style={{ flex: 1, fontWeight: '700', fontSize: 14.5, color: COLORS.eel }}
+            placeholderTextColor={BIZLINK_COLORS.muted}
+            style={{ flex: 1, fontFamily: BIZLINK_FONTS.medium, fontSize: 14.5, color: BIZLINK_COLORS.text }}
           />
         </XStack>
-        <Text fontSize={10.5} fontWeight="800" color={COLORS.wolf} letterSpacing={0.6} textTransform="uppercase">Filter by agent</Text>
+        <Text fontSize={11} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} letterSpacing={0.4}>Filter by agent</Text>
         <XStack gap="$2" flexWrap="wrap">
-          <SelectTile label="All" selected={agentFilter === 'all'} onPress={() => setAgentFilter('all')} />
+          <BizChip label="All" selected={agentFilter === 'all'} onPress={() => setAgentFilter('all')} />
           {getManagerAgents().map((a) => (
-            <SelectTile key={a.id} label={a.name.split(' ')[0]} selected={agentFilter === a.id} onPress={() => setAgentFilter(a.id)} />
+            <BizChip key={a.id} label={a.name.split(' ')[0]} selected={agentFilter === a.id} onPress={() => setAgentFilter(a.id)} />
           ))}
         </XStack>
-        <Text fontSize={10.5} fontWeight="800" color={COLORS.wolf} letterSpacing={0.6} textTransform="uppercase">Filter by status</Text>
+        <Text fontSize={11} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} letterSpacing={0.4}>Filter by status</Text>
         <XStack gap="$2" flexWrap="wrap">
-          <SelectTile label="All" selected={statusFilter === 'all'} onPress={() => setStatusFilter('all')} />
+          <BizChip label="All" selected={statusFilter === 'all'} onPress={() => setStatusFilter('all')} />
           {CLIENT_STATUSES.map((s) => (
-            <SelectTile key={s} label={CLIENT_STATUS_BADGES[s].label} selected={statusFilter === s} onPress={() => setStatusFilter(s)} />
+            <BizChip key={s} label={CLIENT_STATUS_BADGES[s].label} selected={statusFilter === s} onPress={() => setStatusFilter(s)} />
           ))}
         </XStack>
       </YStack>
@@ -77,11 +78,11 @@ export default function ManagerClientsScreen() {
         renderItem={({ item }) => <ClientRow client={item} />}
         ListEmptyComponent={
           <YStack alignItems="center" padding="$8">
-            <Text fontSize={13} fontWeight="600" color={COLORS.hare}>Walang client na tumugma sa filter.</Text>
+            <Text fontSize={13} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted}>Walang client na tumugma sa filter.</Text>
           </YStack>
         }
         ListFooterComponent={
-          <Text fontSize={12.5} fontWeight="600" color={COLORS.hare} textAlign="center" marginTop="$3.5">
+          <Text fontSize={12.5} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} textAlign="center" marginTop="$3.5">
             Bilang manager, nakikita mo ang SARILI mo + buong team — para walang magkabanggaang agents sa iisang
             client.
           </Text>
@@ -89,7 +90,7 @@ export default function ManagerClientsScreen() {
       />
 
       <YStack paddingHorizontal="$4" paddingBottom="$3" paddingTop="$2">
-        <DuoButton label="+ New Client" onPress={() => router.push('/(manager)/more/clients/create')} />
+        <BizButton label="+ New Client" onPress={() => router.push('/(manager)/more/clients/create')} />
       </YStack>
     </YStack>
   );
@@ -104,26 +105,25 @@ function ClientRow({ client }: { client: TeamClient }) {
     <XStack
       alignItems="center"
       gap="$3"
-      paddingVertical={13}
-      borderBottomWidth={2}
-      borderBottomColor={COLORS.polar}
+      backgroundColor={BIZLINK_COLORS.card}
+      borderRadius={20}
+      padding={14}
+      marginBottom={10}
       onPress={() => router.push(`/(manager)/more/clients/${client.id}`)}
     >
-      <XStack width={36} height={36} borderRadius={18} alignItems="center" justifyContent="center" backgroundColor={color.background}>
-        <Text fontSize={12} fontWeight="800" color={color.color}>{agent?.initials}</Text>
-      </XStack>
+      <Avatar initials={agent?.initials ?? '—'} size="sm" background={color.background} color={color.color} />
       <YStack flex={1}>
-        <Text fontWeight="800" fontSize={14} color={COLORS.eel}>{client.name}</Text>
+        <Text fontFamily={BIZLINK_FONTS.semibold} fontSize={14} color={BIZLINK_COLORS.text}>{client.name}</Text>
         {client.deadlineWarn ? (
-          <Text fontSize={11.5} fontWeight="800" color={COLORS.red}>{client.deadline}</Text>
+          <Text fontSize={11.5} fontFamily={BIZLINK_FONTS.semibold} color={BIZLINK_COLORS.red}>{client.deadline}</Text>
         ) : (
-          <Text fontSize={11.5} fontWeight="600" color={COLORS.hare}>{agent?.name} · {client.channel}</Text>
+          <Text fontSize={11.5} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted}>{agent?.name} · {client.channel}</Text>
         )}
       </YStack>
       <YStack alignItems="flex-end" gap="$1">
         <StatusBadge {...CLIENT_STATUS_BADGES[client.status]} />
         {client.status === 'prospect' ? (
-          <Text fontSize={12} fontWeight="800" color={COLORS.ledgeGreen}>{progress}%</Text>
+          <Text fontSize={12} fontFamily={BIZLINK_FONTS.semibold} color={BIZLINK_COLORS.brand}>{progress}%</Text>
         ) : null}
       </YStack>
     </XStack>

@@ -2,15 +2,15 @@ import { ScrollView } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router, useLocalSearchParams } from 'expo-router';
 import { Camera } from 'lucide-react-native';
-import { Text, View, XStack, YStack } from 'tamagui';
-import { COLORS, OUTCOME_BADGE_STYLES } from '../../../lib/theme';
+import { Text, YStack, XStack } from 'tamagui';
+import { BIZLINK_COLORS, BIZLINK_FONTS, OUTCOME_BADGE_STYLES } from '../../../lib/theme';
 import { agentById, clientById } from '../../../lib/manager-data';
 import { useManagerStore } from '../../../lib/manager-store';
-import { TopBar } from '../../../components/ui/TopBar';
-import { Card } from '../../../components/ui/Card';
-import { SectionHeader } from '../../../components/ui/SectionHeader';
+import { BizTopBar } from '../../../components/bizlink/BizTopBar';
+import { BizCard } from '../../../components/bizlink/BizCard';
+import { BizSectionHeader } from '../../../components/bizlink/BizSectionHeader';
+import { BizButton } from '../../../components/bizlink/BizButton';
 import { StatusBadge } from '../../../components/ui/StatusBadge';
-import { DuoButton } from '../../../components/ui/DuoButton';
 import { MANAGER_OUTCOME_LABELS } from '../../../types';
 
 /** Wireframe s-approvaldetail — diff view + Approve/Reject. */
@@ -22,10 +22,10 @@ export default function ApprovalDetailScreen() {
 
   if (!approval) {
     return (
-      <YStack flex={1} backgroundColor={COLORS.snow} paddingTop={insets.top}>
-        <TopBar title="Approval Detail" />
+      <YStack flex={1} backgroundColor={BIZLINK_COLORS.canvas} paddingTop={insets.top}>
+        <BizTopBar title="Approval Detail" />
         <YStack flex={1} justifyContent="center" alignItems="center" padding="$6">
-          <Text fontSize={13} fontWeight="600" color={COLORS.hare}>Wala nang approval — na-decide na ito.</Text>
+          <Text fontSize={13} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted}>Wala nang approval — na-decide na ito.</Text>
         </YStack>
       </YStack>
     );
@@ -44,53 +44,53 @@ export default function ApprovalDetailScreen() {
     const outcomeLabel = meeting?.outcome ? MANAGER_OUTCOME_LABELS[meeting.outcome] : null;
     const outcomeStyle = outcomeLabel ? OUTCOME_BADGE_STYLES[outcomeLabel] : null;
     return (
-      <YStack flex={1} backgroundColor={COLORS.snow} paddingTop={insets.top}>
-        <TopBar title="Approval Detail" />
+      <YStack flex={1} backgroundColor={BIZLINK_COLORS.canvas} paddingTop={insets.top}>
+        <BizTopBar title="Approval Detail" />
         <ScrollView contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 24 }}>
-          <Card>
-            <StatusBadge label="Tag-along meeting" background={COLORS.greenTint} color={COLORS.ledgeGreen} />
-            <Text fontWeight="800" fontSize={17} color={COLORS.eel} marginTop="$2">{client?.name}</Text>
-            <Text fontSize={13} fontWeight="600" color={COLORS.hare} marginTop={2}>
+          <BizCard>
+            <StatusBadge label="Tag-along meeting" background={BIZLINK_COLORS.tintA} color={BIZLINK_COLORS.brand} />
+            <Text fontFamily={BIZLINK_FONTS.semibold} fontSize={17} color={BIZLINK_COLORS.text} marginTop="$2">{client?.name}</Text>
+            <Text fontSize={13} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} marginTop={2}>
               Sinubmit ni {agent?.name} · {approval.requested}
             </Text>
-          </Card>
-          <Text fontSize={13} fontWeight="600" color={COLORS.hare} marginTop="$2.5" lineHeight={19}>
+          </BizCard>
+          <Text fontSize={13} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} marginTop="$2.5" lineHeight={19}>
             Iisang record lang ito na si {agent?.name} mismo ang gumawa. Ikaw bilang tag-along ay lumitaw sa litrato
             niya bilang proof — wala kang sariling record na kailangang gawin, review + approve/reject na lang.
           </Text>
 
           {outcomeLabel && outcomeStyle ? (
             <>
-              <SectionHeader title="Outcome" />
+              <BizSectionHeader title="Outcome" />
               <StatusBadge label={outcomeLabel} background={outcomeStyle.background} color={outcomeStyle.color} />
             </>
           ) : null}
 
-          <SectionHeader title="Meeting proof" />
-          <Card flat>
+          <BizSectionHeader title="Meeting proof" />
+          <BizCard flat>
             <XStack alignItems="center" gap="$2.5">
-              <View width={60} height={60} borderRadius={12} backgroundColor={COLORS.swan} alignItems="center" justifyContent="center">
-                <Camera size={22} color={COLORS.wolf} />
-              </View>
+              <YStack width={60} height={60} borderRadius={16} backgroundColor={BIZLINK_COLORS.soft} alignItems="center" justifyContent="center">
+                <Camera size={22} color={BIZLINK_COLORS.muted} strokeWidth={1.75} />
+              </YStack>
               <YStack>
-                <Text fontWeight="800" fontSize={12.5} color={COLORS.eel}>Meeting photo</Text>
-                <Text fontSize={11.5} fontWeight="600" color={COLORS.hare}>
+                <Text fontFamily={BIZLINK_FONTS.semibold} fontSize={12.5} color={BIZLINK_COLORS.text}>Meeting photo</Text>
+                <Text fontSize={11.5} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted}>
                   Kasama si {meeting?.tagAlongManagerName ?? '—'} sa litrato
                 </Text>
               </YStack>
             </XStack>
-          </Card>
+          </BizCard>
 
           {meeting?.remarks ? (
             <>
-              <SectionHeader title="Remarks" />
-              <Card flat><Text fontSize={13.5} fontWeight="600" lineHeight={19} color={COLORS.eel}>{meeting.remarks}</Text></Card>
+              <BizSectionHeader title="Remarks" />
+              <BizCard flat><Text fontSize={13.5} fontFamily={BIZLINK_FONTS.medium} lineHeight={19} color={BIZLINK_COLORS.text}>{meeting.remarks}</Text></BizCard>
             </>
           ) : null}
 
           <XStack gap="$2.5" marginTop="$5">
-            <DuoButton label="Reject" variant="white" onPress={() => decide(false)} style={{ flex: 1 }} />
-            <DuoButton label="Approve" onPress={() => decide(true)} style={{ flex: 1 }} />
+            <BizButton label="Reject" variant="white" onPress={() => decide(false)} style={{ flex: 1 }} />
+            <BizButton label="Approve" onPress={() => decide(true)} style={{ flex: 1 }} />
           </XStack>
         </ScrollView>
       </YStack>
@@ -101,36 +101,36 @@ export default function ApprovalDetailScreen() {
   const fromLabel = approval.type === 'edit' ? approval.from : agent?.name;
   const toLabel = approval.type === 'edit' ? approval.to : agentById(approval.toAgentId!)?.name;
   const badge = approval.type === 'edit'
-    ? { label: 'Edit request', background: COLORS.purpleSoft, color: COLORS.purple }
-    : { label: 'Reassignment', background: COLORS.blueSoft, color: COLORS.blue };
+    ? { label: 'Edit request', background: BIZLINK_COLORS.soft, color: BIZLINK_COLORS.navy }
+    : { label: 'Reassignment', background: BIZLINK_COLORS.soft, color: BIZLINK_COLORS.navy };
 
   return (
-    <YStack flex={1} backgroundColor={COLORS.snow} paddingTop={insets.top}>
-      <TopBar title="Approval Detail" />
+    <YStack flex={1} backgroundColor={BIZLINK_COLORS.canvas} paddingTop={insets.top}>
+      <BizTopBar title="Approval Detail" />
       <ScrollView contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 24 }}>
-        <Card>
+        <BizCard>
           <StatusBadge {...badge} />
-          <Text fontWeight="800" fontSize={17} color={COLORS.eel} marginTop="$2">{client?.name}</Text>
-          <Text fontSize={13} fontWeight="600" color={COLORS.hare} marginTop={2}>
+          <Text fontFamily={BIZLINK_FONTS.semibold} fontSize={17} color={BIZLINK_COLORS.text} marginTop="$2">{client?.name}</Text>
+          <Text fontSize={13} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} marginTop={2}>
             Requested by {agent?.name} · {approval.requested}
           </Text>
-        </Card>
+        </BizCard>
 
-        <SectionHeader title={diffLabel ?? ''} />
-        <XStack alignItems="center" gap="$2.5" backgroundColor={COLORS.polar} borderRadius={12} padding="$3">
-          <Text fontSize={13} fontWeight="700" color={COLORS.hare} textDecorationLine="line-through">{fromLabel}</Text>
-          <Text color={COLORS.hare}>→</Text>
-          <Text fontSize={13} fontWeight="800" color={COLORS.ledgeGreen}>{toLabel}</Text>
+        <BizSectionHeader title={diffLabel ?? ''} />
+        <XStack alignItems="center" gap="$2.5" backgroundColor={BIZLINK_COLORS.soft} borderRadius={16} padding={14}>
+          <Text fontSize={13} fontFamily={BIZLINK_FONTS.semibold} color={BIZLINK_COLORS.muted} textDecorationLine="line-through">{fromLabel}</Text>
+          <Text color={BIZLINK_COLORS.muted}>→</Text>
+          <Text fontSize={13} fontFamily={BIZLINK_FONTS.semibold} color={BIZLINK_COLORS.brand}>{toLabel}</Text>
         </XStack>
-        <Text fontSize={13} fontWeight="600" color={COLORS.hare} marginTop="$2" lineHeight={19}>
+        <Text fontSize={13} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} marginTop="$2" lineHeight={19}>
           {approval.type === 'edit'
             ? 'Ang edit na ito ay mananatiling pending hanggang sa desisyon mo. Once approved, agad itong ma-a-apply sa client record.'
             : 'Ang reassignment ay mangangahulugan ng paglipat ng buong client record patungo sa bagong agent kapag na-approve.'}
         </Text>
 
         <XStack gap="$2.5" marginTop="$5">
-          <DuoButton label="Reject" variant="white" onPress={() => decide(false)} style={{ flex: 1 }} />
-          <DuoButton label="Approve" onPress={() => decide(true)} style={{ flex: 1 }} />
+          <BizButton label="Reject" variant="white" onPress={() => decide(false)} style={{ flex: 1 }} />
+          <BizButton label="Approve" onPress={() => decide(true)} style={{ flex: 1 }} />
         </XStack>
       </ScrollView>
     </YStack>
