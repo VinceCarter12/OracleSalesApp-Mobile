@@ -7,10 +7,7 @@ import { BIZLINK_COLORS, BIZLINK_FONTS } from '../../../../lib/theme';
 import { CLIENT_STATUS_BADGES } from '../../../../lib/client-status';
 import { agentById, clientById, getTeamClientProgressBreakdown } from '../../../../lib/manager-data';
 import { useManagerStore } from '../../../../lib/manager-store';
-import { useGate } from '../../../../lib/gate-context';
-import { SecurityGate } from '../../../../components/security/SecurityGate';
 import { BizTopBar } from '../../../../components/bizlink/BizTopBar';
-import { BizLockButton } from '../../../../components/bizlink/BizLockButton';
 import { BizCard } from '../../../../components/bizlink/BizCard';
 import { BizSectionHeader } from '../../../../components/bizlink/BizSectionHeader';
 import { BizButton } from '../../../../components/bizlink/BizButton';
@@ -26,14 +23,16 @@ const CHECKLIST_LABELS: Record<string, string> = {
   channel: 'Sales channel',
 };
 
-/** Wireframe s-detail — gated: progress ring, checklist, pending approval banner, meeting history, reassign. */
+/**
+ * Wireframe s-detail — progress ring, checklist, pending approval banner,
+ * meeting history, reassign. The "Client info protection" passcode gate
+ * (ADR-007) is removed for Manager per 2026-07-17 feedback (see ADR-007
+ * follow-up note in Decisions.md) — content shows automatically.
+ */
 export default function ManagerClientDetailScreen() {
   const insets = useSafeAreaInsets();
-  const { unlocked } = useGate();
   const { id } = useLocalSearchParams<{ id: string }>();
   const { clients, meetings, approvals, decideApproval } = useManagerStore();
-
-  if (!unlocked) return <SecurityGate />;
 
   const client = clients.find((c) => c.id === id) ?? clientById(id);
   if (!client) {
@@ -52,12 +51,22 @@ export default function ManagerClientDetailScreen() {
 
   return (
     <YStack flex={1} backgroundColor={BIZLINK_COLORS.canvas} paddingTop={insets.top}>
-      <BizTopBar title="Client" right={<BizLockButton />} />
+      <BizTopBar title="Client" />
       <ScrollView contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 24 }}>
-        <BizCard flexDirection="row" alignItems="center" gap="$3.5">
+        <BizCard flexDirection="row" alignItems="flex-start" gap="$3.5">
           <ProgressRing percent={progress} />
           <YStack flex={1} gap="$1.5">
-            <Text fontFamily={BIZLINK_FONTS.semibold} fontSize={17} color={BIZLINK_COLORS.text} lineHeight={20}>{client.name}</Text>
+            <XStack alignItems="flex-start" justifyContent="space-between" gap="$2">
+              <Text fontFamily={BIZLINK_FONTS.semibold} fontSize={17} color={BIZLINK_COLORS.text} lineHeight={20} flex={1}>{client.name}</Text>
+              <BizButton
+                label="Reassign"
+                variant="white"
+                small
+                icon={<Repeat size={14} color={BIZLINK_COLORS.text} strokeWidth={1.75} />}
+                style={{ paddingHorizontal: 14 }}
+                onPress={() => router.push(`/(manager)/more/clients/reassign?clientId=${client.id}`)}
+              />
+            </XStack>
             <XStack gap="$1.5">
               <StatusBadge {...CLIENT_STATUS_BADGES[client.status]} />
               {client.channel !== '—' ? (
@@ -158,15 +167,6 @@ export default function ManagerClientDetailScreen() {
             </XStack>
           ))
         )}
-
-        <XStack marginTop="$4">
-          <BizButton
-            label="Reassign Agent"
-            variant="white"
-            icon={<Repeat size={15} color={BIZLINK_COLORS.text} strokeWidth={1.75} />}
-            onPress={() => router.push(`/(manager)/more/clients/reassign?clientId=${client.id}`)}
-          />
-        </XStack>
       </ScrollView>
     </YStack>
   );

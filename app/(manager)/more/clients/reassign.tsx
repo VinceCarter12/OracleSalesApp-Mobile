@@ -6,21 +6,16 @@ import { Text, XStack, YStack } from 'tamagui';
 import { BIZLINK_COLORS, BIZLINK_FONTS } from '../../../../lib/theme';
 import { AGENT_COLORS, getManagerAgents, agentById, clientById } from '../../../../lib/manager-data';
 import { useManagerStore } from '../../../../lib/manager-store';
-import { useGate } from '../../../../lib/gate-context';
-import { SecurityGate } from '../../../../components/security/SecurityGate';
 import { BizTopBar } from '../../../../components/bizlink/BizTopBar';
 import { BizButton } from '../../../../components/bizlink/BizButton';
 import { Avatar } from '../../../../components/ui/Avatar';
 
-/** Wireframe s-reassign — gated: pick a new agent, submits a reassignment approval. */
+/** Wireframe s-reassign — pick a new agent, submits a reassignment approval. */
 export default function ReassignClientScreen() {
   const insets = useSafeAreaInsets();
-  const { unlocked } = useGate();
   const { clientId } = useLocalSearchParams<{ clientId: string }>();
   const { clients, requestReassign } = useManagerStore();
   const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null);
-
-  if (!unlocked) return <SecurityGate />;
 
   const client = clients.find((c) => c.id === clientId) ?? clientById(clientId);
   if (!client) {

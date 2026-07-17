@@ -1,15 +1,12 @@
 import { useMemo, useState } from 'react';
-import { FlatList } from 'react-native';
+import { FlatList, ScrollView } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { Text, XStack, YStack } from 'tamagui';
 import { BIZLINK_COLORS, BIZLINK_FONTS } from '../../../../lib/theme';
 import { AGENT_COLORS, getManagerAgents, agentById, clientById } from '../../../../lib/manager-data';
 import { useManagerStore } from '../../../../lib/manager-store';
-import { useGate } from '../../../../lib/gate-context';
-import { SecurityGate } from '../../../../components/security/SecurityGate';
 import { BizTopBar } from '../../../../components/bizlink/BizTopBar';
-import { BizLockButton } from '../../../../components/bizlink/BizLockButton';
 import { BizChip } from '../../../../components/bizlink/BizChip';
 import { Avatar } from '../../../../components/ui/Avatar';
 import { meetingBadge } from '../../../../lib/meeting-badge';
@@ -17,10 +14,9 @@ import { MANAGER_OUTCOMES, MANAGER_OUTCOME_LABELS, type ManagerOutcome } from '.
 
 type OutcomeFilter = ManagerOutcome | 'all';
 
-/** Wireframe s-meetings — gated, filter by agent + outcome. */
+/** Wireframe s-meetings — filter by agent + outcome. */
 export default function ManagerMeetingsScreen() {
   const insets = useSafeAreaInsets();
-  const { unlocked } = useGate();
   const { meetings } = useManagerStore();
   const [agentFilter, setAgentFilter] = useState<string | 'all'>('all');
   const [outcomeFilter, setOutcomeFilter] = useState<OutcomeFilter>('all');
@@ -35,26 +31,28 @@ export default function ManagerMeetingsScreen() {
     [meetings, agentFilter, outcomeFilter]
   );
 
-  if (!unlocked) return <SecurityGate />;
-
   return (
     <YStack flex={1} backgroundColor={BIZLINK_COLORS.canvas} paddingTop={insets.top}>
-      <BizTopBar title="Sales History" right={<BizLockButton />} />
+      <BizTopBar title="Sales History" />
       <YStack paddingHorizontal="$4" gap="$2">
         <Text fontSize={11} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} letterSpacing={0.4}>Filter by agent</Text>
-        <XStack gap="$2" flexWrap="wrap">
-          <BizChip label="All" selected={agentFilter === 'all'} onPress={() => setAgentFilter('all')} />
-          {getManagerAgents().map((a) => (
-            <BizChip key={a.id} label={a.name.split(' ')[0]} selected={agentFilter === a.id} onPress={() => setAgentFilter(a.id)} />
-          ))}
-        </XStack>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+          <XStack gap="$2">
+            <BizChip label="All" selected={agentFilter === 'all'} onPress={() => setAgentFilter('all')} />
+            {getManagerAgents().map((a) => (
+              <BizChip key={a.id} label={a.name.split(' ')[0]} selected={agentFilter === a.id} onPress={() => setAgentFilter(a.id)} />
+            ))}
+          </XStack>
+        </ScrollView>
         <Text fontSize={11} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} letterSpacing={0.4}>Filter by outcome</Text>
-        <XStack gap="$2" flexWrap="wrap">
-          <BizChip label="All" selected={outcomeFilter === 'all'} onPress={() => setOutcomeFilter('all')} />
-          {MANAGER_OUTCOMES.map((o) => (
-            <BizChip key={o} label={MANAGER_OUTCOME_LABELS[o]} selected={outcomeFilter === o} onPress={() => setOutcomeFilter(o)} />
-          ))}
-        </XStack>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+          <XStack gap="$2">
+            <BizChip label="All" selected={outcomeFilter === 'all'} onPress={() => setOutcomeFilter('all')} />
+            {MANAGER_OUTCOMES.map((o) => (
+              <BizChip key={o} label={MANAGER_OUTCOME_LABELS[o]} selected={outcomeFilter === o} onPress={() => setOutcomeFilter(o)} />
+            ))}
+          </XStack>
+        </ScrollView>
       </YStack>
 
       <FlatList

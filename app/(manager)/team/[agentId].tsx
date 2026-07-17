@@ -7,22 +7,17 @@ import { BIZLINK_COLORS, BIZLINK_FONTS } from '../../../lib/theme';
 import { CLIENT_STATUS_BADGES } from '../../../lib/client-status';
 import { agentById, clientsForAgent, meetingsForAgent } from '../../../lib/manager-data';
 import { BizTopBar } from '../../../components/bizlink/BizTopBar';
-import { BizLockButton } from '../../../components/bizlink/BizLockButton';
 import { BizSectionHeader } from '../../../components/bizlink/BizSectionHeader';
 import { Avatar } from '../../../components/ui/Avatar';
 import { StatusBadge } from '../../../components/ui/StatusBadge';
-import { SecurityGate } from '../../../components/security/SecurityGate';
-import { useGate } from '../../../lib/gate-context';
 import { meetingBadge } from '../../../lib/meeting-badge';
 
-/** Wireframe s-agent — gated (shows the agent's client list, which is sensitive). */
+/** Wireframe s-agent — shows the agent's client list. */
 export default function AgentDetailScreen() {
   const insets = useSafeAreaInsets();
-  const { unlocked } = useGate();
   const { agentId } = useLocalSearchParams<{ agentId: string }>();
   const agent = agentById(agentId);
 
-  if (!unlocked) return <SecurityGate />;
   if (!agent) {
     return (
       <YStack flex={1} justifyContent="center" alignItems="center" backgroundColor={BIZLINK_COLORS.canvas}>
@@ -36,7 +31,7 @@ export default function AgentDetailScreen() {
 
   return (
     <YStack flex={1} backgroundColor={BIZLINK_COLORS.canvas} paddingTop={insets.top}>
-      <BizTopBar title={agent.name.split(' ')[0]} right={<BizLockButton />} />
+      <BizTopBar title={agent.name.split(' ')[0]} />
       <ScrollView contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 24 }}>
         <XStack alignItems="center" gap="$3.5" backgroundColor={BIZLINK_COLORS.card} borderRadius={24} padding={18}>
           <Avatar initials={agent.initials} size="lg" background={BIZLINK_COLORS.tintA} color={BIZLINK_COLORS.ink} />

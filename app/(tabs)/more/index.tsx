@@ -1,7 +1,7 @@
 import { ScrollView } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
-import { BarChart3, Building2, History, Map, User, Users } from 'lucide-react-native';
+import { BarChart3, Bell, Clock, History, Map, User, Users } from 'lucide-react-native';
 import { Text, XStack, YStack } from 'tamagui';
 import { BIZLINK_COLORS, BIZLINK_FONTS } from '../../../lib/theme';
 import { BizMoreTile } from '../../../components/bizlink/BizMoreTile';
@@ -21,18 +21,10 @@ export default function MoreScreen() {
         </Text>
         <XStack flexWrap="wrap" gap="$3" justifyContent="space-between">
           <BizMoreTile
-            icon={<Building2 size={18} color={BIZLINK_COLORS.ink} strokeWidth={1.75} />}
-            title="Clients"
-            subtitle={<Text fontSize={10.5} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted}>Buong client list mo</Text>}
-            locked
-            onPress={() => router.push('/(tabs)/clients')}
-          />
-          <BizMoreTile
-            icon={<History size={18} color={BIZLINK_COLORS.ink} strokeWidth={1.75} />}
-            title="My Meetings"
-            subtitle={<Text fontSize={10.5} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted}>Records ng lahat ng meetings mo</Text>}
-            locked
-            onPress={() => router.push('/(tabs)/meetings')}
+            icon={<Bell size={18} color={BIZLINK_COLORS.ink} strokeWidth={1.75} />}
+            title="Notifications"
+            subtitle={<Text fontSize={10.5} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted}>Sync alerts, deadline reminders</Text>}
+            onPress={() => router.push('/(tabs)/more/notifications')}
           />
           <BizMoreTile
             icon={<Users size={18} color={BIZLINK_COLORS.ink} strokeWidth={1.75} />}
@@ -41,10 +33,22 @@ export default function MoreScreen() {
             onPress={() => router.push('/(tabs)/more/tag-along')}
           />
           <BizMoreTile
+            icon={<History size={18} color={BIZLINK_COLORS.ink} strokeWidth={1.75} />}
+            title="Sync History"
+            subtitle={<Text fontSize={10.5} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted}>Ano ang na-sync, kailan</Text>}
+            onPress={() => router.push('/(tabs)/more/sync-history')}
+          />
+          <BizMoreTile
             icon={<BarChart3 size={18} color={BIZLINK_COLORS.ink} strokeWidth={1.75} />}
             title="My Performance"
             subtitle={<Text fontSize={10.5} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted}>Sariling stats lang</Text>}
             onPress={() => router.push('/(tabs)/more/reports')}
+          />
+          <BizMoreTile
+            icon={<Clock size={18} color={BIZLINK_COLORS.ink} strokeWidth={1.75} />}
+            title="Clock In/Out"
+            subtitle={<Text fontSize={10.5} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted}>Office & event attendance</Text>}
+            onPress={() => router.push('/(tabs)/more/clock-in-out')}
           />
           <BizMoreTile
             icon={<Map size={18} color={BIZLINK_COLORS.ink} strokeWidth={1.75} />}

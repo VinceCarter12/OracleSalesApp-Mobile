@@ -1,6 +1,5 @@
 import { Tabs } from 'expo-router';
 import { House, MoreHorizontal, PencilLine, Users } from 'lucide-react-native';
-import { View } from 'tamagui';
 import { BIZLINK_COLORS, BIZLINK_FONTS } from '../../lib/theme';
 import { useManagerDashboard } from '../../lib/useManagerDashboard';
 import { ManagerStoreProvider, useManagerStore } from '../../lib/manager-store';
@@ -9,32 +8,20 @@ type LucideIcon = typeof House;
 
 /**
  * T-014 Phase 3 (ADR-024): BizLink tab bar for the Manager role group.
- * Matches the same fixed-full-width-labeled-tabs CSS the Sales Agent tab bar
- * (`app/(tabs)/_layout.tsx`) already settled on per the wireframe's current,
- * newest-wins CSS (ADR-010) — NOT the older floating-pill brief. One real
- * difference from Sales, confirmed against `Wireframe-Manager-BizLink.html`'s
- * live `.tab.on .tic{background:var(--tint-a)}` rule: Manager's active tab
- * keeps a soft tint-a circle behind the icon (Sales's own wireframe dropped
- * this circle per its 2026-07-16 client feedback comment) — implemented here
- * via `TabIcon`'s tinted circle wrapper.
+ * Matches Sales' tab bar (`app/(tabs)/_layout.tsx`) exactly: plain icon,
+ * color change (muted → brand) + scale-up on focus, NO background
+ * circle/pill behind the icon in any state. (2026-07-17 device-testing
+ * feedback: the tint-a circle previously here was removed — Vince tested
+ * on-device and wants Manager's tab bar to look identical to Sales'.)
  */
 function TabIcon({ focused, Icon }: { focused: boolean; Icon: LucideIcon }) {
   return (
-    <View
-      width={40}
-      height={28}
-      borderRadius={14}
-      alignItems="center"
-      justifyContent="center"
-      backgroundColor={focused ? BIZLINK_COLORS.tintA : 'transparent'}
-    >
-      <Icon
-        size={21}
-        color={focused ? BIZLINK_COLORS.brand : BIZLINK_COLORS.muted}
-        strokeWidth={1.75}
-        style={{ transform: [{ scale: focused ? 1.12 : 1 }] }}
-      />
-    </View>
+    <Icon
+      size={21}
+      color={focused ? BIZLINK_COLORS.brand : BIZLINK_COLORS.muted}
+      strokeWidth={1.75}
+      style={{ transform: [{ scale: focused ? 1.12 : 1 }] }}
+    />
   );
 }
 

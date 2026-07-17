@@ -1,14 +1,14 @@
 import { ScrollView } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
-import { BarChart3, Building2, History, Info, Map, User, Users } from 'lucide-react-native';
+import { BarChart3, Bell, Building2, History, Info, Map, User, Users } from 'lucide-react-native';
 import { Text, XStack, YStack } from 'tamagui';
 import { BIZLINK_COLORS, BIZLINK_FONTS } from '../../../lib/theme';
 import { managerProfile } from '../../../lib/manager-data';
 import { BizMoreTile } from '../../../components/bizlink/BizMoreTile';
 import { StatusBadge } from '../../../components/ui/StatusBadge';
 
-/** Wireframe s-more — hub for sensitive (locked) + occasional-use features. */
+/** Wireframe s-more — hub for occasional-use features. (Client info protection gate removed for Manager, 2026-07-17 — see ADR-007 follow-up.) */
 export default function ManagerMoreScreen() {
   const insets = useSafeAreaInsets();
   return (
@@ -18,7 +18,7 @@ export default function ManagerMoreScreen() {
       </XStack>
       <ScrollView contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 24 }}>
         <Text fontSize={13} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} marginBottom="$3.5" lineHeight={19}>
-          Dito nakalagay ang mga sensitibong impormasyon (naka-lock) at ang mga bihirang gamitin na feature.
+          Mga karagdagang feature.
         </Text>
         <YStack backgroundColor={BIZLINK_COLORS.card} borderRadius={20} padding={14} marginBottom="$3.5" gap="$1">
           <XStack alignItems="center" gap="$1.5">
@@ -35,17 +35,27 @@ export default function ManagerMoreScreen() {
 
         <XStack flexWrap="wrap" gap="$3">
           <BizMoreTile
+            icon={<Bell size={19} color={BIZLINK_COLORS.text} strokeWidth={1.75} />}
+            title="Notifications"
+            subtitle={<Text fontSize={10.5} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted}>Sync alerts, deadline reminders</Text>}
+            onPress={() => router.push('/(manager)/more/notifications')}
+          />
+          <BizMoreTile
+            icon={<History size={19} color={BIZLINK_COLORS.text} strokeWidth={1.75} />}
+            title="Sync History"
+            subtitle={<Text fontSize={10.5} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted}>Ano ang na-sync, kailan</Text>}
+            onPress={() => router.push('/(manager)/more/sync-history')}
+          />
+          <BizMoreTile
             icon={<Building2 size={19} color={BIZLINK_COLORS.text} strokeWidth={1.75} />}
             title="Clients"
             subtitle={<Text fontSize={10.5} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted}>Buong client list + info ng bawat isa</Text>}
-            locked
             onPress={() => router.push('/(manager)/more/clients')}
           />
           <BizMoreTile
             icon={<History size={19} color={BIZLINK_COLORS.text} strokeWidth={1.75} />}
             title="Sales History"
             subtitle={<Text fontSize={10.5} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted}>Records ng lahat ng meetings ng team</Text>}
-            locked
             onPress={() => router.push('/(manager)/more/meetings')}
           />
           <BizMoreTile

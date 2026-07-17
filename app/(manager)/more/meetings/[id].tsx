@@ -6,8 +6,6 @@ import { Text, XStack, YStack } from 'tamagui';
 import { BIZLINK_COLORS, BIZLINK_FONTS, OUTCOME_BADGE_STYLES } from '../../../../lib/theme';
 import { agentById, clientById } from '../../../../lib/manager-data';
 import { useManagerStore } from '../../../../lib/manager-store';
-import { useGate } from '../../../../lib/gate-context';
-import { SecurityGate } from '../../../../components/security/SecurityGate';
 import { BizTopBar } from '../../../../components/bizlink/BizTopBar';
 import { BizCard } from '../../../../components/bizlink/BizCard';
 import { BizSectionHeader } from '../../../../components/bizlink/BizSectionHeader';
@@ -16,14 +14,11 @@ import { StatusBadge } from '../../../../components/ui/StatusBadge';
 import { meetingBadge } from '../../../../lib/meeting-badge';
 import { MANAGER_OUTCOME_LABELS } from '../../../../types';
 
-/** Wireframe s-meetingdetail — gated. Branches on fastPath (ADR-015) and meetingMode (ADR-012). */
+/** Wireframe s-meetingdetail. Branches on fastPath (ADR-015) and meetingMode (ADR-012). */
 export default function ManagerMeetingDetailScreen() {
   const insets = useSafeAreaInsets();
-  const { unlocked } = useGate();
   const { id } = useLocalSearchParams<{ id: string }>();
   const { meetings } = useManagerStore();
-
-  if (!unlocked) return <SecurityGate />;
 
   const meeting = meetings.find((m) => m.id === id);
   if (!meeting) {

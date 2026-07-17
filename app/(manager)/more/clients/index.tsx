@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { FlatList, TextInput } from 'react-native';
+import { FlatList, ScrollView, TextInput } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { Search } from 'lucide-react-native';
@@ -8,10 +8,7 @@ import { BIZLINK_COLORS, BIZLINK_FONTS } from '../../../../lib/theme';
 import { CLIENT_STATUS_BADGES } from '../../../../lib/client-status';
 import { AGENT_COLORS, getManagerAgents, agentById, computeTeamClientProgress } from '../../../../lib/manager-data';
 import { useManagerStore } from '../../../../lib/manager-store';
-import { useGate } from '../../../../lib/gate-context';
-import { SecurityGate } from '../../../../components/security/SecurityGate';
 import { BizTopBar } from '../../../../components/bizlink/BizTopBar';
-import { BizLockButton } from '../../../../components/bizlink/BizLockButton';
 import { BizChip } from '../../../../components/bizlink/BizChip';
 import { BizButton } from '../../../../components/bizlink/BizButton';
 import { StatusBadge } from '../../../../components/ui/StatusBadge';
@@ -20,10 +17,9 @@ import { CLIENT_STATUSES, type ClientStatus, type TeamClient } from '../../../..
 
 type StatusFilter = ClientStatus | 'all';
 
-/** Wireframe s-clients — gated: filter by agent + status, manager sees self + whole team. */
+/** Wireframe s-clients — filter by agent + status, manager sees self + whole team. */
 export default function ManagerClientsScreen() {
   const insets = useSafeAreaInsets();
-  const { unlocked } = useGate();
   const { clients, meetings } = useManagerStore();
   const [search, setSearch] = useState('');
   const [agentFilter, setAgentFilter] = useState<string | 'all'>('all');
@@ -39,11 +35,9 @@ export default function ManagerClientsScreen() {
     });
   }, [clients, search, agentFilter, statusFilter]);
 
-  if (!unlocked) return <SecurityGate />;
-
   return (
     <YStack flex={1} backgroundColor={BIZLINK_COLORS.canvas} paddingTop={insets.top}>
-      <BizTopBar title="Clients" right={<BizLockButton />} />
+      <BizTopBar title="Clients" />
       <YStack paddingHorizontal="$4" gap="$2.5">
         <XStack alignItems="center" backgroundColor={BIZLINK_COLORS.card} borderRadius={16} height={52} paddingHorizontal={16} gap="$2">
           <Search size={16} color={BIZLINK_COLORS.muted} strokeWidth={1.75} />
@@ -56,19 +50,23 @@ export default function ManagerClientsScreen() {
           />
         </XStack>
         <Text fontSize={11} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} letterSpacing={0.4}>Filter by agent</Text>
-        <XStack gap="$2" flexWrap="wrap">
-          <BizChip label="All" selected={agentFilter === 'all'} onPress={() => setAgentFilter('all')} />
-          {getManagerAgents().map((a) => (
-            <BizChip key={a.id} label={a.name.split(' ')[0]} selected={agentFilter === a.id} onPress={() => setAgentFilter(a.id)} />
-          ))}
-        </XStack>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+          <XStack gap="$2">
+            <BizChip label="All" selected={agentFilter === 'all'} onPress={() => setAgentFilter('all')} />
+            {getManagerAgents().map((a) => (
+              <BizChip key={a.id} label={a.name.split(' ')[0]} selected={agentFilter === a.id} onPress={() => setAgentFilter(a.id)} />
+            ))}
+          </XStack>
+        </ScrollView>
         <Text fontSize={11} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} letterSpacing={0.4}>Filter by status</Text>
-        <XStack gap="$2" flexWrap="wrap">
-          <BizChip label="All" selected={statusFilter === 'all'} onPress={() => setStatusFilter('all')} />
-          {CLIENT_STATUSES.map((s) => (
-            <BizChip key={s} label={CLIENT_STATUS_BADGES[s].label} selected={statusFilter === s} onPress={() => setStatusFilter(s)} />
-          ))}
-        </XStack>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+          <XStack gap="$2">
+            <BizChip label="All" selected={statusFilter === 'all'} onPress={() => setStatusFilter('all')} />
+            {CLIENT_STATUSES.map((s) => (
+              <BizChip key={s} label={CLIENT_STATUS_BADGES[s].label} selected={statusFilter === s} onPress={() => setStatusFilter(s)} />
+            ))}
+          </XStack>
+        </ScrollView>
       </YStack>
 
       <FlatList

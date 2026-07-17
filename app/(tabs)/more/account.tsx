@@ -1,12 +1,14 @@
-import { Alert, ScrollView } from 'react-native';
+import { useCallback, useState } from 'react';
+import { Alert, Image, ScrollView } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { router } from 'expo-router';
-import { Camera, Key, Lock } from 'lucide-react-native';
+import { router, useFocusEffect } from 'expo-router';
+import { ImagePlus, Key, Lock } from 'lucide-react-native';
 import { Text, View, XStack, YStack } from 'tamagui';
 import { useSession } from '../../../lib/session-store';
 import { useAuth } from '../../../lib/useAuth';
 import { BIZLINK_COLORS, BIZLINK_FONTS } from '../../../lib/theme';
 import { showToast } from '../../../lib/toast';
+import { getStoredAvatarUri, pickProfileAvatar } from '../../../lib/profile-avatar';
 import { Avatar } from '../../../components/ui/Avatar';
 import { BizTopBar } from '../../../components/bizlink/BizTopBar';
 import { BizCard } from '../../../components/bizlink/BizCard';
@@ -45,6 +47,26 @@ export default function AgentAccountScreen() {
   const insets = useSafeAreaInsets();
   const { signOut } = useSession();
   const { signOut: signOutSupabase } = useAuth();
+  const [avatarUri, setAvatarUri] = useState<string | null>(null);
+  const [pickingAvatar, setPickingAvatar] = useState(false);
+
+  useFocusEffect(
+    useCallback(() => {
+      getStoredAvatarUri().then(setAvatarUri);
+    }, [])
+  );
+
+  async function handlePickAvatar(): Promise<void> {
+    setPickingAvatar(true);
+    try {
+      const uri = await pickProfileAvatar();
+      if (uri) setAvatarUri(uri);
+    } catch {
+      showToast('Hindi ma-set ang profile picture. Subukan ulit.');
+    } finally {
+      setPickingAvatar(false);
+    }
+  }
 
   function confirmSignOut(): void {
     Alert.alert('Sign Out', 'Are you sure you want to sign out?', [
@@ -67,7 +89,13 @@ export default function AgentAccountScreen() {
       <ScrollView contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 24 }}>
         <BizCard flexDirection="row" alignItems="center" gap="$3.5">
           <View position="relative">
-            <Avatar initials="MS" size="lg" background={BIZLINK_COLORS.tintA} color={BIZLINK_COLORS.ink} />
+            {avatarUri ? (
+              <View width={60} height={60} borderRadius={30} overflow="hidden">
+                <Image source={{ uri: avatarUri }} style={{ width: 60, height: 60 }} resizeMode="cover" />
+              </View>
+            ) : (
+              <Avatar initials="MS" size="lg" background={BIZLINK_COLORS.tintA} color={BIZLINK_COLORS.ink} />
+            )}
             <View
               position="absolute"
               right={-4}
@@ -80,9 +108,9 @@ export default function AgentAccountScreen() {
               borderColor={BIZLINK_COLORS.card}
               alignItems="center"
               justifyContent="center"
-              onPress={() => showToast('Camera only — walang gallery upload (F-014)')}
+              onPress={pickingAvatar ? undefined : handlePickAvatar}
             >
-              <Camera size={13} color={BIZLINK_COLORS.card} strokeWidth={1.75} />
+              <ImagePlus size={13} color={BIZLINK_COLORS.card} strokeWidth={1.75} />
             </View>
           </View>
           <YStack>

@@ -1,14 +1,16 @@
-import { ScrollView } from 'react-native';
+import { useCallback, useState } from 'react';
+import { Image, ScrollView } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { router } from 'expo-router';
-import { Key, Lock } from 'lucide-react-native';
-import { Text, XStack, YStack } from 'tamagui';
+import { router, useFocusEffect } from 'expo-router';
+import { ImagePlus, Key, Lock } from 'lucide-react-native';
+import { Text, View, XStack, YStack } from 'tamagui';
 import { BIZLINK_COLORS, BIZLINK_FONTS } from '../../../lib/theme';
 import { managerProfile } from '../../../lib/manager-data';
 import { useManagerDashboard } from '../../../lib/useManagerDashboard';
 import { useSession } from '../../../lib/session-store';
 import { useAuth } from '../../../lib/useAuth';
 import { showToast } from '../../../lib/toast';
+import { getStoredAvatarUri, pickProfileAvatar } from '../../../lib/profile-avatar';
 import { Avatar } from '../../../components/ui/Avatar';
 import { BizTopBar } from '../../../components/bizlink/BizTopBar';
 import { BizCard } from '../../../components/bizlink/BizCard';
@@ -49,6 +51,26 @@ export default function ManagerAccountScreen() {
   const { signOut } = useSession();
   const { signOut: signOutSupabase } = useAuth();
   const profile = managerProfile();
+  const [avatarUri, setAvatarUri] = useState<string | null>(null);
+  const [pickingAvatar, setPickingAvatar] = useState(false);
+
+  useFocusEffect(
+    useCallback(() => {
+      getStoredAvatarUri().then(setAvatarUri);
+    }, [])
+  );
+
+  async function handlePickAvatar(): Promise<void> {
+    setPickingAvatar(true);
+    try {
+      const uri = await pickProfileAvatar();
+      if (uri) setAvatarUri(uri);
+    } catch {
+      showToast('Hindi ma-set ang profile picture. Subukan ulit.');
+    } finally {
+      setPickingAvatar(false);
+    }
+  }
 
   async function handleSignOut(): Promise<void> {
     await signOutSupabase();
@@ -61,7 +83,31 @@ export default function ManagerAccountScreen() {
       <BizTopBar title="Account & Security" />
       <ScrollView contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 24 }}>
         <BizCard flexDirection="row" alignItems="center" gap="$3.5">
-          <Avatar initials={profile.fullName.split(' ').map((part) => part[0]).join('')} size="lg" background={BIZLINK_COLORS.tintA} color={BIZLINK_COLORS.ink} />
+          <View position="relative">
+            {avatarUri ? (
+              <View width={60} height={60} borderRadius={30} overflow="hidden">
+                <Image source={{ uri: avatarUri }} style={{ width: 60, height: 60 }} resizeMode="cover" />
+              </View>
+            ) : (
+              <Avatar initials={profile.fullName.split(' ').map((part) => part[0]).join('')} size="lg" background={BIZLINK_COLORS.tintA} color={BIZLINK_COLORS.ink} />
+            )}
+            <View
+              position="absolute"
+              right={-4}
+              bottom={-4}
+              width={26}
+              height={26}
+              borderRadius={13}
+              backgroundColor={BIZLINK_COLORS.brand}
+              borderWidth={2}
+              borderColor={BIZLINK_COLORS.card}
+              alignItems="center"
+              justifyContent="center"
+              onPress={pickingAvatar ? undefined : handlePickAvatar}
+            >
+              <ImagePlus size={13} color={BIZLINK_COLORS.card} strokeWidth={1.75} />
+            </View>
+          </View>
           <YStack>
             <Text fontFamily={BIZLINK_FONTS.semibold} fontSize={17} color={BIZLINK_COLORS.text}>{profile.fullName}</Text>
             <Text fontSize={13} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted}>{profile.title} · {profile.team}</Text>
