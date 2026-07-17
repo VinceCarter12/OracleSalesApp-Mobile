@@ -6,12 +6,12 @@ import { ClipboardList, Lightbulb } from 'lucide-react-native';
 import { Text, XStack, YStack } from 'tamagui';
 import { useSession } from '../../../lib/session-store';
 import { checkCompanyNameDuplicate, createClient, DuplicateCompanyNameError } from '../../../lib/client-service';
-import { COLORS } from '../../../lib/theme';
+import { BIZLINK_COLORS, BIZLINK_FONTS } from '../../../lib/theme';
 import { showToast } from '../../../lib/toast';
-import { TopBar } from '../../../components/ui/TopBar';
-import { Field } from '../../../components/ui/Field';
-import { Card } from '../../../components/ui/Card';
-import { DuoButton } from '../../../components/ui/DuoButton';
+import { BizTopBar } from '../../../components/bizlink/BizTopBar';
+import { BizField } from '../../../components/bizlink/BizField';
+import { BizCard } from '../../../components/bizlink/BizCard';
+import { BizButton } from '../../../components/bizlink/BizButton';
 
 // 'unknown' (offline, live check failed and nothing local matched) is
 // treated as available — same soft-warning UX as before T-005, since the
@@ -81,22 +81,23 @@ export default function CreateClientScreen() {
   const canCreate = dupState === 'available' && !saving;
 
   return (
-    <YStack flex={1} backgroundColor={COLORS.snow} paddingTop={insets.top}>
-      <TopBar title="New Client" />
+    <YStack flex={1} backgroundColor={BIZLINK_COLORS.canvas} paddingTop={insets.top}>
+      <BizTopBar title="New Client" />
       <ScrollView contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 24 }}>
-        <Card flat marginBottom="$4">
+        <BizCard flat marginBottom="$4">
           <XStack gap="$2" alignItems="center">
-            <ClipboardList size={15} color={COLORS.eel} />
-            <Text fontSize={13} fontWeight="800" color={COLORS.eel}>Two-phase creation</Text>
+            <ClipboardList size={15} color={BIZLINK_COLORS.text} strokeWidth={1.75} />
+            <Text fontSize={13} fontFamily={BIZLINK_FONTS.semibold} color={BIZLINK_COLORS.text}>Two-phase creation</Text>
           </XStack>
-          <Text fontSize={13} fontWeight="600" color={COLORS.hare} marginTop="$1">
-            Company name lang ang kailangan ngayon. May <Text fontWeight="800" color={COLORS.eel}>1 buwan</Text> ka
+          <Text fontSize={13} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} marginTop="$1">
+            Company name lang ang kailangan ngayon. May{' '}
+            <Text fontFamily={BIZLINK_FONTS.semibold} color={BIZLINK_COLORS.text}>1 buwan</Text> ka
             para kumpletuhin ang buong info — o kumpletuhin ito mismo sa unang meeting.
           </Text>
-        </Card>
+        </BizCard>
 
-        <Field
-          label="Company Name *"
+        <BizField
+          label="COMPANY NAME *"
           value={companyName}
           onChangeText={setCompanyName}
           placeholder="e.g. Oracle Petroleum"
@@ -104,24 +105,24 @@ export default function CreateClientScreen() {
             dupState === 'duplicate' ? (
               <Text
                 fontSize={11.5}
-                fontWeight="700"
-                backgroundColor={COLORS.redSoft}
-                color={COLORS.ledgeRed}
-                borderRadius={10}
-                paddingHorizontal={12}
-                paddingVertical={8}
+                fontFamily={BIZLINK_FONTS.semibold}
+                backgroundColor={BIZLINK_COLORS.tintB}
+                color={BIZLINK_COLORS.red}
+                borderRadius={14}
+                paddingHorizontal={13}
+                paddingVertical={9}
               >
                 May client nang ganitong pangalan sa city na ito — bawal ang duplicate.
               </Text>
             ) : dupState === 'available' ? (
               <Text
                 fontSize={11.5}
-                fontWeight="700"
-                backgroundColor={COLORS.greenSoft}
-                color={COLORS.ledgeGreen}
-                borderRadius={10}
-                paddingHorizontal={12}
-                paddingVertical={8}
+                fontFamily={BIZLINK_FONTS.semibold}
+                backgroundColor={BIZLINK_COLORS.tintA}
+                color={BIZLINK_COLORS.ink}
+                borderRadius={14}
+                paddingHorizontal={13}
+                paddingVertical={9}
               >
                 ✓ Available ang pangalang ito.
               </Text>
@@ -129,27 +130,27 @@ export default function CreateClientScreen() {
           }
         />
 
-        <Field
-          label="City *"
+        <BizField
+          label="CITY *"
           value={city}
           onChangeText={setCity}
           placeholder="e.g. Cabanatuan"
         />
 
         <XStack gap="$2" alignItems="flex-start" marginBottom="$4">
-          <Lightbulb size={14} color={COLORS.hare} style={{ marginTop: 2 }} />
-          <Text fontSize={13} fontWeight="600" color={COLORS.hare} flex={1}>
+          <Lightbulb size={14} color={BIZLINK_COLORS.muted} strokeWidth={1.75} style={{ marginTop: 2 }} />
+          <Text fontSize={13} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} flex={1}>
             Bawal ang duplicate na parehong pangalan sa parehong city — pero pwede ang parehong
             company name kung ibang city, hal. Oracle Petroleum sa Bataan at sa Pampanga.
           </Text>
         </XStack>
 
-        <DuoButton
+        <BizButton
           label={saving ? 'Creating…' : 'Create Client'}
           onPress={handleCreate}
           disabled={!canCreate}
         />
-        <Text fontSize={13} fontWeight="600" color={COLORS.hare} textAlign="center" marginTop="$3">
+        <Text fontSize={13} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} textAlign="center" marginTop="$3">
           Gagana kahit OFFLINE — sa sync queue mapupunta.
         </Text>
       </ScrollView>

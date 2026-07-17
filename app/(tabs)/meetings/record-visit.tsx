@@ -9,11 +9,11 @@ import { useSession } from '../../../lib/session-store';
 import { rowToClient, type LocalClientRow } from '../../../lib/local-client-mapper';
 import { createMeeting, uploadMeetingPhoto } from '../../../lib/meeting-service';
 import { captureGps } from '../../../lib/gps';
-import { COLORS } from '../../../lib/theme';
-import { TopBar } from '../../../components/ui/TopBar';
-import { Card } from '../../../components/ui/Card';
-import { SectionHeader } from '../../../components/ui/SectionHeader';
-import { DuoButton } from '../../../components/ui/DuoButton';
+import { BIZLINK_COLORS, BIZLINK_FONTS } from '../../../lib/theme';
+import { BizTopBar } from '../../../components/bizlink/BizTopBar';
+import { BizCard } from '../../../components/bizlink/BizCard';
+import { BizSectionHeader } from '../../../components/bizlink/BizSectionHeader';
+import { BizButton } from '../../../components/bizlink/BizButton';
 import { ClientInfoCard } from '../../../components/clients/ClientInfoCard';
 import { AgendaChecklist } from '../../../components/meetings/AgendaChecklist';
 import { MeetingModeToggle } from '../../../components/meetings/MeetingModeToggle';
@@ -33,6 +33,14 @@ interface StartCapture {
  * info is display-only. Admin (web) manually validates the meeting by
  * matching the Start GPS to the End photo's GPS; duration is computed
  * web-side from the two timestamps, never here.
+ *
+ * NOTE (flagged, not implemented here): the wireframe's a-recordvisit screen
+ * shows the End photo button DISABLED until at least one Agenda tile is
+ * selected (`#a-visitEndBtn disabled` + `#a-visitAgendaGateNote` warning
+ * text). The real PhotoCapture component below has no such gate — its
+ * capture button is always enabled once the meeting has started. This is a
+ * small behavior addition beyond a pure visual reskin, so it was
+ * deliberately NOT added in this pass — see the Phase 2 handoff report.
  */
 export default function RecordVisitScreen() {
   const insets = useSafeAreaInsets();
@@ -116,58 +124,58 @@ export default function RecordVisitScreen() {
 
   if (loading) {
     return (
-      <YStack flex={1} justifyContent="center" alignItems="center" backgroundColor={COLORS.snow}>
-        <Spinner size="large" color={COLORS.feather} />
+      <YStack flex={1} justifyContent="center" alignItems="center" backgroundColor={BIZLINK_COLORS.canvas}>
+        <Spinner size="large" color={BIZLINK_COLORS.brand} />
       </YStack>
     );
   }
 
   if (!client) {
     return (
-      <YStack flex={1} justifyContent="center" alignItems="center" padding="$6" backgroundColor={COLORS.snow} gap="$3">
-        <Text>Client not found.</Text>
-        <DuoButton label="Go back" variant="white" onPress={() => router.back()} />
+      <YStack flex={1} justifyContent="center" alignItems="center" padding="$6" backgroundColor={BIZLINK_COLORS.canvas} gap="$3">
+        <Text fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.text}>Client not found.</Text>
+        <BizButton label="Go back" variant="white" onPress={() => router.back()} />
       </YStack>
     );
   }
 
   return (
-    <YStack flex={1} backgroundColor={COLORS.snow} paddingTop={insets.top}>
-      <TopBar title={`Meeting — ${client.company_name}`} />
+    <YStack flex={1} backgroundColor={BIZLINK_COLORS.canvas} paddingTop={insets.top}>
+      <BizTopBar title={`Meeting — ${client.company_name}`} />
       <ScrollView contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 32 }}>
         <ClientInfoCard client={client} />
 
         {!start ? (
           <YStack marginTop="$4" gap="$4">
             <MeetingModeToggle mode={mode} onChange={setMode} />
-            <DuoButton
+            <BizButton
               label={starting ? 'Capturing GPS…' : 'Start'}
               onPress={startMeeting}
               disabled={starting}
             />
-            <Text fontSize={12} fontWeight="600" color={COLORS.hare} textAlign="center">
+            <Text fontSize={12} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} textAlign="center">
               Binds GPS + timestamp to the start of the meeting — no photo needed here anymore.
             </Text>
           </YStack>
         ) : (
           <YStack marginTop="$4" gap="$4">
-            <Card style={{ backgroundColor: COLORS.greenTint, borderWidth: 0 }}>
-              <Text fontWeight="800" fontSize={14} color={COLORS.ledgeGreen}>Meeting in progress</Text>
-              <Text fontSize={12.5} fontWeight="600" color={COLORS.ledgeGreen} marginTop="$1">
+            <BizCard flat borderRadius={20}>
+              <Text fontFamily={BIZLINK_FONTS.semibold} fontSize={14} color={BIZLINK_COLORS.ink}>Meeting in progress</Text>
+              <Text fontSize={12.5} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.ink} marginTop="$1">
                 Started {new Date(start.capturedAt).toLocaleTimeString()} · GPS locked
               </Text>
-            </Card>
+            </BizCard>
 
-            <SectionHeader title="Agenda" helper="· piliin lahat ng na-cover" />
-            <Text fontSize={12} fontWeight="600" color={COLORS.hare} marginTop={-6} marginBottom="$2" lineHeight={17}>
+            <BizSectionHeader title="Agenda" helper="· piliin lahat ng na-cover" />
+            <Text fontSize={12} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} marginTop={-6} marginBottom="$2" lineHeight={17}>
               Ang "Product / company presentation" tick dito ang buong basehan ng progress % ng client — hindi na Complete Info (B-001).
             </Text>
             <AgendaChecklist selected={selectedAgendas} onToggle={toggleAgenda} />
 
             {saving ? (
               <YStack alignItems="center" gap="$2.5" padding="$4">
-                <Spinner size="large" color={COLORS.feather} />
-                <Text color={COLORS.hare}>Saving meeting…</Text>
+                <Spinner size="large" color={BIZLINK_COLORS.brand} />
+                <Text color={BIZLINK_COLORS.muted}>Saving meeting…</Text>
               </YStack>
             ) : (
               <PhotoCapture

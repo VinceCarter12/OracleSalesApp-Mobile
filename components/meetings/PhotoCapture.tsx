@@ -1,9 +1,10 @@
 import { useState } from 'react';
 import { Alert, Image } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
-import { Button, Spinner, Text, YStack } from 'tamagui';
+import { Spinner, Text, YStack } from 'tamagui';
 import { captureGps } from '../../lib/gps';
-import { COLORS } from '../../lib/theme';
+import { BIZLINK_COLORS, BIZLINK_FONTS } from '../../lib/theme';
+import { BizButton } from '../bizlink/BizButton';
 
 export interface CapturedPhoto {
   uri: string;
@@ -79,7 +80,7 @@ export function PhotoCapture({
   if (locked && photo) {
     return (
       <YStack gap="$2">
-        <Text fontSize="$3" color={COLORS.ledgeGreen} fontWeight="700">
+        <Text fontSize={13.5} color={BIZLINK_COLORS.brand} fontFamily={BIZLINK_FONTS.semibold}>
           ✓ {label} locked — {new Date(photo.capturedAt).toLocaleTimeString()}
         </Text>
       </YStack>
@@ -88,32 +89,32 @@ export function PhotoCapture({
 
   return (
     <YStack gap="$2">
-      <Text fontSize="$3" fontWeight="600">{label}</Text>
+      <Text fontSize={13.5} fontFamily={BIZLINK_FONTS.semibold} color={BIZLINK_COLORS.text}>{label}</Text>
       {photo ? (
         <YStack gap="$2">
           <Image
             source={{ uri: photo.uri }}
-            style={{ width: '100%', height: 200, borderRadius: 8 }}
+            style={{ width: '100%', height: 200, borderRadius: 20 }}
             resizeMode="cover"
           />
-          <Text fontSize="$2" color="$colorPress">
+          <Text fontSize={12} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted}>
             GPS {photo.gpsLat.toFixed(4)}, {photo.gpsLng.toFixed(4)} ·{' '}
             {new Date(photo.capturedAt).toLocaleTimeString()}
           </Text>
-          <Button size="$3" onPress={capture} disabled={busy}>
-            Retake (resets timestamp)
-          </Button>
-          <Button size="$4" theme="active" onPress={confirm}>
-            {confirmButtonLabel}
-          </Button>
-          <Text fontSize="$2" color="$colorPress">
+          <BizButton label="Retake (resets timestamp)" variant="white" small onPress={capture} disabled={busy} />
+          <BizButton label={confirmButtonLabel} variant="brand" onPress={confirm} />
+          <Text fontSize={12} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted}>
             Once confirmed, the photo and timestamp are locked.
           </Text>
         </YStack>
       ) : (
-        <Button size="$4" theme="active" onPress={capture} disabled={busy} icon={busy ? <Spinner /> : undefined}>
-          {busy ? 'Opening camera…' : captureButtonLabel}
-        </Button>
+        <BizButton
+          label={busy ? 'Opening camera…' : captureButtonLabel}
+          variant="brand"
+          onPress={capture}
+          disabled={busy}
+          icon={busy ? <Spinner color={BIZLINK_COLORS.card} /> : undefined}
+        />
       )}
     </YStack>
   );

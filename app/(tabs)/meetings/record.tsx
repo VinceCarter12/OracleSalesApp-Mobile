@@ -10,14 +10,14 @@ import { rowToClient, type LocalClientRow } from '../../../lib/local-client-mapp
 import { useAuth } from '../../../lib/useAuth';
 import { useSession } from '../../../lib/session-store';
 import { captureGps } from '../../../lib/gps';
-import { COLORS } from '../../../lib/theme';
+import { BIZLINK_COLORS, BIZLINK_ON_INK, BIZLINK_FONTS } from '../../../lib/theme';
 import { createMeeting, uploadMeetingPhoto } from '../../../lib/meeting-service';
 import { createClient } from '../../../lib/client-service';
-import { TopBar } from '../../../components/ui/TopBar';
-import { Field } from '../../../components/ui/Field';
-import { SectionHeader } from '../../../components/ui/SectionHeader';
-import { SelectTile } from '../../../components/ui/SelectTile';
-import { DuoButton } from '../../../components/ui/DuoButton';
+import { BizTopBar } from '../../../components/bizlink/BizTopBar';
+import { BizField } from '../../../components/bizlink/BizField';
+import { BizSectionHeader } from '../../../components/bizlink/BizSectionHeader';
+import { BizChip } from '../../../components/bizlink/BizChip';
+import { BizButton } from '../../../components/bizlink/BizButton';
 import { MeetingModeToggle } from '../../../components/meetings/MeetingModeToggle';
 import { LostOpportunityDialog } from '../../../components/meetings/LostOpportunityDialog';
 import {
@@ -63,8 +63,7 @@ export default function RecordMeetingScreen() {
   useEffect(() => {
     if (!clientId) return;
     // Local SQLite is the primary read path (ADR-001) — a `pending`
-    // (not-yet-synced) client only exists here. This used to query Supabase
-    // directly, so a just-created client's name never showed at all.
+    // (not-yet-synced) client only exists here.
     db.getFirstAsync<LocalClientRow>('SELECT * FROM clients WHERE id = ?', [clientId]).then((row) => {
       if (row) setClientName(rowToClient(row).company_name);
     });
@@ -148,9 +147,7 @@ export default function RecordMeetingScreen() {
 
       // Meeting-first exception (Rule 4): the info captured here becomes the
       // client record automatically. Goes through the same offline-first
-      // dup-check + local write + outbox enqueue as Create Client (T-005) —
-      // this used to be a direct, un-queued Supabase insert with zero
-      // duplicate check.
+      // dup-check + local write + outbox enqueue as Create Client (T-005).
       if (meetingFirst) {
         resolvedClientId = await createClient({
           companyName: newCompanyName,
@@ -193,36 +190,29 @@ export default function RecordMeetingScreen() {
   }
 
   return (
-    <YStack flex={1} backgroundColor={COLORS.snow} paddingTop={insets.top}>
-      <TopBar title="Record Meeting" />
+    <YStack flex={1} backgroundColor={BIZLINK_COLORS.canvas} paddingTop={insets.top}>
+      <BizTopBar title="Record Meeting" />
       <ScrollView contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 32 }}>
         <YStack gap="$2.5" marginBottom="$3.5">
-          <SelectTile
-            label="✨ Unang beses ko makausap ang client na ito (meeting-first)"
+          <BizChip
+            label="Unang beses ko makausap ang client na ito (meeting-first)"
             selected={meetingFirst}
             onPress={() => setMeetingFirst((v) => !v)}
             fullWidth
-            icon={<Sparkles size={14} color={meetingFirst ? COLORS.blue : COLORS.eel} />}
+            icon={<Sparkles size={14} color={meetingFirst ? BIZLINK_COLORS.card : BIZLINK_COLORS.muted} strokeWidth={1.75} />}
           />
-          <SelectTile
+          <BizChip
             label="May kasama akong manager ngayon (tag-along)"
             selected={tagAlong}
             onPress={() => setTagAlong((v) => !v)}
             fullWidth
-            icon={<Users size={14} color={tagAlong ? COLORS.blue : COLORS.eel} />}
+            icon={<Users size={14} color={tagAlong ? BIZLINK_COLORS.card : BIZLINK_COLORS.muted} strokeWidth={1.75} />}
           />
         </YStack>
 
         {tagAlong ? (
-          <YStack
-            backgroundColor={COLORS.greenTint}
-            borderWidth={2}
-            borderColor={COLORS.feather}
-            borderRadius={14}
-            padding="$3"
-            marginBottom="$3.5"
-          >
-            <Text fontSize={12} fontWeight="700" color={COLORS.ledgeGreen} lineHeight={17}>
+          <YStack backgroundColor={BIZLINK_COLORS.tintA} borderRadius={20} padding={14} marginBottom="$3.5">
+            <Text fontSize={12} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.ink} lineHeight={17}>
               Siguraduhing makikita ang manager sa meeting photo — ito ang proof niya na sumama siya.
               Ikaw pa rin ang magre-record; siya na lang ang mag-a-approve pagkatapos.
             </Text>
@@ -231,26 +221,26 @@ export default function RecordMeetingScreen() {
 
         {meetingFirst ? (
           <YStack marginBottom="$2">
-            <Field
+            <BizField
               label="New Company Name"
               value={newCompanyName}
               onChangeText={setNewCompanyName}
               placeholder="Company name"
             />
-            <Field
+            <BizField
               label="City"
               value={newCompanyCity}
               onChangeText={setNewCompanyCity}
               placeholder="e.g. Cabanatuan"
             />
-            <Text fontSize={12} fontWeight="600" color={COLORS.hare} marginTop="$-2" marginBottom="$2">
+            <Text fontSize={12} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} marginTop="$-2" marginBottom="$2">
               Ang info na makukuha mo dito ay awtomatikong magiging client record (Rule 4 — meeting-first exception).
             </Text>
           </YStack>
         ) : (
           <>
-            <SectionHeader title="Company" />
-            <Text fontWeight="800" fontSize={14} color={COLORS.eel} marginBottom="$3.5">
+            <BizSectionHeader title="Company" />
+            <Text fontFamily={BIZLINK_FONTS.semibold} fontSize={14} color={BIZLINK_COLORS.text} marginBottom="$3.5">
               {clientName ?? '—'}
             </Text>
           </>
@@ -258,14 +248,14 @@ export default function RecordMeetingScreen() {
 
         <MeetingModeToggle mode={mode} onChange={setMode} />
 
-        <Text fontSize={10.5} fontWeight="700" color={COLORS.hare} textTransform="uppercase" letterSpacing={0.6} marginTop="$4" marginBottom="$1">
+        <Text fontSize={11} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} letterSpacing={0.5} marginTop="$4" marginBottom="$1">
           Auto-captured
         </Text>
-        <YStack backgroundColor={COLORS.polar} borderRadius={16} padding="$3.5" gap="$2">
+        <YStack backgroundColor={BIZLINK_COLORS.ink} borderRadius={24} padding={16} gap="$2.5">
           <XStack alignItems="center" gap="$2">
-            <Check size={14} color={COLORS.ledgeGreen} />
-            <Text fontSize={12.5} fontWeight="700" color={COLORS.eel}>GPS</Text>
-            <Text fontSize={12.5} fontWeight="600" color={COLORS.hare}>
+            <Check size={14} color="#8FD7B4" strokeWidth={1.75} />
+            <Text fontSize={12.5} fontFamily={BIZLINK_FONTS.semibold} color={BIZLINK_COLORS.card}>GPS</Text>
+            <Text fontSize={12.5} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_ON_INK.textMuted}>
               {loadingLocation
                 ? 'Capturing…'
                 : location
@@ -274,41 +264,41 @@ export default function RecordMeetingScreen() {
             </Text>
           </XStack>
           <XStack alignItems="center" gap="$2">
-            <Check size={14} color={COLORS.ledgeGreen} />
-            <Text fontSize={12.5} fontWeight="700" color={COLORS.eel}>Date & time</Text>
-            <Text fontSize={12.5} fontWeight="600" color={COLORS.hare}>{new Date().toLocaleString()}</Text>
+            <Check size={14} color="#8FD7B4" strokeWidth={1.75} />
+            <Text fontSize={12.5} fontFamily={BIZLINK_FONTS.semibold} color={BIZLINK_COLORS.card}>Date & time</Text>
+            <Text fontSize={12.5} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_ON_INK.textMuted}>{new Date().toLocaleString()}</Text>
           </XStack>
           <XStack alignItems="center" gap="$3">
             {photoUri ? (
-              <Image source={{ uri: photoUri }} style={{ width: 60, height: 60, borderRadius: 12 }} />
+              <Image source={{ uri: photoUri }} style={{ width: 56, height: 56, borderRadius: 16 }} />
             ) : (
-              <YStack width={60} height={60} borderRadius={12} backgroundColor={COLORS.swan} alignItems="center" justifyContent="center">
-                <Camera size={20} color={COLORS.wolf} />
+              <YStack width={56} height={56} borderRadius={16} backgroundColor={BIZLINK_ON_INK.circleFill} alignItems="center" justifyContent="center">
+                <Camera size={20} color={BIZLINK_COLORS.card} strokeWidth={1.75} />
               </YStack>
             )}
             <YStack flex={1}>
-              <Text fontSize={12} fontWeight="800" color={COLORS.eel}>Selfie — camera only</Text>
-              <Text fontSize={11} fontWeight="600" color={COLORS.hare}>Compressed ≤3MB · naka-save locally</Text>
+              <Text fontSize={12} fontFamily={BIZLINK_FONTS.semibold} color={BIZLINK_COLORS.card}>Selfie — camera only</Text>
+              <Text fontSize={11} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_ON_INK.textMuted}>Compressed ≤3MB · naka-save locally</Text>
               <YStack marginTop="$1.5">
-                <DuoButton small label={photoUri ? 'Retake' : 'Open Camera'} variant="white" onPress={captureSelfie} />
+                <BizButton small label={photoUri ? 'Retake' : 'Open Camera'} variant="white" onPress={captureSelfie} />
               </YStack>
             </YStack>
           </XStack>
         </YStack>
 
-        <SectionHeader title="Actual contact person" />
-        <Field label="Name" value={contactName} onChangeText={setContactName} placeholder="Name" />
-        <Field
+        <BizSectionHeader title="Actual contact person" />
+        <BizField label="Name" value={contactName} onChangeText={setContactName} placeholder="Name" />
+        <BizField
           label="Position"
           value={contactPosition}
           onChangeText={setContactPosition}
           placeholder="Position (Purchasing / CEO / Owner…)"
         />
 
-        <SectionHeader title="Customer type" />
+        <BizSectionHeader title="Customer type" />
         <XStack gap="$2" flexWrap="wrap">
           {CLIENT_STATUSES.map((status) => (
-            <SelectTile
+            <BizChip
               key={status}
               label={status.charAt(0).toUpperCase() + status.slice(1)}
               selected={customerType === status}
@@ -317,10 +307,10 @@ export default function RecordMeetingScreen() {
           ))}
         </XStack>
 
-        <SectionHeader title="Meeting location" />
+        <BizSectionHeader title="Meeting location" />
         <XStack gap="$2" flexWrap="wrap">
           {LOCATIONS.map((loc) => (
-            <SelectTile key={loc} label={loc} selected={meetingLocation === loc} onPress={() => setMeetingLocation(loc)} />
+            <BizChip key={loc} label={loc} selected={meetingLocation === loc} onPress={() => setMeetingLocation(loc)} />
           ))}
         </XStack>
         {meetingLocation === 'Others' ? (
@@ -329,28 +319,27 @@ export default function RecordMeetingScreen() {
               value={otherLocation}
               onChangeText={setOtherLocation}
               placeholder="e.g. Starbucks Alabang"
-              placeholderTextColor={COLORS.hare}
+              placeholderTextColor={BIZLINK_COLORS.muted}
               style={{
-                height: 50,
-                borderWidth: 2,
-                borderColor: COLORS.swan,
-                borderRadius: 12,
-                paddingHorizontal: 14,
-                fontWeight: '700',
+                height: 52,
+                borderRadius: 16,
+                paddingHorizontal: 16,
+                fontFamily: BIZLINK_FONTS.medium,
                 fontSize: 14.5,
-                color: COLORS.eel,
+                color: BIZLINK_COLORS.text,
+                backgroundColor: BIZLINK_COLORS.canvas,
               }}
             />
           </YStack>
         ) : null}
 
-        <SectionHeader title="Agenda" helper="· piliin lahat" />
-        <Text fontSize={12} fontWeight="600" color={COLORS.hare} marginTop={-6} marginBottom="$2" lineHeight={17}>
+        <BizSectionHeader title="Agenda" helper="· piliin lahat" />
+        <Text fontSize={12} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} marginTop={-6} marginBottom="$2" lineHeight={17}>
           Ang "Product / company presentation" tick dito ang buong basehan ng progress % ng client — hindi na Complete Info (B-001).
         </Text>
         <XStack gap="$2" flexWrap="wrap">
           {MEETING_AGENDAS.map((agenda) => (
-            <SelectTile
+            <BizChip
               key={agenda}
               label={agenda}
               selected={selectedAgendas.includes(agenda)}
@@ -359,42 +348,41 @@ export default function RecordMeetingScreen() {
           ))}
         </XStack>
 
-        <SectionHeader title="Remarks" />
+        <BizSectionHeader title="Remarks" />
         <TextInput
           value={remarks}
           onChangeText={setRemarks}
           placeholder="Notes / comments…"
-          placeholderTextColor={COLORS.hare}
+          placeholderTextColor={BIZLINK_COLORS.muted}
           multiline
           style={{
-            height: 70,
-            borderWidth: 2,
-            borderColor: COLORS.swan,
-            borderRadius: 12,
-            paddingHorizontal: 14,
-            paddingVertical: 12,
-            fontWeight: '700',
+            height: 74,
+            borderRadius: 16,
+            paddingHorizontal: 16,
+            paddingVertical: 14,
+            fontFamily: BIZLINK_FONTS.medium,
             fontSize: 14.5,
-            color: COLORS.eel,
+            color: BIZLINK_COLORS.text,
+            backgroundColor: BIZLINK_COLORS.canvas,
             textAlignVertical: 'top',
           }}
         />
 
-        <SectionHeader title="Meeting outcome *" />
+        <BizSectionHeader title="Meeting outcome *" />
         <XStack gap="$2" flexWrap="wrap">
-          <SelectTile label="✓ Successful" tone="ok" selected={outcome === 'Successful'} onPress={() => selectOutcome('Successful')} />
-          <SelectTile label="Follow-up required" selected={outcome === 'Follow-up Required'} onPress={() => selectOutcome('Follow-up Required')} />
-          <SelectTile label="No decision" selected={outcome === 'No Decision'} onPress={() => selectOutcome('No Decision')} />
-          <SelectTile label="Lost opportunity" tone="lost" selected={outcome === 'Lost Opportunity'} onPress={() => selectOutcome('Lost Opportunity')} />
+          <BizChip label="✓ Successful" tone="ok" selected={outcome === 'Successful'} onPress={() => selectOutcome('Successful')} />
+          <BizChip label="Follow-up required" selected={outcome === 'Follow-up Required'} onPress={() => selectOutcome('Follow-up Required')} />
+          <BizChip label="No decision" selected={outcome === 'No Decision'} onPress={() => selectOutcome('No Decision')} />
+          <BizChip label="Lost opportunity" tone="lost" selected={outcome === 'Lost Opportunity'} onPress={() => selectOutcome('Lost Opportunity')} />
         </XStack>
 
         <YStack marginTop="$5">
-          <DuoButton label={saving ? 'Saving…' : 'Save Meeting'} onPress={doSave} disabled={saving} />
+          <BizButton label={saving ? 'Saving…' : 'Save Meeting'} onPress={doSave} disabled={saving} />
         </YStack>
         <XStack justifyContent="center" marginTop="$2.5">
-          {saving ? <Spinner color={COLORS.feather} /> : null}
+          {saving ? <Spinner color={BIZLINK_COLORS.brand} /> : null}
         </XStack>
-        <Text fontSize={12} fontWeight="600" color={COLORS.hare} textAlign="center" marginTop="$2">
+        <Text fontSize={12} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} textAlign="center" marginTop="$2">
           Gagana kahit walang signal — mase-save locally, auto-sync mamaya.
         </Text>
       </ScrollView>

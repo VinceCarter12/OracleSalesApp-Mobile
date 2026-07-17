@@ -3,7 +3,7 @@ import { Pressable } from 'react-native';
 import { router } from 'expo-router';
 import { Fingerprint } from 'lucide-react-native';
 import { Text, View, XStack, YStack } from 'tamagui';
-import { COLORS } from '../../lib/theme';
+import { BIZLINK_COLORS, BIZLINK_FONTS } from '../../lib/theme';
 import { useGate } from '../../lib/gate-context';
 
 const KEYS = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '', '0', '⌫'];
@@ -29,23 +29,23 @@ export function SecurityGate() {
   }
 
   return (
-    <YStack flex={1} backgroundColor={COLORS.snow} alignItems="center" justifyContent="center" paddingHorizontal="$7" gap="$4">
+    <YStack flex={1} backgroundColor={BIZLINK_COLORS.ink} alignItems="center" justifyContent="center" paddingHorizontal="$7" gap="$4">
       <Pressable onPress={unlock}>
         <View
           width={104}
           height={104}
           borderRadius={52}
-          backgroundColor={COLORS.blueSoft}
+          backgroundColor="rgba(255,255,255,0.12)"
           alignItems="center"
           justifyContent="center"
         >
-          <Fingerprint size={46} color={COLORS.blue} />
+          <Fingerprint size={46} color={BIZLINK_COLORS.card} strokeWidth={1.75} />
         </View>
       </Pressable>
 
       <YStack alignItems="center" gap="$1.5">
-        <Text fontWeight="800" fontSize={19} color={COLORS.eel}>Protektadong impormasyon</Text>
-        <Text fontSize={13} fontWeight="600" color={COLORS.hare} textAlign="center" lineHeight={19}>
+        <Text fontFamily={BIZLINK_FONTS.semibold} fontSize={19} color={BIZLINK_COLORS.card}>Protektadong impormasyon</Text>
+        <Text fontSize={13} fontFamily={BIZLINK_FONTS.medium} color="rgba(255,255,255,0.6)" textAlign="center" lineHeight={19}>
           Pindutin ang icon para gumamit ng fingerprint,{'\n'}o gamitin ang passcode sa ibaba.
         </Text>
       </YStack>
@@ -58,8 +58,8 @@ export function SecurityGate() {
             height={15}
             borderRadius={8}
             borderWidth={2}
-            borderColor={COLORS.swan}
-            backgroundColor={i < passcode.length ? COLORS.feather : 'transparent'}
+            borderColor="rgba(255,255,255,0.35)"
+            backgroundColor={i < passcode.length ? BIZLINK_COLORS.card : 'transparent'}
           />
         ))}
       </XStack>
@@ -73,19 +73,19 @@ export function SecurityGate() {
             style={{
               width: 76,
               height: 52,
-              borderRadius: 14,
-              backgroundColor: key ? COLORS.polar : 'transparent',
+              borderRadius: 999,
+              backgroundColor: key ? 'rgba(255,255,255,0.1)' : 'transparent',
               alignItems: 'center',
               justifyContent: 'center',
             }}
           >
-            <Text fontWeight="800" fontSize={18} color={COLORS.eel}>{key}</Text>
+            <Text fontFamily={BIZLINK_FONTS.semibold} fontSize={18} color={BIZLINK_COLORS.card}>{key}</Text>
           </Pressable>
         ))}
       </XStack>
 
-      <Pressable onPress={() => (router.canGoBack() ? router.back() : router.replace('/(tabs)'))}>
-        <Text fontSize={12.5} fontWeight="800" color={COLORS.blue}>Cancel</Text>
+      <Pressable onPress={() => (router.canGoBack() ? router.back() : router.replace('/(tabs)'))} style={{ minHeight: 44, justifyContent: 'center' }}>
+        <Text fontSize={12.5} fontFamily={BIZLINK_FONTS.semibold} color="rgba(255,255,255,0.6)">Cancel</Text>
       </Pressable>
     </YStack>
   );

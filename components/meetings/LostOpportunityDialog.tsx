@@ -1,7 +1,7 @@
 import { Modal, Pressable } from 'react-native';
 import { Text, XStack, YStack } from 'tamagui';
-import { COLORS } from '../../lib/theme';
-import { DuoButton } from '../ui/DuoButton';
+import { BIZLINK_COLORS, BIZLINK_FONTS } from '../../lib/theme';
+import { BizButton } from '../bizlink/BizButton';
 
 interface LostOpportunityDialogProps {
   visible: boolean;
@@ -24,19 +24,19 @@ export function LostOpportunityDialog({ visible, onCancel, onConfirm }: LostOppo
         }}
       >
         <Pressable onPress={(e) => e.stopPropagation()}>
-          <YStack backgroundColor={COLORS.snow} borderRadius={20} padding="$4.5" width={320}>
-            <Text fontSize={18} fontWeight="800" color={COLORS.ledgeRed}>Lost opportunity?</Text>
-            <Text fontSize={13} fontWeight="600" color={COLORS.eel} marginTop="$2">
+          <YStack backgroundColor={BIZLINK_COLORS.card} borderRadius={24} padding="$4.5" width={320}>
+            <Text fontSize={18} fontFamily={BIZLINK_FONTS.semibold} color={BIZLINK_COLORS.red}>Lost opportunity?</Text>
+            <Text fontSize={13} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.text} marginTop="$2">
               Kapag kinumpirma:
             </Text>
-            <Text fontSize={13} fontWeight="600" color={COLORS.hare} marginTop="$1" lineHeight={19}>
+            <Text fontSize={13} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} marginTop="$1" lineHeight={19}>
               • Matatanggal ang client sa listahan mo{'\n'}
               • Mapupunta sa admin-side list{'\n'}
               • Kapag ni-release ulit, ibang agents lang ang pwedeng kumuha
             </Text>
             <XStack gap="$2.5" marginTop="$4.5">
-              <YStack flex={1}><DuoButton label="Cancel" variant="white" onPress={onCancel} /></YStack>
-              <YStack flex={1}><DuoButton label="Confirm" variant="red" onPress={onConfirm} /></YStack>
+              <YStack flex={1}><BizButton label="Cancel" variant="white" onPress={onCancel} /></YStack>
+              <YStack flex={1}><BizButton label="Confirm" variant="red" onPress={onConfirm} /></YStack>
             </XStack>
           </YStack>
         </Pressable>

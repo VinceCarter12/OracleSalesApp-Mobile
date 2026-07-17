@@ -2,13 +2,13 @@ import { useState } from 'react';
 import { ScrollView, TextInput } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Text, XStack, YStack } from 'tamagui';
-import { COLORS } from '../../../lib/theme';
+import { BIZLINK_COLORS, BIZLINK_FONTS } from '../../../lib/theme';
 import { showToast } from '../../../lib/toast';
-import { TopBar } from '../../../components/ui/TopBar';
-import { SectionHeader } from '../../../components/ui/SectionHeader';
+import { BizTopBar } from '../../../components/bizlink/BizTopBar';
+import { BizSectionHeader } from '../../../components/bizlink/BizSectionHeader';
+import { BizButton } from '../../../components/bizlink/BizButton';
 import { Avatar } from '../../../components/ui/Avatar';
 import { StatusBadge } from '../../../components/ui/StatusBadge';
-import { DuoButton } from '../../../components/ui/DuoButton';
 
 // Mock rosters until the manager/team directory (T-002+ backend) exists.
 const MANAGERS = [
@@ -43,16 +43,16 @@ export default function TagAlongScreen() {
   }
 
   return (
-    <YStack flex={1} backgroundColor={COLORS.snow} paddingTop={insets.top}>
-      <TopBar title="Request Tag-Along" />
+    <YStack flex={1} backgroundColor={BIZLINK_COLORS.canvas} paddingTop={insets.top}>
+      <BizTopBar title="Request Tag-Along" />
       <ScrollView contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 32 }}>
-        <Text fontSize={13} fontWeight="600" color={COLORS.hare} marginBottom="$2" lineHeight={19}>
+        <Text fontSize={13} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} marginBottom="$2" lineHeight={19}>
           Hilingin sa isang manager o ka-team na sumama sa susunod mong client visit. Ikaw pa rin ang
           magre-record ng buong meeting (client info, GPS, litrato, notes) — kasama lang sila sa litrato
           bilang proof.
         </Text>
 
-        <SectionHeader title="Manager" helper="· kahit sinong manager, walang restriction" />
+        <BizSectionHeader title="Manager" helper="· kahit sinong manager, walang restriction" />
         {MANAGERS.map((person) => (
           <RosterRow
             key={person.id}
@@ -64,7 +64,7 @@ export default function TagAlongScreen() {
           />
         ))}
 
-        <SectionHeader title="Ka-team" helper="· ka-team mo lang — bawal ang hindi ka-team (per client)" />
+        <BizSectionHeader title="Ka-team" helper="· ka-team mo lang — bawal ang hindi ka-team (per client)" />
         {TEAMMATES.map((person) => (
           <RosterRow
             key={person.id}
@@ -75,49 +75,49 @@ export default function TagAlongScreen() {
           />
         ))}
 
-        <SectionHeader title="Note (optional)" />
+        <BizSectionHeader title="Note (optional)" />
         <TextInput
           value={note}
           onChangeText={setNote}
           placeholder="e.g. Closing meeting bukas, sana kasama ka…"
-          placeholderTextColor={COLORS.hare}
+          placeholderTextColor={BIZLINK_COLORS.muted}
           multiline
           style={{
-            height: 70,
-            borderWidth: 2,
-            borderColor: COLORS.swan,
-            borderRadius: 12,
-            paddingHorizontal: 14,
-            paddingVertical: 12,
-            fontWeight: '700',
+            height: 74,
+            borderRadius: 16,
+            paddingHorizontal: 16,
+            paddingVertical: 14,
+            fontFamily: BIZLINK_FONTS.medium,
             fontSize: 14.5,
-            color: COLORS.eel,
+            color: BIZLINK_COLORS.text,
+            backgroundColor: BIZLINK_COLORS.card,
             textAlignVertical: 'top',
           }}
         />
 
         <YStack marginTop="$4">
-          <DuoButton label="Send Request" onPress={sendRequest} disabled={!selectedId} />
+          <BizButton label="Send Request" onPress={sendRequest} disabled={!selectedId} />
         </YStack>
 
-        <SectionHeader title="Mga request mo" />
+        <BizSectionHeader title="Mga request mo" />
         {requests.length === 0 ? (
-          <Text fontSize={13} fontWeight="600" color={COLORS.hare}>Wala ka pang requests.</Text>
+          <Text fontSize={13} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted}>Wala ka pang requests.</Text>
         ) : (
           requests.map((req) => (
             <XStack
               key={req.id}
               alignItems="center"
               justifyContent="space-between"
-              paddingVertical={11}
-              borderBottomWidth={2}
-              borderBottomColor={COLORS.polar}
+              backgroundColor={BIZLINK_COLORS.card}
+              borderRadius={20}
+              padding={14}
+              marginBottom={10}
             >
-              <Text fontWeight="700" fontSize={13} color={COLORS.eel}>{req.name}</Text>
+              <Text fontFamily={BIZLINK_FONTS.semibold} fontSize={13} color={BIZLINK_COLORS.text}>{req.name}</Text>
               <StatusBadge
                 label={req.status === 'pending' ? 'Pending' : 'Accepted'}
-                background={req.status === 'pending' ? COLORS.amberSoft : COLORS.greenSoft}
-                color={req.status === 'pending' ? COLORS.orange : COLORS.ledgeGreen}
+                background={req.status === 'pending' ? BIZLINK_COLORS.soft : BIZLINK_COLORS.tintA}
+                color={req.status === 'pending' ? BIZLINK_COLORS.navy : BIZLINK_COLORS.ink}
               />
             </XStack>
           ))
@@ -145,19 +145,18 @@ function RosterRow({
       onPress={onPress}
       alignItems="center"
       gap="$3"
-      backgroundColor={selected ? COLORS.greenTint : COLORS.snow}
-      borderWidth={2}
-      borderColor={selected ? COLORS.feather : COLORS.swan}
-      borderRadius={16}
-      padding="$3"
-      marginBottom="$2.5"
+      backgroundColor={selected ? BIZLINK_COLORS.tintA : BIZLINK_COLORS.card}
+      borderRadius={20}
+      padding={14}
+      marginBottom={10}
+      minHeight={44}
     >
-      <Avatar initials={initials} size="sm" />
+      <Avatar initials={initials} size="sm" background={BIZLINK_COLORS.soft} color={BIZLINK_COLORS.ink} />
       <YStack flex={1}>
-        <Text fontWeight="800" fontSize={13.5} color={COLORS.eel}>{name}</Text>
-        {subtitle ? <Text fontSize={11} fontWeight="600" color={COLORS.hare}>{subtitle}</Text> : null}
+        <Text fontFamily={BIZLINK_FONTS.semibold} fontSize={13.5} color={BIZLINK_COLORS.text}>{name}</Text>
+        {subtitle ? <Text fontSize={11} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted}>{subtitle}</Text> : null}
       </YStack>
-      {selected ? <StatusBadge label="Selected" background={COLORS.feather} color={COLORS.snow} /> : null}
+      {selected ? <StatusBadge label="Selected" background={BIZLINK_COLORS.brand} color={BIZLINK_COLORS.card} /> : null}
     </XStack>
   );
 }

@@ -6,19 +6,16 @@ import { useSQLiteContext } from 'expo-sqlite';
 import { MapPin } from 'lucide-react-native';
 import { Spinner, Text, XStack, YStack } from 'tamagui';
 import { rowToMeeting, type LocalMeetingRow } from '../../../lib/local-meeting-mapper';
-import { COLORS, OUTCOME_BADGE_STYLES } from '../../../lib/theme';
-import { TopBar } from '../../../components/ui/TopBar';
-import { Card } from '../../../components/ui/Card';
-import { SectionHeader } from '../../../components/ui/SectionHeader';
+import { OUTCOME_BADGE_STYLES, BIZLINK_COLORS, BIZLINK_FONTS } from '../../../lib/theme';
+import { BizTopBar } from '../../../components/bizlink/BizTopBar';
+import { BizCard } from '../../../components/bizlink/BizCard';
+import { BizSectionHeader } from '../../../components/bizlink/BizSectionHeader';
 import { StatusBadge } from '../../../components/ui/StatusBadge';
 import type { Meeting } from '../../../types';
 
 /**
  * Local SQLite is the primary read path (ADR-001/T-004) — a meeting only
- * ever exists here until the outbox pushes it. This used to read a single
- * row directly from Supabase via `.single()`, which threw "Cannot coerce the
- * result to a single JSON object" for any meeting not yet synced — same bug
- * class as B-004 (Complete/Edit Info), just never fixed on this screen.
+ * ever exists here until the outbox pushes it.
  */
 export default function MeetingDetailScreen() {
   const insets = useSafeAreaInsets();
@@ -43,16 +40,16 @@ export default function MeetingDetailScreen() {
 
   if (loading) {
     return (
-      <YStack flex={1} justifyContent="center" alignItems="center" backgroundColor={COLORS.snow}>
-        <Spinner size="large" color={COLORS.feather} />
+      <YStack flex={1} justifyContent="center" alignItems="center" backgroundColor={BIZLINK_COLORS.canvas}>
+        <Spinner size="large" color={BIZLINK_COLORS.brand} />
       </YStack>
     );
   }
 
   if (!meeting) {
     return (
-      <YStack flex={1} justifyContent="center" alignItems="center" padding="$6" backgroundColor={COLORS.snow}>
-        <Text>Meeting not found.</Text>
+      <YStack flex={1} justifyContent="center" alignItems="center" padding="$6" backgroundColor={BIZLINK_COLORS.canvas}>
+        <Text fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.text}>Meeting not found.</Text>
       </YStack>
     );
   }
@@ -61,85 +58,85 @@ export default function MeetingDetailScreen() {
   const outcomeStyle = meeting.outcome ? OUTCOME_BADGE_STYLES[meeting.outcome] : null;
 
   return (
-    <YStack flex={1} backgroundColor={COLORS.snow} paddingTop={insets.top}>
-      <TopBar title="Meeting Detail" />
+    <YStack flex={1} backgroundColor={BIZLINK_COLORS.canvas} paddingTop={insets.top}>
+      <BizTopBar title="Meeting Detail" />
       <ScrollView contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 24 }}>
-        <Card>
-          <Text fontWeight="800" fontSize={17} color={COLORS.eel}>
+        <BizCard>
+          <Text fontFamily={BIZLINK_FONTS.semibold} fontSize={17} color={BIZLINK_COLORS.text}>
             {meeting.client_name ?? 'Unknown Client'}
           </Text>
           <XStack gap="$2" marginTop="$2" flexWrap="wrap">
             {outcomeStyle && meeting.outcome ? (
               <StatusBadge label={meeting.outcome} {...outcomeStyle} />
             ) : (
-              <StatusBadge label="Photo visit (fast path)" background={COLORS.greenTint} color={COLORS.ledgeGreen} />
+              <StatusBadge label="Photo visit (fast path)" background={BIZLINK_COLORS.tintA} color={BIZLINK_COLORS.ink} />
             )}
             {meeting.meeting_mode ? (
               <StatusBadge
                 label={meeting.meeting_mode === 'online' ? 'Online' : 'In-person'}
-                background={COLORS.purpleSoft}
-                color={COLORS.purple}
+                background={BIZLINK_COLORS.soft}
+                color={BIZLINK_COLORS.navy}
               />
             ) : null}
           </XStack>
-        </Card>
+        </BizCard>
 
         {isFastPath ? (
           <>
-            <SectionHeader title="Start" />
-            <Card flexDirection="row" gap="$3" alignItems="center">
+            <BizSectionHeader title="Start" />
+            <BizCard flexDirection="row" gap="$3" alignItems="center">
               {meeting.start_photo_url ? (
-                <Image source={{ uri: meeting.start_photo_url }} style={{ width: 64, height: 64, borderRadius: 10 }} />
+                <Image source={{ uri: meeting.start_photo_url }} style={{ width: 64, height: 64, borderRadius: 14 }} />
               ) : null}
-              <Text fontSize={13} fontWeight="700" color={COLORS.eel}>
+              <Text fontSize={13} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.text}>
                 {meeting.start_captured_at ? new Date(meeting.start_captured_at).toLocaleString() : '—'}
               </Text>
-            </Card>
+            </BizCard>
 
-            <SectionHeader title="End" />
-            <Card flexDirection="row" gap="$3" alignItems="center">
+            <BizSectionHeader title="End" />
+            <BizCard flexDirection="row" gap="$3" alignItems="center">
               {meeting.end_photo_url ? (
-                <Image source={{ uri: meeting.end_photo_url }} style={{ width: 64, height: 64, borderRadius: 10 }} />
+                <Image source={{ uri: meeting.end_photo_url }} style={{ width: 64, height: 64, borderRadius: 14 }} />
               ) : null}
-              <Text fontSize={13} fontWeight="700" color={COLORS.eel}>
+              <Text fontSize={13} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.text}>
                 {meeting.end_captured_at ? new Date(meeting.end_captured_at).toLocaleString() : '—'}
               </Text>
-            </Card>
-            <Text fontSize={11.5} fontWeight="600" color={COLORS.hare} marginTop="$2">
+            </BizCard>
+            <Text fontSize={11.5} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} marginTop="$2">
               Duration ay kino-compute sa Excel export (web-side) — hindi dito.
             </Text>
           </>
         ) : (
           <>
-            <SectionHeader title="Selfie" />
+            <BizSectionHeader title="Selfie" />
             {meeting.selfie_url ? (
-              <Image source={{ uri: meeting.selfie_url }} style={{ width: '100%', height: 200, borderRadius: 12 }} />
+              <Image source={{ uri: meeting.selfie_url }} style={{ width: '100%', height: 200, borderRadius: 20 }} />
             ) : (
-              <Text fontSize={13} color={COLORS.hare}>No photo.</Text>
+              <Text fontSize={13} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted}>No photo.</Text>
             )}
           </>
         )}
 
-        <SectionHeader title="Location" />
-        <Card flexDirection="row" gap="$2" alignItems="center">
-          <MapPin size={16} color={COLORS.eel} />
-          <Text fontSize={12.5} fontWeight="700" color={COLORS.eel}>
+        <BizSectionHeader title="Location" />
+        <BizCard flexDirection="row" gap="$2" alignItems="center">
+          <MapPin size={16} color={BIZLINK_COLORS.text} strokeWidth={1.75} />
+          <Text fontSize={12.5} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.text}>
             {meeting.gps_lat.toFixed(4)}, {meeting.gps_lng.toFixed(4)}
           </Text>
-        </Card>
+        </BizCard>
 
         {meeting.agendas.length > 0 ? (
           <>
-            <SectionHeader title="Agenda" />
+            <BizSectionHeader title="Agenda" />
             <XStack gap="$2" flexWrap="wrap">
               {meeting.agendas.map((agenda) => (
-                <StatusBadge key={agenda} label={agenda} background={COLORS.polar} color={COLORS.wolf} />
+                <StatusBadge key={agenda} label={agenda} background={BIZLINK_COLORS.soft} color={BIZLINK_COLORS.muted} />
               ))}
             </XStack>
           </>
         ) : null}
 
-        <Text fontSize={11.5} fontWeight="600" color={COLORS.hare} marginTop="$4" textAlign="center">
+        <Text fontSize={11.5} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} marginTop="$4" textAlign="center">
           Recorded {new Date(meeting.created_at).toLocaleString()}
         </Text>
       </ScrollView>
