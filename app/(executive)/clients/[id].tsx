@@ -1,9 +1,9 @@
-import { Pressable, ScrollView } from 'react-native';
+import { ScrollView } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router, useLocalSearchParams } from 'expo-router';
 import { Calendar, Eye } from 'lucide-react-native';
 import { Text, View, XStack, YStack } from 'tamagui';
-import { COLORS } from '../../../lib/theme';
+import { BIZLINK_COLORS, BIZLINK_FONTS } from '../../../lib/theme';
 import { CLIENT_STATUS_BADGES } from '../../../lib/client-status';
 import {
   computeExecClientProgress,
@@ -15,10 +15,10 @@ import {
 } from '../../../lib/executive-data';
 import { useGate } from '../../../lib/gate-context';
 import { SecurityGate } from '../../../components/security/SecurityGate';
-import { TopBar } from '../../../components/ui/TopBar';
-import { LockButton } from '../../../components/security/LockButton';
-import { Card } from '../../../components/ui/Card';
-import { SectionHeader } from '../../../components/ui/SectionHeader';
+import { BizTopBar } from '../../../components/bizlink/BizTopBar';
+import { BizLockButton } from '../../../components/bizlink/BizLockButton';
+import { BizCard } from '../../../components/bizlink/BizCard';
+import { BizSectionHeader } from '../../../components/bizlink/BizSectionHeader';
 import { StatusBadge } from '../../../components/ui/StatusBadge';
 import { execOutcomeBadge } from '../../../components/executive/exec-badges';
 
@@ -30,7 +30,7 @@ const CHECKLIST_ITEMS: Array<[keyof ExecClientChecklist, string]> = [
   ['channel', 'Sales channel'],
 ];
 
-/** Wireframe x-detail — gated, view-only client detail: progress % (B-001), checklist, meeting history. */
+/** Wireframe x-detail — gated (ADR-007), view-only client detail: progress % (B-001), checklist, meeting history. */
 export default function ExecutiveClientDetailScreen() {
   const insets = useSafeAreaInsets();
   const { unlocked } = useGate();
@@ -41,8 +41,8 @@ export default function ExecutiveClientDetailScreen() {
   const client = execClientById(id);
   if (!client) {
     return (
-      <YStack flex={1} justifyContent="center" alignItems="center" backgroundColor={COLORS.snow}>
-        <Text>Client not found.</Text>
+      <YStack flex={1} justifyContent="center" alignItems="center" backgroundColor={BIZLINK_COLORS.canvas}>
+        <Text fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted}>Client not found.</Text>
       </YStack>
     );
   }
@@ -54,39 +54,39 @@ export default function ExecutiveClientDetailScreen() {
   const badge = CLIENT_STATUS_BADGES[client.status];
 
   return (
-    <YStack flex={1} backgroundColor={COLORS.snow} paddingTop={insets.top}>
-      <TopBar title="Client" right={<LockButton />} />
+    <YStack flex={1} backgroundColor={BIZLINK_COLORS.canvas} paddingTop={insets.top}>
+      <BizTopBar title="Client" right={<BizLockButton />} />
       <ScrollView contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 24 }}>
-        <Card flexDirection="row" alignItems="center" gap="$3.5">
+        <BizCard flexDirection="row" alignItems="center" gap="$3.5">
           <View
             width={70}
             height={70}
             borderRadius={35}
             borderWidth={7}
-            borderColor={progress === 100 ? COLORS.feather : COLORS.swan}
+            borderColor={progress === 100 ? BIZLINK_COLORS.brand : BIZLINK_COLORS.line}
             alignItems="center"
             justifyContent="center"
           >
-            <Text fontWeight="800" fontSize={16} color={COLORS.eel}>{progress}%</Text>
+            <Text fontFamily={BIZLINK_FONTS.semibold} fontSize={16} color={BIZLINK_COLORS.text}>{progress}%</Text>
           </View>
           <YStack flex={1} gap="$1.5">
-            <Text fontWeight="800" fontSize={17} color={COLORS.eel} lineHeight={20}>{client.name}</Text>
+            <Text fontFamily={BIZLINK_FONTS.semibold} fontSize={17} color={BIZLINK_COLORS.text} lineHeight={20}>{client.name}</Text>
             <XStack gap="$1.5" flexWrap="wrap">
               <StatusBadge {...badge} />
-              <StatusBadge label={client.channel} background={COLORS.polar} color={COLORS.wolf} />
+              <StatusBadge label={client.channel} background={BIZLINK_COLORS.soft} color={BIZLINK_COLORS.muted} />
             </XStack>
-            <Text fontSize={11.5} fontWeight="600" color={COLORS.hare}>
-              Manager: <Text color={COLORS.eel} fontWeight="800">{manager?.name ?? '—'}</Text> · Agent:{' '}
-              <Text color={COLORS.eel} fontWeight="800">{agent?.name ?? '—'}</Text>
+            <Text fontSize={11.5} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted}>
+              Manager: <Text color={BIZLINK_COLORS.text} fontFamily={BIZLINK_FONTS.semibold}>{manager?.name ?? '—'}</Text> · Agent:{' '}
+              <Text color={BIZLINK_COLORS.text} fontFamily={BIZLINK_FONTS.semibold}>{agent?.name ?? '—'}</Text>
             </Text>
           </YStack>
-        </Card>
+        </BizCard>
 
-        <SectionHeader title="Info completion" />
-        <Text fontSize={12} fontWeight="600" color={COLORS.hare} marginTop={-8} marginBottom={10} lineHeight={17}>
+        <BizSectionHeader title="Info completion" />
+        <Text fontSize={12} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} marginTop={-8} marginBottom={10} lineHeight={17}>
           Para lang ito sa 1-month data-quality rule — hiwalay na sa progress % sa taas (B-001).
         </Text>
-        <Card>
+        <BizCard>
           {CHECKLIST_ITEMS.map(([key, label]) => {
             const done = client.checklist[key];
             return (
@@ -97,41 +97,48 @@ export default function ExecutiveClientDetailScreen() {
                   borderRadius={11}
                   alignItems="center"
                   justifyContent="center"
-                  backgroundColor={done ? COLORS.greenSoft : COLORS.polar}
+                  backgroundColor={done ? BIZLINK_COLORS.tintA : BIZLINK_COLORS.soft}
                 >
-                  <Text fontSize={12} fontWeight="800" color={done ? COLORS.ledgeGreen : COLORS.hare}>
+                  <Text fontSize={12} fontFamily={BIZLINK_FONTS.semibold} color={done ? BIZLINK_COLORS.brand : BIZLINK_COLORS.muted}>
                     {done ? '✓' : '○'}
                   </Text>
                 </View>
-                <Text fontSize={13.5} fontWeight="700" color={done ? COLORS.eel : COLORS.hare}>{label}</Text>
+                <Text fontSize={13.5} fontFamily={BIZLINK_FONTS.medium} color={done ? BIZLINK_COLORS.text : BIZLINK_COLORS.muted}>{label}</Text>
               </XStack>
             );
           })}
-        </Card>
+        </BizCard>
 
-        <SectionHeader title="Meeting history" />
+        <BizSectionHeader title="Meeting history" />
         {meetings.length === 0 ? (
-          <Text fontSize={13} fontWeight="600" color={COLORS.hare} paddingVertical="$3">Wala pang meeting.</Text>
+          <Text fontSize={13} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} paddingVertical="$3">Wala pang meeting.</Text>
         ) : null}
         {meetings.map((meeting) => (
-          <Pressable key={meeting.id} onPress={() => router.push(`/(executive)/clients/meeting/${meeting.id}`)}>
-            <XStack alignItems="center" gap="$3" paddingVertical={13} borderBottomWidth={2} borderBottomColor={COLORS.polar}>
-              <View width={38} height={38} borderRadius={19} alignItems="center" justifyContent="center" backgroundColor={COLORS.polar}>
-                <Calendar size={15} color={COLORS.wolf} />
-              </View>
-              <YStack flex={1} gap="$0.5">
-                <Text fontWeight="800" fontSize={14} color={COLORS.eel}>{meeting.date} · {meeting.time}</Text>
-                <Text fontSize={11.5} fontWeight="600" color={COLORS.hare}>{meeting.location}</Text>
-              </YStack>
-              {execOutcomeBadge(meeting.outcome)}
-              <Text color={COLORS.swanLedge} fontSize={16}>›</Text>
-            </XStack>
-          </Pressable>
+          <XStack
+            key={meeting.id}
+            alignItems="center"
+            gap="$3"
+            backgroundColor={BIZLINK_COLORS.card}
+            borderRadius={20}
+            padding={14}
+            marginBottom={10}
+            onPress={() => router.push(`/(executive)/clients/meeting/${meeting.id}`)}
+          >
+            <YStack width={36} height={36} borderRadius={18} alignItems="center" justifyContent="center" backgroundColor={BIZLINK_COLORS.soft}>
+              <Calendar size={15} color={BIZLINK_COLORS.muted} strokeWidth={1.75} />
+            </YStack>
+            <YStack flex={1} gap="$0.5">
+              <Text fontFamily={BIZLINK_FONTS.semibold} fontSize={14} color={BIZLINK_COLORS.text}>{meeting.date} · {meeting.time}</Text>
+              <Text fontSize={11.5} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted}>{meeting.location}</Text>
+            </YStack>
+            {execOutcomeBadge(meeting.outcome)}
+            <Text color={BIZLINK_COLORS.muted} fontSize={16}>›</Text>
+          </XStack>
         ))}
 
         <XStack alignItems="center" justifyContent="center" gap="$1.5" paddingVertical="$3.5">
-          <Eye size={13} color={COLORS.hare} />
-          <Text fontSize={12} fontWeight="600" color={COLORS.hare}>
+          <Eye size={13} color={BIZLINK_COLORS.muted} strokeWidth={1.75} />
+          <Text fontSize={12} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted}>
             View-only — ang pag-edit/approve ay nasa manager pa rin.
           </Text>
         </XStack>

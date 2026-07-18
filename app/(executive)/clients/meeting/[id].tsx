@@ -3,29 +3,25 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLocalSearchParams } from 'expo-router';
 import { Camera } from 'lucide-react-native';
 import { Text, View, XStack, YStack } from 'tamagui';
-import { COLORS } from '../../../../lib/theme';
+import { BIZLINK_COLORS, BIZLINK_FONTS } from '../../../../lib/theme';
 import { execAgentById, execClientById, execMeetingById } from '../../../../lib/executive-data';
-import { useGate } from '../../../../lib/gate-context';
-import { SecurityGate } from '../../../../components/security/SecurityGate';
-import { TopBar } from '../../../../components/ui/TopBar';
-import { Card } from '../../../../components/ui/Card';
-import { SectionHeader } from '../../../../components/ui/SectionHeader';
+import { BizTopBar } from '../../../../components/bizlink/BizTopBar';
+import { BizCard } from '../../../../components/bizlink/BizCard';
+import { BizSectionHeader } from '../../../../components/bizlink/BizSectionHeader';
 import { StatusBadge } from '../../../../components/ui/StatusBadge';
+import { Avatar } from '../../../../components/ui/Avatar';
 import { execOutcomeBadge } from '../../../../components/executive/exec-badges';
 
-/** Wireframe x-meetingdetail — gated, view-only: outcome, auto-captured proof, agenda, remarks. */
+/** Wireframe x-meetingdetail — view-only: outcome, auto-captured proof, agenda, remarks. Never gated (matches the wireframe, which has no lockbtn here). */
 export default function ExecutiveMeetingDetailScreen() {
   const insets = useSafeAreaInsets();
-  const { unlocked } = useGate();
   const { id } = useLocalSearchParams<{ id: string }>();
-
-  if (!unlocked) return <SecurityGate />;
 
   const meeting = execMeetingById(id);
   if (!meeting) {
     return (
-      <YStack flex={1} justifyContent="center" alignItems="center" backgroundColor={COLORS.snow}>
-        <Text>Meeting not found.</Text>
+      <YStack flex={1} justifyContent="center" alignItems="center" backgroundColor={BIZLINK_COLORS.canvas}>
+        <Text fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted}>Meeting not found.</Text>
       </YStack>
     );
   }
@@ -34,60 +30,58 @@ export default function ExecutiveMeetingDetailScreen() {
   const agent = execAgentById(meeting.agentId);
 
   return (
-    <YStack flex={1} backgroundColor={COLORS.snow} paddingTop={insets.top}>
-      <TopBar title="Meeting Detail" />
+    <YStack flex={1} backgroundColor={BIZLINK_COLORS.canvas} paddingTop={insets.top}>
+      <BizTopBar title="Meeting Detail" />
       <ScrollView contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 24 }}>
-        <Card flexDirection="row" alignItems="center" gap="$3">
-          <View width={44} height={44} borderRadius={22} alignItems="center" justifyContent="center" backgroundColor={agent?.avatar.background ?? COLORS.polar}>
-            <Text fontWeight="800" fontSize={15} color={agent?.avatar.color ?? COLORS.wolf}>{agent?.initials ?? '—'}</Text>
-          </View>
+        <BizCard flexDirection="row" alignItems="center" gap="$3">
+          <Avatar initials={agent?.initials ?? '—'} background={agent?.avatar.background ?? BIZLINK_COLORS.soft} color={agent?.avatar.color ?? BIZLINK_COLORS.muted} />
           <YStack>
-            <Text fontWeight="800" fontSize={16} color={COLORS.eel}>{client?.name ?? '—'}</Text>
-            <Text fontSize={12.5} fontWeight="600" color={COLORS.hare}>Agent: {agent?.name ?? '—'}</Text>
+            <Text fontFamily={BIZLINK_FONTS.semibold} fontSize={16} color={BIZLINK_COLORS.text}>{client?.name ?? '—'}</Text>
+            <Text fontSize={12.5} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted}>Agent: {agent?.name ?? '—'}</Text>
           </YStack>
-        </Card>
+        </BizCard>
 
-        <SectionHeader title="Outcome" />
+        <BizSectionHeader title="Outcome" />
         <XStack gap="$1.5" flexWrap="wrap">
           {execOutcomeBadge(meeting.outcome)}
           {meeting.synced ? (
-            <StatusBadge label="Synced" background={COLORS.greenSoft} color={COLORS.ledgeGreen} />
+            <StatusBadge label="Synced" background={BIZLINK_COLORS.tintA} color={BIZLINK_COLORS.brand} />
           ) : (
-            <StatusBadge label="Pending sync" background={COLORS.blueSoft} color={COLORS.blue} />
+            <StatusBadge label="Pending sync" background={BIZLINK_COLORS.soft} color={BIZLINK_COLORS.navy} />
           )}
         </XStack>
 
-        <SectionHeader title="Auto-captured" />
-        <Card flat gap="$2">
+        <BizSectionHeader title="Auto-captured" />
+        <BizCard flat gap="$2">
           <XStack alignItems="center" gap="$2">
-            <Text fontSize={13} fontWeight="800" color={COLORS.ledgeGreen}>✓</Text>
-            <Text fontSize={13} fontWeight="700" color={COLORS.eel}>GPS</Text>
-            <Text fontSize={12} fontWeight="600" color={COLORS.hare}>{meeting.gps}</Text>
+            <Text fontSize={13} fontFamily={BIZLINK_FONTS.semibold} color={BIZLINK_COLORS.brand}>✓</Text>
+            <Text fontSize={13} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.text}>GPS</Text>
+            <Text fontSize={12} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted}>{meeting.gps}</Text>
           </XStack>
           <XStack alignItems="center" gap="$2">
-            <Text fontSize={13} fontWeight="800" color={COLORS.ledgeGreen}>✓</Text>
-            <Text fontSize={13} fontWeight="700" color={COLORS.eel}>Date & time</Text>
-            <Text fontSize={12} fontWeight="600" color={COLORS.hare}>{meeting.date} · {meeting.time}</Text>
+            <Text fontSize={13} fontFamily={BIZLINK_FONTS.semibold} color={BIZLINK_COLORS.brand}>✓</Text>
+            <Text fontSize={13} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.text}>Date &amp; time</Text>
+            <Text fontSize={12} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted}>{meeting.date} · {meeting.time}</Text>
           </XStack>
           <XStack alignItems="center" gap="$2.5">
-            <View width={44} height={44} borderRadius={12} borderWidth={2} borderColor={COLORS.swan} alignItems="center" justifyContent="center" backgroundColor={COLORS.snow}>
-              <Camera size={17} color={COLORS.wolf} />
+            <View width={44} height={44} borderRadius={14} alignItems="center" justifyContent="center" backgroundColor={BIZLINK_COLORS.card}>
+              <Camera size={17} color={BIZLINK_COLORS.muted} strokeWidth={1.75} />
             </View>
-            <Text fontSize={12.5} fontWeight="800" color={COLORS.eel}>Selfie captured</Text>
+            <Text fontSize={12.5} fontFamily={BIZLINK_FONTS.semibold} color={BIZLINK_COLORS.text}>Selfie captured</Text>
           </XStack>
-        </Card>
+        </BizCard>
 
-        <SectionHeader title="Agenda" />
+        <BizSectionHeader title="Agenda" />
         <XStack gap="$1.5" flexWrap="wrap">
           {meeting.agenda.map((item) => (
-            <StatusBadge key={item} label={item} background={COLORS.greenTint} color={COLORS.ledgeGreen} />
+            <StatusBadge key={item} label={item} background={BIZLINK_COLORS.tintA} color={BIZLINK_COLORS.brand} />
           ))}
         </XStack>
 
-        <SectionHeader title="Remarks" />
-        <Card flat>
-          <Text fontSize={13.5} fontWeight="600" color={COLORS.eel} lineHeight={20}>{meeting.remarks}</Text>
-        </Card>
+        <BizSectionHeader title="Remarks" />
+        <BizCard flat>
+          <Text fontSize={13.5} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.text} lineHeight={20}>{meeting.remarks}</Text>
+        </BizCard>
       </ScrollView>
     </YStack>
   );

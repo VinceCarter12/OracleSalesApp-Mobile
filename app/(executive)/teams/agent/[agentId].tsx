@@ -1,9 +1,9 @@
-import { Pressable, ScrollView } from 'react-native';
+import { ScrollView } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router, useLocalSearchParams } from 'expo-router';
 import { Handshake } from 'lucide-react-native';
-import { Text, View, XStack, YStack } from 'tamagui';
-import { COLORS } from '../../../../lib/theme';
+import { Text, XStack, YStack } from 'tamagui';
+import { BIZLINK_COLORS, BIZLINK_FONTS } from '../../../../lib/theme';
 import {
   execAgentById,
   execClientById,
@@ -14,14 +14,14 @@ import {
 import { CLIENT_STATUS_BADGES } from '../../../../lib/client-status';
 import { useGate } from '../../../../lib/gate-context';
 import { SecurityGate } from '../../../../components/security/SecurityGate';
-import { TopBar } from '../../../../components/ui/TopBar';
-import { LockButton } from '../../../../components/security/LockButton';
-import { Card } from '../../../../components/ui/Card';
-import { SectionHeader } from '../../../../components/ui/SectionHeader';
+import { BizTopBar } from '../../../../components/bizlink/BizTopBar';
+import { BizLockButton } from '../../../../components/bizlink/BizLockButton';
+import { BizSectionHeader } from '../../../../components/bizlink/BizSectionHeader';
+import { Avatar } from '../../../../components/ui/Avatar';
 import { StatusBadge } from '../../../../components/ui/StatusBadge';
 import { execOutcomeBadge } from '../../../../components/executive/exec-badges';
 
-/** Wireframe x-agentdetail — gated, view-only: one agent's stats, clients, meetings. */
+/** Wireframe x-agentdetail — gated (ADR-007), view-only: one agent's stats, clients, meetings. */
 export default function ExecutiveAgentDetailScreen() {
   const insets = useSafeAreaInsets();
   const { unlocked } = useGate();
@@ -32,8 +32,8 @@ export default function ExecutiveAgentDetailScreen() {
   const agent = execAgentById(agentId);
   if (!agent) {
     return (
-      <YStack flex={1} justifyContent="center" alignItems="center" backgroundColor={COLORS.snow}>
-        <Text>Agent not found.</Text>
+      <YStack flex={1} justifyContent="center" alignItems="center" backgroundColor={BIZLINK_COLORS.canvas}>
+        <Text fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted}>Agent not found.</Text>
       </YStack>
     );
   }
@@ -43,81 +43,91 @@ export default function ExecutiveAgentDetailScreen() {
   const meetings = execMeetingsForAgent(agent.id);
 
   return (
-    <YStack flex={1} backgroundColor={COLORS.snow} paddingTop={insets.top}>
-      <TopBar title={agent.name.split(' ')[0]} right={<LockButton />} />
+    <YStack flex={1} backgroundColor={BIZLINK_COLORS.canvas} paddingTop={insets.top}>
+      <BizTopBar title={agent.name.split(' ')[0]} right={<BizLockButton />} />
       <ScrollView contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 24 }}>
-        <Card flexDirection="row" alignItems="center" gap="$3.5">
-          <XStack width={60} height={60} borderRadius={30} alignItems="center" justifyContent="center" backgroundColor={agent.avatar.background}>
-            <Text fontWeight="800" fontSize={22} color={agent.avatar.color}>{agent.initials}</Text>
-          </XStack>
+        <XStack alignItems="center" gap="$3.5" backgroundColor={BIZLINK_COLORS.card} borderRadius={24} padding={18}>
+          <Avatar initials={agent.initials} size="lg" background={agent.avatar.background} color={agent.avatar.color} />
           <YStack>
-            <Text fontWeight="800" fontSize={17} color={COLORS.eel}>{agent.name}</Text>
-            <Text fontSize={13} fontWeight="600" color={COLORS.hare}>
+            <Text fontFamily={BIZLINK_FONTS.semibold} fontSize={17} color={BIZLINK_COLORS.text}>{agent.name}</Text>
+            <Text fontSize={13} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted}>
               Sales Specialist · under {manager?.name ?? '—'}
             </Text>
           </YStack>
-        </Card>
-
-        <XStack gap="$2.5" marginTop="$3.5">
-          <OverviewStat value={`${agent.meetings}`} label="Meetings" color={COLORS.ledgeGreen} />
-          <OverviewStat value={`${agent.clients}`} label="Clients" color={COLORS.blue} />
-          <OverviewStat value={`${agent.rate}%`} label="Success rate" color={COLORS.orange} />
         </XStack>
 
-        <SectionHeader title="Clients" />
+        <XStack gap={10} marginTop={14}>
+          <StatBox value={`${agent.meetings}`} label="Meetings" />
+          <StatBox value={`${agent.clients}`} label="Clients" />
+          <StatBox value={`${agent.rate}%`} label="Success rate" />
+        </XStack>
+
+        <BizSectionHeader title="Clients" />
         {clients.length === 0 ? (
-          <Text fontSize={13} fontWeight="600" color={COLORS.hare} paddingVertical="$3">Walang clients.</Text>
+          <Text fontSize={13} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} paddingVertical="$3">Walang clients.</Text>
         ) : null}
         {clients.map((client) => {
           const badge = CLIENT_STATUS_BADGES[client.status];
           return (
-            <Pressable key={client.id} onPress={() => router.push(`/(executive)/clients/${client.id}`)}>
-              <XStack alignItems="center" gap="$3" paddingVertical={13} borderBottomWidth={2} borderBottomColor={COLORS.polar}>
-                <View width={38} height={38} borderRadius={19} alignItems="center" justifyContent="center" backgroundColor={COLORS.polar}>
-                  <Text fontWeight="800" fontSize={13} color={COLORS.wolf}>{client.name.slice(0, 2).toUpperCase()}</Text>
-                </View>
-                <YStack flex={1} gap="$0.5">
-                  <Text fontWeight="800" fontSize={14} color={COLORS.eel}>{client.name}</Text>
-                  <Text fontSize={11.5} fontWeight="600" color={COLORS.hare}>{client.channel}</Text>
-                </YStack>
-                <StatusBadge {...badge} />
-                <Text color={COLORS.swanLedge} fontSize={16}>›</Text>
-              </XStack>
-            </Pressable>
+            <XStack
+              key={client.id}
+              alignItems="center"
+              gap="$3"
+              backgroundColor={BIZLINK_COLORS.card}
+              borderRadius={20}
+              padding={14}
+              marginBottom={10}
+              onPress={() => router.push(`/(executive)/clients/${client.id}`)}
+            >
+              <Avatar initials={client.name.slice(0, 2).toUpperCase()} size="sm" background={BIZLINK_COLORS.soft} color={BIZLINK_COLORS.muted} />
+              <YStack flex={1} gap="$0.5">
+                <Text fontFamily={BIZLINK_FONTS.semibold} fontSize={14} color={BIZLINK_COLORS.text}>{client.name}</Text>
+                <Text fontSize={11.5} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted}>{client.channel}</Text>
+              </YStack>
+              <StatusBadge {...badge} />
+              <Text color={BIZLINK_COLORS.muted} fontSize={16}>›</Text>
+            </XStack>
           );
         })}
 
-        <SectionHeader title="Recent meetings" />
+        <BizSectionHeader title="Recent meetings" />
         {meetings.length === 0 ? (
-          <Text fontSize={13} fontWeight="600" color={COLORS.hare} paddingVertical="$3">Wala pang meetings.</Text>
+          <Text fontSize={13} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} paddingVertical="$3">Wala pang meetings.</Text>
         ) : null}
         {meetings.map((meeting) => (
-          <Pressable key={meeting.id} onPress={() => router.push(`/(executive)/clients/meeting/${meeting.id}`)}>
-            <XStack alignItems="center" gap="$3" paddingVertical={13} borderBottomWidth={2} borderBottomColor={COLORS.polar}>
-              <View width={38} height={38} borderRadius={19} alignItems="center" justifyContent="center" backgroundColor={COLORS.polar}>
-                <Handshake size={15} color={COLORS.wolf} />
-              </View>
-              <YStack flex={1} gap="$0.5">
-                <Text fontWeight="800" fontSize={14} color={COLORS.eel}>
-                  {execClientById(meeting.clientId)?.name ?? '—'}
-                </Text>
-                <Text fontSize={11.5} fontWeight="600" color={COLORS.hare}>{meeting.date} · {meeting.time}</Text>
-              </YStack>
-              {execOutcomeBadge(meeting.outcome)}
-              <Text color={COLORS.swanLedge} fontSize={16}>›</Text>
-            </XStack>
-          </Pressable>
+          <XStack
+            key={meeting.id}
+            alignItems="center"
+            gap="$3"
+            backgroundColor={BIZLINK_COLORS.card}
+            borderRadius={20}
+            padding={14}
+            marginBottom={10}
+            onPress={() => router.push(`/(executive)/clients/meeting/${meeting.id}`)}
+          >
+            <YStack width={36} height={36} borderRadius={18} alignItems="center" justifyContent="center" backgroundColor={BIZLINK_COLORS.soft}>
+              <Handshake size={15} color={BIZLINK_COLORS.muted} strokeWidth={1.75} />
+            </YStack>
+            <YStack flex={1} gap="$0.5">
+              <Text fontFamily={BIZLINK_FONTS.semibold} fontSize={14} color={BIZLINK_COLORS.text}>
+                {execClientById(meeting.clientId)?.name ?? '—'}
+              </Text>
+              <Text fontSize={11.5} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted}>{meeting.date} · {meeting.time}</Text>
+            </YStack>
+            {execOutcomeBadge(meeting.outcome)}
+            <Text color={BIZLINK_COLORS.muted} fontSize={16}>›</Text>
+          </XStack>
         ))}
       </ScrollView>
     </YStack>
   );
 }
 
-function OverviewStat({ value, label, color }: { value: string; label: string; color: string }) {
+function StatBox({ value, label }: { value: string; label: string }) {
   return (
-    <YStack flex={1} backgroundColor={COLORS.snow} borderWidth={2} borderColor={COLORS.swan} borderRadius={16} padding="$3" alignItems="center">
-      <Text fontSize={22} fontWeight="800" color={color}>{value}</Text>
-      <Text fontSize={10.5} fontWeight="700" color={COLORS.hare} textAlign="center">{label}</Text>
+    <YStack flex={1} backgroundColor={BIZLINK_COLORS.card} borderRadius={20} padding={14} alignItems="center">
+      <Text fontSize={20} fontFamily={BIZLINK_FONTS.semibold} color={BIZLINK_COLORS.brand}>{value}</Text>
+      <Text fontSize={10.5} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} textAlign="center">{label}</Text>
     </YStack>
   );
 }
