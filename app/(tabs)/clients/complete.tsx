@@ -2,11 +2,9 @@ import { useEffect, useState } from 'react';
 import { Alert, ScrollView } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router, useLocalSearchParams } from 'expo-router';
-import { useSQLiteContext } from 'expo-sqlite';
 import { Spinner, Text, XStack, YStack } from 'tamagui';
 import { useSession } from '../../../lib/session-store';
-import { rowToClient, type LocalClientRow } from '../../../lib/local-client-mapper';
-import { updateClientInfo } from '../../../lib/client-service';
+import { getClientById, updateClientInfo } from '../../../lib/client-service';
 import { BIZLINK_COLORS, BIZLINK_FONTS } from '../../../lib/theme';
 import { showToast } from '../../../lib/toast';
 import { isInfoComplete } from '../../../lib/client-progress';
@@ -15,20 +13,7 @@ import { BizField } from '../../../components/bizlink/BizField';
 import { BizChip } from '../../../components/bizlink/BizChip';
 import { BizSectionHeader } from '../../../components/bizlink/BizSectionHeader';
 import { BizButton } from '../../../components/bizlink/BizButton';
-import { SALES_CHANNELS, type Client, type ClientStatus, type SalesChannel } from '../../../types';
-
-// Wireframe a-complete's "Customer type" segmented control (~line 540) —
-// New/Prospect/Existing, in that display order. Binds to mobile's local
-// lifecycle `status` field (ClientStatus), NOT the legacy `customer_type`
-// field (unused — see lib/remote-client-mapping.ts). 'inactive' is
-// server-side lifecycle only and never offered here.
-const CUSTOMER_TYPE_OPTIONS: readonly ClientStatus[] = ['new', 'prospect', 'existing'];
-const CUSTOMER_TYPE_LABELS: Record<ClientStatus, string> = {
-  new: 'New',
-  prospect: 'Prospect',
-  existing: 'Existing',
-  inactive: 'Inactive',
-};
+import { SALES_CHANNELS, type Client, type SalesChannel } from '../../../types';
 
 /**
  * Complete Info (Wireframe a-complete, F-001 Phase B / F-002): first-time
@@ -41,7 +26,6 @@ const CUSTOMER_TYPE_LABELS: Record<ClientStatus, string> = {
  */
 export default function CompleteInfoScreen() {
   const insets = useSafeAreaInsets();
-  const db = useSQLiteContext();
   const { profileId } = useSession();
   const { clientId } = useLocalSearchParams<{ clientId: string }>();
   const [client, setClient] = useState<Client | null>(null);
@@ -51,27 +35,24 @@ export default function CompleteInfoScreen() {
   const [contactNumber, setContactNumber] = useState('');
   const [officeAddress, setOfficeAddress] = useState('');
   const [channel, setChannel] = useState<SalesChannel>('Distributor');
-  const [customerType, setCustomerType] = useState<ClientStatus>('prospect');
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     if (!clientId) return;
-    db.getFirstAsync<LocalClientRow>('SELECT * FROM clients WHERE id = ?', [clientId]).then((row) => {
-      if (!row) {
+    getClientById(clientId).then((foundClient) => {
+      if (!foundClient) {
         Alert.alert('Error', 'Client not found.');
       } else {
-        const mapped = rowToClient(row);
-        setClient(mapped);
-        setContactPerson(mapped.contact_person ?? '');
-        setPosition(mapped.position ?? '');
-        setContactNumber(mapped.contact_number ?? '');
-        setOfficeAddress(mapped.office_address ?? '');
-        setChannel(mapped.sales_channel ?? 'Distributor');
-        setCustomerType(mapped.status ?? 'prospect');
+        setClient(foundClient);
+        setContactPerson(foundClient.contact_person ?? '');
+        setPosition(foundClient.position ?? '');
+        setContactNumber(foundClient.contact_number ?? '');
+        setOfficeAddress(foundClient.office_address ?? '');
+        setChannel(foundClient.sales_channel ?? 'Distributor');
       }
       setLoading(false);
     });
-  }, [db, clientId]);
+  }, [clientId]);
 
   if (loading || !client) {
     return (
@@ -95,7 +76,6 @@ export default function CompleteInfoScreen() {
         contactNumber,
         officeAddress,
         salesChannel: channel,
-        status: customerType,
       });
       showToast(
         firstTime
@@ -150,18 +130,6 @@ export default function CompleteInfoScreen() {
           onChangeText={setOfficeAddress}
           placeholder="Complete address"
         />
-
-        <BizSectionHeader title="Customer type" />
-        <XStack gap="$2" flexWrap="wrap">
-          {CUSTOMER_TYPE_OPTIONS.map((option) => (
-            <BizChip
-              key={option}
-              label={CUSTOMER_TYPE_LABELS[option]}
-              selected={customerType === option}
-              onPress={() => setCustomerType(option)}
-            />
-          ))}
-        </XStack>
 
         <BizSectionHeader title="Sales channel" />
         <XStack gap="$2" flexWrap="wrap">
