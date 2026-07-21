@@ -24,7 +24,7 @@ export interface SyncStatus {
   connectivity: ConnectivityState | null;
 }
 
-export function useSync(agentId: string | null): SyncStatus {
+export function useSync(agentId: string | null, teamId?: string | null): SyncStatus {
   const [isSyncing, setIsSyncing] = useState(false);
   const [outboxCounts, setOutboxCounts] = useState<OutboxCounts>(EMPTY_OUTBOX_COUNTS);
   const [lastSyncedAt, setLastSyncedAt] = useState<Date | null>(null);
@@ -41,7 +41,7 @@ export function useSync(agentId: string | null): SyncStatus {
     if (!agentId) return;
     setIsSyncing(true);
     try {
-      const result = await runSync(agentId);
+      const result = await runSync(agentId, teamId);
       if (result) {
         setConnectivity(result.connectivity);
         if (result.connectivity === 'online') setLastSyncedAt(new Date());
@@ -53,7 +53,7 @@ export function useSync(agentId: string | null): SyncStatus {
       setIsSyncing(false);
       refreshPendingCount();
     }
-  }, [agentId, refreshPendingCount]);
+  }, [agentId, teamId, refreshPendingCount]);
 
   useEffect(() => {
     refreshPendingCount();

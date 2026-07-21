@@ -1,4 +1,4 @@
-import { TamaguiProvider } from 'tamagui';
+import { TamaguiProvider, Theme } from 'tamagui';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
@@ -12,17 +12,19 @@ import {
 } from '@expo-google-fonts/inter';
 import tamaguiConfig from '../tamagui.config';
 import { SessionProvider, useSession } from '../lib/session-store';
+import { ThemePreferenceProvider, useThemePreference } from '../lib/theme-preference';
 import { GateProvider } from '../lib/gate-context';
 import { DATABASE_NAME, migrateDbIfNeeded } from '../lib/db';
 import { useSync } from '../lib/use-sync';
 
 function RootNavigator() {
-  const { isSignedIn, role, profileId } = useSession();
+  const { isSignedIn, role, profileId, teamId } = useSession();
   // T-002: fires an outbox push + sync-down whenever connectivity comes back,
   // for as long as a signed-in session exists. Uses `profiles.id`, not the
   // Supabase Auth uid — every clients/meetings ownership FK points at
-  // `profiles.id` (see lib/session-store.tsx).
-  useSync(isSignedIn ? profileId : null);
+  // `profiles.id` (see lib/session-store.tsx). `teamId` (ADR-030) powers the
+  // team-roster sync-down pull for the Tag-Along companion picker.
+  useSync(isSignedIn ? profileId : null, isSignedIn ? teamId : null);
   // ADR-017 (2026-07-14): one sales_manager role covers both tracks — which
   // team (Sales vs RSR) they manage is set via team_id, not a separate role.
   const isManager = role === 'sales_manager';
@@ -78,14 +80,33 @@ export default function RootLayout() {
           screen underneath can read/write the local DB. */}
       <SQLiteProvider databaseName={DATABASE_NAME} onInit={migrateDbIfNeeded}>
         <TamaguiProvider config={tamaguiConfig} defaultTheme="light">
-          <StatusBar style="auto" />
-          <SessionProvider>
-            <GateProvider>
-              <RootNavigator />
-            </GateProvider>
-          </SessionProvider>
+          <ThemePreferenceProvider>
+            <ThemedApp />
+          </ThemePreferenceProvider>
         </TamaguiProvider>
       </SQLiteProvider>
     </SafeAreaProvider>
+  );
+}
+
+/**
+ * Split from `RootLayout` so `useThemePreference()` can be called (it needs
+ * `ThemePreferenceProvider` above it in the tree). `<Theme name={...}>`
+ * switches every BizLink-migrated screen's colors between the
+ * `tamagui.config.ts` `bizlinkLight`/`bizlinkDark` token sets — screens
+ * still on the static `BIZLINK_COLORS` import are unaffected until they
+ * migrate to `useBizlinkColors()`.
+ */
+function ThemedApp() {
+  const { resolvedTheme } = useThemePreference();
+  return (
+    <Theme name={resolvedTheme}>
+      <StatusBar style={resolvedTheme === 'dark' ? 'light' : 'dark'} />
+      <SessionProvider>
+        <GateProvider>
+          <RootNavigator />
+        </GateProvider>
+      </SessionProvider>
+    </Theme>
   );
 }

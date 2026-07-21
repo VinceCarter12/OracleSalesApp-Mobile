@@ -2,36 +2,32 @@ import { useEffect, useState } from 'react';
 import { Alert, ScrollView } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router, useLocalSearchParams } from 'expo-router';
-import { useSQLiteContext } from 'expo-sqlite';
-import { TriangleAlert } from 'lucide-react-native';
-import { Spinner, Text, XStack, YStack } from 'tamagui';
+import { Spinner, Text, YStack } from 'tamagui';
 import { useAuth } from '../../../lib/useAuth';
 import { useSession } from '../../../lib/session-store';
-import { rowToClient, type LocalClientRow } from '../../../lib/local-client-mapper';
-import { createMeeting, uploadMeetingPhoto } from '../../../lib/meeting-service';
+import { getClientById } from '../../../lib/client-service';
+import { createMeeting } from '../../../lib/meeting-service';
+import { saveDraft, getDraftForClient, deleteDraft, type MeetingDraft } from '../../../lib/meeting-drafts';
+import { getTeamRoster, inviteeKindForRole } from '../../../lib/team-roster';
+import { MAX_COMPANIONS_PER_REQUEST } from '../../../lib/tag-along-service';
+import { useElapsedTimer } from '../../../lib/use-elapsed-timer';
 import { captureGps } from '../../../lib/gps';
+import { checkConnectivity } from '../../../lib/sync/connectivity';
+import { showToast } from '../../../lib/toast';
 import { BIZLINK_COLORS, BIZLINK_FONTS } from '../../../lib/theme';
 import { BizTopBar } from '../../../components/bizlink/BizTopBar';
-import { BizCard } from '../../../components/bizlink/BizCard';
-import { BizSectionHeader } from '../../../components/bizlink/BizSectionHeader';
 import { BizButton } from '../../../components/bizlink/BizButton';
 import { ClientInfoCard } from '../../../components/clients/ClientInfoCard';
-import { AgendaChecklist } from '../../../components/meetings/AgendaChecklist';
-import { MeetingModeToggle } from '../../../components/meetings/MeetingModeToggle';
-import { PhotoCapture, type CapturedPhoto } from '../../../components/meetings/PhotoCapture';
-import type { Client, MeetingMode } from '../../../types';
+import { VisitStartPanel } from '../../../components/meetings/VisitStartPanel';
+import { VisitInProgressPanel } from '../../../components/meetings/VisitInProgressPanel';
+import { type CapturedPhoto } from '../../../components/meetings/PhotoCapture';
+import { DraftResumePrompt } from '../../../components/meetings/DraftResumePrompt';
+import type { Client, MeetingMode, TeamRosterEntry } from '../../../types';
 
 interface StartCapture {
   capturedAt: string;
   gpsLat: number;
   gpsLng: number;
-}
-
-/** mm:ss, matching the wireframe's `id="a-visitElapsed"` format. */
-function formatElapsed(seconds: number): string {
-  const m = Math.floor(seconds / 60);
-  const s = seconds % 60;
-  return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
 }
 
 /**
@@ -50,41 +46,96 @@ function formatElapsed(seconds: number): string {
  */
 export default function RecordVisitScreen() {
   const insets = useSafeAreaInsets();
-  const db = useSQLiteContext();
   const { clientId } = useLocalSearchParams<{ clientId: string }>();
   const { session } = useAuth();
   const { profileId } = useSession();
 
   const [client, setClient] = useState<Client | null>(null);
   const [loading, setLoading] = useState(true);
+  const [roster, setRoster] = useState<TeamRosterEntry[]>([]);
+  const [selectedCompanions, setSelectedCompanions] = useState<TeamRosterEntry[]>([]);
   const [mode, setMode] = useState<MeetingMode>('in_person');
   const [starting, setStarting] = useState(false);
   const [start, setStart] = useState<StartCapture | null>(null);
   const [selectedAgendas, setSelectedAgendas] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
-  const [elapsedSeconds, setElapsedSeconds] = useState(0);
+  // ADR-026 P1 item 3 (Meeting Draft Recovery): a same-day draft found for
+  // this client on mount — resume/discard prompt gates the normal Start
+  // button until the agent picks one.
+  const [pendingDraft, setPendingDraft] = useState<MeetingDraft | null>(null);
 
-  // Live "mm:ss" ticker while the meeting is in progress (Wireframe
-  // `aVisitTick()`) — UI feedback only, never persisted; the real duration
-  // is computed server-side from start/end timestamps (web Excel export).
-  useEffect(() => {
-    if (!start) return;
-    const startMs = new Date(start.capturedAt).getTime();
-    const tick = () => setElapsedSeconds(Math.max(0, Math.floor((Date.now() - startMs) / 1000)));
-    tick();
-    const handle = setInterval(tick, 1000);
-    return () => clearInterval(handle);
-  }, [start]);
+  const elapsedSeconds = useElapsedTimer(start?.capturedAt ?? null);
 
-  // Local SQLite is the primary read path (ADR-001/T-003).
+  // Local SQLite is the primary read path (ADR-001/T-003). Also checks for a
+  // same-day draft (ADR-026 P1 item 3) — a client that no longer exists
+  // locally (e.g. removed by the lost/deleted sync-down fix,
+  // lib/sync/entity-appliers.ts) silently discards any orphaned draft
+  // instead of ever offering to resume it.
   useEffect(() => {
     if (!clientId) return;
-    db.getFirstAsync<LocalClientRow>('SELECT * FROM clients WHERE id = ?', [clientId]).then((row) => {
-      if (!row) Alert.alert('Error', 'Client not found.');
-      else setClient(rowToClient(row));
+    let cancelled = false;
+    (async () => {
+      const foundClient = await getClientById(clientId);
+      if (cancelled) return;
+      if (!foundClient) {
+        Alert.alert('Error', 'Client not found.');
+        // Best-effort cleanup — a transient SQLite error here must never
+        // strand the screen on its loading spinner (the Alert has already
+        // fired regardless of whether the delete succeeds).
+        await deleteDraft(clientId).catch((err) =>
+          console.error('[RecordVisit] Failed to discard orphaned draft:', err)
+        );
+        setLoading(false);
+        return;
+      }
+      setClient(foundClient);
+      if (profileId) {
+        const draft = await getDraftForClient(clientId, profileId);
+        if (!cancelled) setPendingDraft(draft);
+      }
       setLoading(false);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [clientId, profileId]);
+
+  // ADR-030 Pass 2.5: same "Kasama sa visit" companion picker as the
+  // prospect/new full-form path (record.tsx) — the existing-client fast
+  // path was missing it entirely, even though tag-along applies regardless
+  // of client status.
+  useEffect(() => {
+    getTeamRoster().then(setRoster);
+  }, []);
+
+  function toggleCompanion(entry: TeamRosterEntry): void {
+    setSelectedCompanions((prev) => {
+      const alreadySelected = prev.some((p) => p.profileId === entry.profileId);
+      if (alreadySelected) return prev.filter((p) => p.profileId !== entry.profileId);
+      if (prev.length >= MAX_COMPANIONS_PER_REQUEST) {
+        showToast('Hanggang 2 kasama lang ang pwede');
+        return prev;
+      }
+      return [...prev, entry];
     });
-  }, [db, clientId]);
+  }
+
+  function resumeDraft(): void {
+    if (!pendingDraft) return;
+    setMode(pendingDraft.payload.mode);
+    setStart({
+      capturedAt: pendingDraft.payload.capturedAt,
+      gpsLat: pendingDraft.payload.gpsLat,
+      gpsLng: pendingDraft.payload.gpsLng,
+    });
+    setPendingDraft(null);
+  }
+
+  async function discardDraft(): Promise<void> {
+    if (!clientId) return;
+    await deleteDraft(clientId);
+    setPendingDraft(null);
+  }
 
   function toggleAgenda(agenda: string): void {
     setSelectedAgendas((prev) =>
@@ -92,16 +143,31 @@ export default function RecordVisitScreen() {
     );
   }
 
-  /** Starts the meeting: GPS + timestamp only, no photo (2026-07-16 revision). */
+  /**
+   * Starts the meeting: GPS + timestamp only, no photo (2026-07-16 revision).
+   * Also persists a draft (ADR-026 P1 item 3) so this GPS+timestamp lock —
+   * which can't be recreated with integrity by just re-tapping Start —
+   * survives an app crash/kill before the end photo is taken. The draft
+   * write is best-effort: a failure here logs but never blocks the meeting
+   * itself from starting.
+   */
   async function startMeeting(): Promise<void> {
+    if (!clientId || !profileId) return;
     setStarting(true);
     try {
       const gps = await captureGps();
-      setStart({
-        capturedAt: new Date().toISOString(),
-        gpsLat: gps.lat,
-        gpsLng: gps.lng,
-      });
+      const capturedAt = new Date().toISOString();
+      setStart({ capturedAt, gpsLat: gps.lat, gpsLng: gps.lng });
+      try {
+        await saveDraft({
+          clientId,
+          agentId: profileId,
+          flow: 'visit',
+          payload: { mode, gpsLat: gps.lat, gpsLng: gps.lng, capturedAt },
+        });
+      } catch (draftErr) {
+        console.error('[RecordVisit] Failed to persist meeting draft:', draftErr);
+      }
     } catch (err) {
       Alert.alert('Location Error', err instanceof Error ? err.message : 'Failed to get GPS location.');
     } finally {
@@ -113,9 +179,16 @@ export default function RecordVisitScreen() {
     if (!start || !session || !profileId) return;
     setSaving(true);
     try {
-      // Storage path convention keys by the Auth uid (matches Storage RLS'
-      // `auth.uid()` check) — deliberately session.user.id, not profileId.
-      const endUrl = await uploadMeetingPhoto(endPhoto.uri, session.user.id, 'end');
+      // T-014 Phase C (ADR-026 P1 item 4): the end photo is no longer
+      // uploaded in the foreground at all — the meeting saves with the
+      // local `file://` URI immediately, and `createMeeting()` queues its
+      // upload internally (`photoToQueue`) right after the local insert
+      // commits. `meeting-service.ts`'s `remoteMediaUrl()` still nulls out
+      // this local URI before it ever reaches the initial remote insert;
+      // the queued upload's own patch (lib/sync/photo-uploads.ts) is what
+      // sets the real Storage URL once it's actually uploaded. Storage path
+      // convention keys by the Auth uid (matches Storage RLS' `auth.uid()`
+      // check) — deliberately session.user.id, not profileId.
       await createMeeting({
         client_id: clientId ?? null,
         agent_id: profileId,
@@ -125,13 +198,27 @@ export default function RecordVisitScreen() {
         agendas: selectedAgendas,
         outcome: null,
         start_captured_at: start.capturedAt,
-        end_photo_url: endUrl,
+        end_photo_url: endPhoto.uri,
         end_captured_at: endPhoto.capturedAt,
         end_gps_lat: endPhoto.gpsLat,
         end_gps_lng: endPhoto.gpsLng,
         logged_at: start.capturedAt,
+        photoToQueue: { kind: 'end', localUri: endPhoto.uri, userId: session.user.id },
+        companions: selectedCompanions.map((entry) => ({
+          profileId: entry.profileId,
+          kind: inviteeKindForRole(entry.role),
+        })),
       });
-      router.replace('/(tabs)/meetings/celebrate');
+      // The draft must never survive past a successful save (ADR-026 P1 item
+      // 3) — best-effort: a cleanup failure here shouldn't surface as a save
+      // error, since the meeting itself already saved successfully.
+      if (clientId) {
+        await deleteDraft(clientId).catch((cleanupErr) =>
+          console.error('[RecordVisit] Failed to clear meeting draft:', cleanupErr)
+        );
+      }
+      const connectivity = await checkConnectivity();
+      router.replace(`/(tabs)/meetings/celebrate?online=${connectivity === 'online'}`);
     } catch (err) {
       console.error('[RecordVisit] Save Error:', JSON.stringify(err, null, 2));
       const message = err instanceof Error ? err.message : (err as { message?: string })?.message ?? 'Failed to save the meeting.';
@@ -164,56 +251,33 @@ export default function RecordVisitScreen() {
       <ScrollView contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 32 }}>
         <ClientInfoCard client={client} />
 
-        {!start ? (
-          <YStack marginTop="$4" gap="$4">
-            <MeetingModeToggle mode={mode} onChange={setMode} />
-            <BizButton
-              label={starting ? 'Capturing GPS…' : 'Start'}
-              onPress={startMeeting}
-              disabled={starting}
-            />
-            <Text fontSize={12} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} textAlign="center">
-              Binds GPS + timestamp to the start of the meeting — no photo needed here anymore.
-            </Text>
-          </YStack>
+        {pendingDraft ? (
+          <DraftResumePrompt
+            draft={pendingDraft}
+            onResume={resumeDraft}
+            onDiscard={() => {
+              void discardDraft();
+            }}
+          />
+        ) : !start ? (
+          <VisitStartPanel
+            roster={roster}
+            selectedCompanions={selectedCompanions}
+            onToggleCompanion={toggleCompanion}
+            mode={mode}
+            onModeChange={setMode}
+            starting={starting}
+            onStart={startMeeting}
+          />
         ) : (
-          <YStack marginTop="$4" gap="$4">
-            <BizCard flat borderRadius={20}>
-              <Text fontFamily={BIZLINK_FONTS.semibold} fontSize={14} color={BIZLINK_COLORS.ink}>Meeting in progress</Text>
-              <Text fontSize={12.5} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.ink} marginTop="$1">
-                Started {new Date(start.capturedAt).toLocaleTimeString()} · {formatElapsed(elapsedSeconds)} · GPS locked
-              </Text>
-            </BizCard>
-
-            <BizSectionHeader title="Agenda" helper="· piliin lahat ng na-cover" />
-            <Text fontSize={12} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} marginTop={-6} marginBottom="$2" lineHeight={17}>
-              Ang "Product / company presentation" tick dito ang buong basehan ng progress % ng client — hindi na Complete Info (B-001).
-            </Text>
-            {selectedAgendas.length === 0 ? (
-              <XStack alignItems="center" gap="$1.5" marginBottom="$2">
-                <TriangleAlert size={14} color="#B4740A" strokeWidth={1.75} />
-                <Text fontSize={12} fontFamily={BIZLINK_FONTS.medium} color="#B4740A" flex={1} lineHeight={16}>
-                  Pumili ng kahit isang agenda bago maaktibo ang "Tapusin" button.
-                </Text>
-              </XStack>
-            ) : null}
-            <AgendaChecklist selected={selectedAgendas} onToggle={toggleAgenda} />
-
-            {saving ? (
-              <YStack alignItems="center" gap="$2.5" padding="$4">
-                <Spinner size="large" color={BIZLINK_COLORS.brand} />
-                <Text color={BIZLINK_COLORS.muted}>Saving meeting…</Text>
-              </YStack>
-            ) : (
-              <PhotoCapture
-                label="End Photo"
-                captureButtonLabel="Finish — take END photo"
-                confirmButtonLabel="Confirm — end the meeting"
-                onConfirm={finishMeeting}
-                disabled={selectedAgendas.length === 0}
-              />
-            )}
-          </YStack>
+          <VisitInProgressPanel
+            startedAt={start.capturedAt}
+            elapsedSeconds={elapsedSeconds}
+            selectedAgendas={selectedAgendas}
+            onToggleAgenda={toggleAgenda}
+            saving={saving}
+            onConfirm={finishMeeting}
+          />
         )}
       </ScrollView>
     </YStack>
