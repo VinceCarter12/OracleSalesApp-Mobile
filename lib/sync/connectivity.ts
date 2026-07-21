@@ -41,6 +41,19 @@ export async function checkConnectivity(): Promise<ConnectivityState> {
   return 'online';
 }
 
+/**
+ * B-027: fast, link-level-only check (no backend HTTP probe) — safe to call
+ * right before an `enqueueOutboxRow()` without holding a SQLite transaction
+ * open through a multi-second network round-trip. Answers "does this device
+ * currently have a network link" (radio-level), not "is the backend
+ * reachable" — good enough to label a record "created while offline" vs
+ * "created while online" for Sync History display purposes.
+ */
+export async function isLikelyOnline(): Promise<boolean> {
+  const netState = await NetInfo.fetch();
+  return netState.isConnected === true;
+}
+
 async function probeBackend(): Promise<boolean> {
   if (!SUPABASE_URL) return false;
   try {

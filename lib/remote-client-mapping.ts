@@ -42,9 +42,13 @@ export function toRemoteStatus(status: ClientStatus | null | undefined): RemoteC
 
 /**
  * Reconstructs mobile's local lifecycle value from the two remote columns.
- * `lost`/`deleted` aren't yet represented in mobile's `ClientStatus` domain
- * type (CLIENT_STATUSES) — flagged as a follow-up, not silently mapped to
- * something misleading here.
+ * `lost`/`deleted` aren't part of mobile's `ClientStatus` domain type
+ * (CLIENT_STATUSES) — those clients must be removed from the agent's device
+ * entirely, not mapped to a misleading status here (ADR-026 P1). The one
+ * live sync-down path (`lib/sync/entity-appliers.ts::upsertSyncedClient`)
+ * filters `lost`/`deleted` rows out before ever calling this function; the
+ * `customerType ?? 'prospect'` fallback below only exists for defensiveness
+ * against any other/future caller.
  */
 export function fromRemoteStatus(
   remoteStatus: RemoteClientStatus,

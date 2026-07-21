@@ -1,5 +1,5 @@
 import { isBlockedByDependency, isEntityTableName } from './entity-registry';
-import { enqueueSyncAuditRow, type AuditOutcome } from './audit-log';
+import { enqueueSyncAuditRow, AUDIT_OUTBOX_TABLE_NAME, type AuditOutcome } from './audit-log';
 import { getPushTarget, pushChunk, pushSingleRow, type PushTarget } from './remote-upsert';
 import {
   classifySyncError,
@@ -88,6 +88,16 @@ async function handleRowFailure(
   agentId: string
 ): Promise<void> {
   if (classified.kind === 'conflict') {
+    // B-030: a duplicate-key conflict on the `sync_audit` lane itself just
+    // means this exact fact was already recorded by an earlier attempt —
+    // benign, not a real conflict needing admin review (unlike an actual
+    // client/meeting conflict). Marking it 'synced' instead stops these
+    // from accumulating forever in the agent-visible outbox counts.
+    if (row.table_name === AUDIT_OUTBOX_TABLE_NAME) {
+      await recordSynced(db, row, agentId);
+      result.synced++;
+      return;
+    }
     await markOutboxRow(db, row.id, row.record_id, row.table_name, 'conflict', classified, row.retry_count);
     await enqueueAuditForRow(db, row, 'conflict', classified, agentId);
     result.conflicted++;
@@ -137,13 +147,20 @@ async function markSyncingBatch(db: SQLiteDatabase, rows: OutboxRow[]): Promise<
   }
 }
 
-async function pushGroup(
+/**
+ * `.update()` only ever targets one row, unlike `.upsert()`'s multi-row
+ * insert-shaped semantics — so 'update' rows always go through the
+ * single-row path one at a time, regardless of BATCH_THRESHOLD. 'insert'
+ * rows keep the existing chunk/pushChunk/fallback-to-individual behavior.
+ */
+async function pushInsertRows(
   db: SQLiteDatabase,
   rows: OutboxRow[],
   target: PushTarget,
   result: OutboxSyncResult,
   agentId: string
 ): Promise<void> {
+  if (rows.length === 0) return;
   const chunks = rows.length > BATCH_THRESHOLD ? chunk(rows, BATCH_THRESHOLD) : [rows];
   for (const rowsChunk of chunks) {
     await markSyncingBatch(db, rowsChunk);
@@ -168,9 +185,37 @@ async function pushGroup(
   }
 }
 
+async function pushUpdateRows(
+  db: SQLiteDatabase,
+  rows: OutboxRow[],
+  target: PushTarget,
+  result: OutboxSyncResult,
+  agentId: string
+): Promise<void> {
+  if (rows.length === 0) return;
+  await markSyncingBatch(db, rows);
+  for (const row of rows) {
+    await pushAndClassifyRow(db, row, target, result, agentId);
+  }
+}
+
+async function pushGroup(
+  db: SQLiteDatabase,
+  rows: OutboxRow[],
+  target: PushTarget,
+  result: OutboxSyncResult,
+  agentId: string
+): Promise<void> {
+  const insertRows = rows.filter((row) => row.operation === 'insert');
+  const updateRows = rows.filter((row) => row.operation === 'update');
+  await pushInsertRows(db, insertRows, target, result, agentId);
+  await pushUpdateRows(db, updateRows, target, result, agentId);
+}
+
 async function failUnregisteredRows(db: SQLiteDatabase, rows: OutboxRow[], result: OutboxSyncResult): Promise<void> {
   const classified: ClassifiedError = {
     kind: 'permanent',
+    failureClass: 'unknown',
     message: 'Unregistered outbox table_name — no entity-registry entry found',
   };
   for (const row of rows) {

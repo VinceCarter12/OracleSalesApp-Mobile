@@ -1,5 +1,5 @@
 import { supabase } from './supabase';
-import { fromRemoteOutcome } from './meeting-service';
+import { fromRemoteOutcome } from './remote-meeting-mapping';
 import type { ManagerDashboardSummary, TeamAgent, TeamMeetingPreview } from '../types';
 
 // Real cross-agent Supabase queries for the Manager dashboard (2026-07-16,
