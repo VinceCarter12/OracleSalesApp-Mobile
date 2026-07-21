@@ -15,7 +15,7 @@ import {
   Users,
 } from 'lucide-react-native';
 import { Text, View, XStack, YStack } from 'tamagui';
-import { BIZLINK_COLORS, BIZLINK_FONTS } from '../../lib/theme';
+import { useBizlinkColors, BIZLINK_FONTS } from '../../lib/theme';
 import { useClients } from '../../lib/useClients';
 import { useMeetings } from '../../lib/useMeetings';
 import { getClientStatus, CLIENT_STATUS_BADGES } from '../../lib/client-status';
@@ -29,6 +29,7 @@ import { AvatarStatusRing } from '../../components/bizlink/AvatarStatusRing';
 import { SyncStatusChip } from '../../components/sync/SyncStatusChip';
 import { SyncCenterSheet } from '../../components/sync/SyncCenterSheet';
 import { useSession } from '../../lib/session-store';
+import { firstName, initialsFromName } from '../../lib/display-name';
 import { RSR_DAILY_VISIT_QUOTA, type Client, type Meeting } from '../../types';
 
 // F-012 (RSR only): today's in-person visits vs the daily quota. Online
@@ -48,6 +49,7 @@ function countTodayInPersonVisits(meetings: Meeting[]): number {
 }
 
 function RsrQuotaWidget({ meetings }: { meetings: Meeting[] }) {
+  const BIZLINK_COLORS = useBizlinkColors();
   const visits = countTodayInPersonVisits(meetings);
   const pct = Math.min(100, Math.round((visits / RSR_DAILY_VISIT_QUOTA) * 100));
   return (
@@ -72,6 +74,7 @@ function RsrQuotaWidget({ meetings }: { meetings: Meeting[] }) {
 }
 
 function ClientPreviewRow({ client }: { client: Client }) {
+  const BIZLINK_COLORS = useBizlinkColors();
   const badge = CLIENT_STATUS_BADGES[getClientStatus(client)];
   return (
     <Pressable onPress={() => router.push(`/(tabs)/clients/${client.id}`)}>
@@ -97,12 +100,18 @@ function ClientPreviewRow({ client }: { client: Client }) {
 }
 
 export default function AgentHomeScreen() {
+  const BIZLINK_COLORS = useBizlinkColors();
   const insets = useSafeAreaInsets();
   const { clients } = useClients();
   const { meetings } = useMeetings();
-  const { role } = useSession();
+  const { role, fullName } = useSession();
   const isRsr = role === 'rsr';
+  const greetingName = firstName(fullName);
   const [syncSheetOpen, setSyncSheetOpen] = useState(false);
+  // B-023: remounts the chip on sheet-close so a "Retry All" inside the
+  // sheet is reflected immediately — the chip's own useFocusEffect never
+  // re-fires here since the Modal never actually blurs this screen.
+  const [syncChipKey, setSyncChipKey] = useState(0);
 
   const prospects = clients.filter((c) => getClientStatus(c) === 'prospect');
   const nonProspects = clients.filter((c) => getClientStatus(c) !== 'prospect');
@@ -116,14 +125,18 @@ export default function AgentHomeScreen() {
   return (
     <YStack flex={1} backgroundColor={BIZLINK_COLORS.canvas} paddingTop={insets.top}>
       <XStack alignItems="center" gap="$3" paddingHorizontal="$4" paddingTop="$2.5" paddingBottom="$1.5">
-        <AvatarStatusRing>
-          <Avatar initials="MS" background={BIZLINK_COLORS.tintA} color={BIZLINK_COLORS.ink} />
-        </AvatarStatusRing>
+        <Pressable onPress={() => router.push('/(tabs)/more/account')} hitSlop={4}>
+          <AvatarStatusRing>
+            <Avatar initials={initialsFromName(fullName)} background={BIZLINK_COLORS.tintA} color={BIZLINK_COLORS.ink} />
+          </AvatarStatusRing>
+        </Pressable>
         <YStack gap="$1">
-          <Text fontFamily={BIZLINK_FONTS.semibold} fontSize={15.5} color={BIZLINK_COLORS.text}>Kamusta, Miguel!</Text>
+          <Text fontFamily={BIZLINK_FONTS.semibold} fontSize={15.5} color={BIZLINK_COLORS.text}>
+            {greetingName ? `Kamusta, ${greetingName}!` : 'Kamusta!'}
+          </Text>
           <StatusBadge label={isRsr ? 'RSR' : 'Sales Specialist'} background={BIZLINK_COLORS.tintA} color={BIZLINK_COLORS.ink} />
         </YStack>
-        <Pressable onPress={() => router.push('/(tabs)/more')} style={{ marginLeft: 'auto' }} hitSlop={6}>
+        <Pressable onPress={() => router.push('/(tabs)/more/notifications')} style={{ marginLeft: 'auto' }} hitSlop={6}>
           <View
             width={44}
             height={44}
@@ -179,7 +192,7 @@ export default function AgentHomeScreen() {
         {isRsr ? <RsrQuotaWidget meetings={meetings} /> : null}
 
         {/* T-014 Phase 1 (ADR-024): shared, BizLink-styled — same worst-state-wins logic/copy as before. */}
-        <SyncStatusChip onPress={() => setSyncSheetOpen(true)} />
+        <SyncStatusChip key={syncChipKey} onPress={() => setSyncSheetOpen(true)} />
 
         {prospects.length > 0 ? (
           <XStack
@@ -190,6 +203,7 @@ export default function AgentHomeScreen() {
             paddingHorizontal={16}
             paddingVertical={14}
             marginTop={10}
+            onPress={() => router.push('/(tabs)/clients')}
           >
             <Hourglass size={18} color={BIZLINK_COLORS.red} strokeWidth={1.75} />
             <YStack flex={1}>
@@ -216,7 +230,13 @@ export default function AgentHomeScreen() {
         ) : null}
       </ScrollView>
 
-      <SyncCenterSheet visible={syncSheetOpen} onClose={() => setSyncSheetOpen(false)} />
+      <SyncCenterSheet
+        visible={syncSheetOpen}
+        onClose={() => {
+          setSyncSheetOpen(false);
+          setSyncChipKey((k) => k + 1);
+        }}
+      />
     </YStack>
   );
 }
