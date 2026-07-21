@@ -42,9 +42,10 @@ export const MEETING_OUTCOMES = [
   'Lost Opportunity',
 ] as const;
 
-// Prospect lifecycle status (ADR-006). Drives the Record Meeting branch (ADR-015):
-// existing → photo-only fast path; prospect/new → full form. 'inactive' is
-// server-side lifecycle only (Sprint.md T-001 notes) — never chosen by an agent.
+// Prospect lifecycle status (ADR-006). Drives the Record Meeting branch (ADR-015,
+// revised 2026-07-21): new/existing → photo-only fast path (info's already
+// complete, ADR-027); prospect → full form. 'inactive' is server-side
+// lifecycle only (Sprint.md T-001 notes) — never chosen by an agent.
 export const CLIENT_STATUSES = ['prospect', 'new', 'existing', 'inactive'] as const;
 
 // ADR-012: online meetings bind GPS to the agent's own location, flagged so
@@ -75,6 +76,13 @@ export interface Client {
   agent_id: string;
   created_at: string;
   updated_at: string;
+  // 2026-07-21: `details_deadline_at` was already synced into local SQLite
+  // (lib/sync/entity-appliers.ts) but never exposed through this type or
+  // local-client-mapper.ts — needed for the My Clients list's deadline
+  // countdown (Wireframe #a-clients). Null once info is completed/for
+  // non-prospect clients.
+  details_deadline_at?: string | null;
+  sync_status?: string;
 }
 
 export interface Meeting {
@@ -97,6 +105,14 @@ export interface Meeting {
   end_captured_at?: string | null;
   logged_at: string;
   created_at: string;
+  // 2026-07-21: were write-only to Supabase until this date — local SQLite
+  // never had columns for them (see lib/db.ts's v11 migration comment).
+  contact_person?: string | null;
+  contact_position?: string | null;
+  location_type?: string | null;
+  location_name?: string | null;
+  remarks?: string | null;
+  sync_status?: string;
 }
 
 // Mirrors the web DB role enum (Database.md) + executive (mobile-only concept,
@@ -250,4 +266,16 @@ export interface TagAlongRequest {
   agentId: string;
   clientId: string;
   note: string;
+}
+
+// ─── Tag-Along companion selector (ADR-030, F-015) ─────────────────────────────
+
+/** A candidate companion (manager or teammate) for the Complete Info picker (Pass 2) — mirrors the local `team_roster_snapshot` table, itself a read-only sync-down mirror of team-scoped `profiles` rows (Migration 019). */
+export interface TeamRosterEntry {
+  profileId: string;
+  fullName: string;
+  role: Extract<UserRole, 'sales_manager' | 'sales_specialist' | 'rsr'>;
+  teamId: string;
+  avatarUrl: string | null;
+  syncedAt: string;
 }

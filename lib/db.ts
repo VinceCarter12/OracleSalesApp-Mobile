@@ -12,7 +12,7 @@ export const DATABASE_NAME = 'oracle-sales-app.db';
 
 // Bump this and add a new `case` below whenever the schema changes — never
 // edit an already-shipped case, since devices may have already run it.
-const LATEST_SCHEMA_VERSION = 5;
+const LATEST_SCHEMA_VERSION = 11;
 
 /**
  * Runs once per app launch via `SQLiteProvider`'s `onInit` (see app/_layout.tsx).
@@ -223,7 +223,170 @@ export async function migrateDbIfNeeded(db: SQLiteDatabase): Promise<void> {
     currentVersion = 5;
   }
 
-  // Next schema change: `if (currentVersion === 5) { ...; currentVersion = 6; }`
+  if (currentVersion === 5) {
+    // B-024/B-027 (Sync History enhancement): records whether the device
+    // was online or offline at the moment a write was QUEUED (not synced) —
+    // lets Sync History show "ginawa habang offline, na-upload nang online"
+    // instead of only ever showing the terminal sync outcome. NULL for any
+    // pre-existing row (created before this migration), which the UI treats
+    // as "unknown," not "offline" — never guess a past device's connectivity.
+    await db.execAsync(`ALTER TABLE outbox ADD COLUMN created_online INTEGER;`);
+    currentVersion = 6;
+  }
+
+  // ADR-026 P1 item 3 (Meeting Draft Recovery): a local-only table so an
+  // in-progress meeting (especially the fast path's Start-GPS-timestamp,
+  // which can't be recreated with integrity if the agent just re-taps
+  // Start) survives an app crash/kill between Start and the end photo.
+  // Deliberately outside the outbox/entity-registry pattern above — this
+  // never syncs to Supabase, it exists purely for on-device crash recovery.
+  if (currentVersion === 6) {
+    await db.execAsync(`
+      CREATE TABLE meeting_drafts (
+        id TEXT PRIMARY KEY NOT NULL,
+        client_id TEXT NOT NULL,
+        agent_id TEXT NOT NULL,
+        flow TEXT NOT NULL CHECK (flow IN ('full', 'visit')),
+        payload_json TEXT NOT NULL,
+        start_captured_at TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
+      CREATE INDEX idx_meeting_drafts_client_id ON meeting_drafts (client_id);
+    `);
+    currentVersion = 7;
+  }
+
+  // ADR-026 P1 item 4 (Phase C, T-014): local-only queue of confirmed-photo
+  // uploads that must reach Supabase Storage AFTER their parent meeting has
+  // already saved locally (ADR-026 P1 item 1's interim fix lets a meeting
+  // save with only a local `file://` photo URI when the foreground upload
+  // fails). Deliberately outside the outbox/entity-registry pattern — a
+  // pending_upload never itself becomes a `clients`/`meetings` outbox row;
+  // its own processor (lib/sync/photo-uploads.ts) uploads the file, then
+  // enqueues a normal `meetings` outbox UPDATE (via
+  // lib/meeting-service.ts::enqueueMeetingPhotoUrlUpdate) to patch the
+  // parent meeting's remote `photo_url`/`end_photo_url` once the object
+  // exists in Storage. `storage_path` is generated once by the caller
+  // (`buildMeetingPhotoStoragePath`) and reused on every retry so a 409
+  // "already exists" response can be treated as a success, not a failure.
+  if (currentVersion === 7) {
+    await db.execAsync(`
+      CREATE TABLE pending_uploads (
+        id TEXT PRIMARY KEY NOT NULL,
+        meeting_id TEXT NOT NULL,
+        agent_id TEXT NOT NULL,
+        kind TEXT NOT NULL CHECK (kind IN ('selfie', 'start', 'end')),
+        local_uri TEXT NOT NULL,
+        storage_path TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'pending'
+          CHECK (status IN ('pending', 'syncing', 'synced', 'conflict', 'failed')),
+        retry_count INTEGER NOT NULL DEFAULT 0,
+        last_error TEXT,
+        last_attempt_at TEXT,
+        next_attempt_at TEXT,
+        created_at TEXT NOT NULL,
+        synced_at TEXT
+      );
+      CREATE INDEX idx_pending_uploads_status ON pending_uploads (status);
+      CREATE INDEX idx_pending_uploads_meeting_id ON pending_uploads (meeting_id);
+      -- Covers processPendingUploads()'s hot query (lib/sync/photo-uploads.ts),
+      -- which filters on all three together.
+      CREATE INDEX idx_pending_uploads_agent_status_next_attempt
+        ON pending_uploads (agent_id, status, next_attempt_at);
+    `);
+    currentVersion = 8;
+  }
+
+  // ADR-026 P2 item 5: `failure_class` is a diagnostic-only classification of
+  // WHY a row failed (validation/network/authentication/conflict/server/
+  // unknown), computed alongside — but never replacing — the existing
+  // retry-decision `kind` ('conflict' | 'transient' | 'permanent') in
+  // lib/sync/outbox-status.ts::classifySyncError(). Two axes, deliberately
+  // separate: `kind` drives retry behavior, `failure_class` drives
+  // admin-facing messaging (see lib/sync-history.ts).
+  if (currentVersion === 8) {
+    await db.execAsync(`
+      ALTER TABLE outbox ADD COLUMN failure_class TEXT
+        CHECK (failure_class IN ('validation','network','authentication','conflict','server','unknown'));
+      ALTER TABLE pending_uploads ADD COLUMN failure_class TEXT
+        CHECK (failure_class IN ('validation','network','authentication','conflict','server','unknown'));
+    `);
+    currentVersion = 9;
+  }
+
+  // ADR-030 (T-along/Tag-Along companion selector, SQLite v10): two new
+  // tables. `team_roster_snapshot` is a read-only, wholesale-repopulated
+  // mirror of the agent's teammates/manager (Migration 019's team-scoped
+  // profiles RLS) for the Complete Info "Kasama sa visit" picker (Pass 2) —
+  // modeled on `company_names_snapshot` but NOT upsert-only, since staleness
+  // matters here (see lib/sync-down.ts::pullTeamRoster doc comment).
+  // `tag_along_requests` mirrors the shared Supabase table (same shape used
+  // for both `client_creation` companions today and F-004's future meeting
+  // tag-alongs) and follows the standard sync trio (sync_status/sync_error/
+  // local_updated_at) so it can be a normal entity-registry entry. The
+  // `outbox.table_name` CHECK constraint was already dropped in the
+  // currentVersion===4 block above (T-014, replaced by the TypeScript entity
+  // registry) — no CHECK to re-add here.
+  if (currentVersion === 9) {
+    await db.execAsync(`
+      CREATE TABLE team_roster_snapshot (
+        profile_id TEXT PRIMARY KEY NOT NULL,
+        full_name TEXT NOT NULL,
+        role TEXT NOT NULL,
+        team_id TEXT NOT NULL,
+        avatar_url TEXT,
+        synced_at TEXT NOT NULL
+      );
+      CREATE INDEX idx_team_roster_role ON team_roster_snapshot (role);
+
+      CREATE TABLE tag_along_requests (
+        id TEXT PRIMARY KEY NOT NULL,
+        context TEXT NOT NULL CHECK (context IN ('client_creation', 'meeting')),
+        requester_id TEXT NOT NULL,
+        invitee_id TEXT NOT NULL,
+        invitee_kind TEXT NOT NULL CHECK (invitee_kind IN ('manager', 'teammate')),
+        related_client_id TEXT,
+        related_meeting_id TEXT,
+        status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'accepted', 'declined', 'cancelled')),
+        created_at TEXT NOT NULL,
+        responded_at TEXT,
+        updated_at TEXT NOT NULL,
+        sync_status TEXT NOT NULL DEFAULT 'pending',
+        sync_error TEXT,
+        local_updated_at TEXT NOT NULL
+      );
+      CREATE INDEX idx_tar_invitee ON tag_along_requests (invitee_id);
+      CREATE INDEX idx_tar_requester ON tag_along_requests (requester_id);
+      CREATE INDEX idx_tar_related_client ON tag_along_requests (related_client_id);
+      CREATE INDEX idx_tar_sync_status ON tag_along_requests (sync_status);
+    `);
+    currentVersion = 10;
+  }
+
+  // 2026-07-21: `meeting-service.ts::createMeeting()` has always mapped
+  // `contactPerson`/`contactPosition`/`locationType`/`locationName`/`remarks`
+  // into the REMOTE Supabase payload, but the local `meetings` table never
+  // had columns for them — since ADR-001 makes local SQLite the primary READ
+  // path, this data was unrecoverable by the app itself even after a
+  // successful sync (write-only from the app's own perspective). Meeting
+  // Detail needs these to match the wireframe's Details/Remarks cards.
+  // Also adds an index on `tag_along_requests.related_meeting_id`
+  // (ADR-030's Pass 2.5 relocation added meeting-scoped requests but never
+  // indexed the column they're looked up by).
+  if (currentVersion === 10) {
+    await db.execAsync(`
+      ALTER TABLE meetings ADD COLUMN contact_person TEXT;
+      ALTER TABLE meetings ADD COLUMN contact_position TEXT;
+      ALTER TABLE meetings ADD COLUMN location_type TEXT;
+      ALTER TABLE meetings ADD COLUMN location_name TEXT;
+      ALTER TABLE meetings ADD COLUMN remarks TEXT;
+      CREATE INDEX idx_tar_related_meeting ON tag_along_requests (related_meeting_id);
+    `);
+    currentVersion = 11;
+  }
+
+  // Next schema change: `if (currentVersion === 11) { ...; currentVersion = 12; }`
 
   await db.execAsync(`PRAGMA user_version = ${currentVersion}`);
 }

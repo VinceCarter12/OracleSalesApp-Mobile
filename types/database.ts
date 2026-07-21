@@ -17,6 +17,14 @@ export type RemoteLocationType = 'client_office' | 'other';
 export type RemoteOnlinePlatform = 'zoom' | 'googlemeet';
 export type RemoteMeetingOutcome = 'successful' | 'follow_up' | 'no_decision' | 'lost_opportunity';
 
+// ADR-030 / Migration 019 (drafted — see Migration-019-Report.md, not yet
+// applied to Supabase): shared table serving both client-creation companions
+// (`context='client_creation'`) and F-004's future meeting tag-alongs
+// (`context='meeting'`).
+export type RemoteTagAlongContext = 'client_creation' | 'meeting';
+export type RemoteTagAlongInviteeKind = 'manager' | 'teammate';
+export type RemoteTagAlongStatus = 'pending' | 'accepted' | 'declined' | 'cancelled';
+
 /**
  * Supabase database type stubs.
  * Replace with the generated types from: npx supabase gen types typescript --project-id <your-id>
@@ -145,9 +153,44 @@ export type Database = {
           team_id: string | null;
           is_active: boolean;
           created_at: string | null;
+          // Live since web Migration 012 (2026-07-14) — public `avatars`
+          // Storage bucket + column, RLS-restricted UPDATE to this column
+          // (+ full_name) only. See ADR-029 (2026-07-20) for the mobile sync.
+          avatar_url: string | null;
         };
         Insert: Omit<Database['public']['Tables']['profiles']['Row'], 'id' | 'created_at'>;
         Update: Partial<Database['public']['Tables']['profiles']['Insert']>;
+        Relationships: [];
+      };
+      // ADR-030 / Migration 019 (DRAFTED, NOT yet applied — see
+      // Migration-019-Report.md; Vince must live-verify the two flagged RLS
+      // items before applying). Shape mirrors the SQL in that report exactly
+      // — do not invent a parallel shape.
+      tag_along_requests: {
+        Row: {
+          id: string;
+          context: RemoteTagAlongContext;
+          requester_id: string;
+          invitee_id: string;
+          invitee_kind: RemoteTagAlongInviteeKind;
+          related_client_id: string | null;
+          related_meeting_id: string | null;
+          status: RemoteTagAlongStatus;
+          created_at: string;
+          responded_at: string | null;
+          updated_at: string;
+        };
+        Insert: Omit<
+          Database['public']['Tables']['tag_along_requests']['Row'],
+          'id' | 'created_at' | 'updated_at' | 'status' | 'responded_at'
+        >;
+        Update: Partial<Database['public']['Tables']['tag_along_requests']['Insert']> & {
+          status?: RemoteTagAlongStatus;
+          responded_at?: string | null;
+          // ADR-030 Pass 3: invitee accept/decline (updateCompanionRequestStatus,
+          // lib/tag-along-invitee-service.ts) also re-stamps updated_at.
+          updated_at?: string;
+        };
         Relationships: [];
       };
     };
