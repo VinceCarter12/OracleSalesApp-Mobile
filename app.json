@@ -18,6 +18,7 @@
     },
     "android": {
       "package": "com.oracle.salesapp",
+      "softwareKeyboardLayoutMode": "pan",
       "adaptiveIcon": {
         "foregroundImage": "./assets/icon.png",
         "backgroundColor": "#003087"
