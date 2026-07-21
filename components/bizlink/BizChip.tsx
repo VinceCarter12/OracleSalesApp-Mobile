@@ -1,14 +1,8 @@
 import { Pressable } from 'react-native';
 import { Text, XStack } from 'tamagui';
-import { BIZLINK_COLORS, BIZLINK_FONTS } from '../../lib/theme';
+import { useBizlinkColors, BIZLINK_FONTS, BIZLINK_ON_INK } from '../../lib/theme';
 
 type ChipTone = 'default' | 'ok' | 'lost';
-
-const SELECTED_TONE_BG: Record<ChipTone, string> = {
-  default: BIZLINK_COLORS.ink,
-  ok: BIZLINK_COLORS.brand,
-  lost: BIZLINK_COLORS.red,
-};
 
 interface BizChipProps {
   label: string;
@@ -26,8 +20,14 @@ interface BizChipProps {
  * Replaces `SelectTile` within `app/(tabs)` for this phase.
  */
 export function BizChip({ label, selected, onPress, tone = 'default', icon, fullWidth = false }: BizChipProps) {
+  const BIZLINK_COLORS = useBizlinkColors();
+  const SELECTED_TONE_BG: Record<ChipTone, string> = {
+    default: BIZLINK_COLORS.ink,
+    ok: BIZLINK_COLORS.brand,
+    lost: BIZLINK_COLORS.red,
+  };
   const background = selected ? SELECTED_TONE_BG[tone] : BIZLINK_COLORS.soft;
-  const color = selected ? BIZLINK_COLORS.card : BIZLINK_COLORS.muted;
+  const color = selected ? BIZLINK_ON_INK.solid : BIZLINK_COLORS.muted;
   return (
     <Pressable
       onPress={onPress}

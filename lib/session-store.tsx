@@ -17,7 +17,9 @@ type SessionStore = {
    * (`profiles.id UUID DEFAULT uuid_generate_v4()`, independent of `user_id`).
    */
   profileId: string | null;
-  signIn: (role: UserRole, teamId: string | null, profileId: string) => void;
+  /** The signed-in user's `profiles.full_name` — real display name, not a hardcoded placeholder (B-018). */
+  fullName: string | null;
+  signIn: (role: UserRole, teamId: string | null, profileId: string, fullName: string | null) => void;
   signOut: () => void;
 };
 
@@ -35,6 +37,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   const [role, setRole] = useState<UserRole | null>(null);
   const [teamId, setTeamId] = useState<string | null>(null);
   const [profileId, setProfileId] = useState<string | null>(null);
+  const [fullName, setFullName] = useState<string | null>(null);
 
   const value = useMemo(
     () => ({
@@ -42,7 +45,8 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       role,
       teamId,
       profileId,
-      signIn: (nextRole: UserRole, nextTeamId: string | null, nextProfileId: string) => {
+      fullName,
+      signIn: (nextRole: UserRole, nextTeamId: string | null, nextProfileId: string, nextFullName: string | null) => {
         // Select the manager mock dataset before any (manager) screen mounts —
         // track is keyed off team_id, not role (ADR-017; there is only one
         // sales_manager role, no separate rsr_manager).
@@ -50,6 +54,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         setRole(nextRole);
         setTeamId(nextTeamId);
         setProfileId(nextProfileId);
+        setFullName(nextFullName);
         setIsSignedIn(true);
       },
       signOut: () => {
@@ -57,9 +62,10 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         setRole(null);
         setTeamId(null);
         setProfileId(null);
+        setFullName(null);
       },
     }),
-    [isSignedIn, role, teamId, profileId]
+    [isSignedIn, role, teamId, profileId, fullName]
   );
 
   return <SessionContext.Provider value={value}>{children}</SessionContext.Provider>;

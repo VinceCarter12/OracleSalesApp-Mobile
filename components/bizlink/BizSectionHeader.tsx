@@ -1,6 +1,6 @@
 import { Pressable } from 'react-native';
 import { Text, XStack } from 'tamagui';
-import { BIZLINK_COLORS, BIZLINK_FONTS } from '../../lib/theme';
+import { useBizlinkColors, BIZLINK_FONTS } from '../../lib/theme';
 
 interface BizSectionHeaderProps {
   title: string;
@@ -11,6 +11,7 @@ interface BizSectionHeaderProps {
 
 /** T-014 Phase 2 (ADR-024): BizLink `.section-h` — 15px/600 heading with optional right-side link. Replaces `SectionHeader` within `app/(tabs)`. */
 export function BizSectionHeader({ title, helper, actionLabel, onAction }: BizSectionHeaderProps) {
+  const BIZLINK_COLORS = useBizlinkColors();
   return (
     <XStack marginTop="$4" marginBottom="$2.5" alignItems="center" gap="$2">
       <Text fontSize={15} fontFamily={BIZLINK_FONTS.semibold} color={BIZLINK_COLORS.text}>{title}</Text>

@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Pressable, TextInput, type KeyboardTypeOptions } from 'react-native';
 import { Eye, EyeOff } from 'lucide-react-native';
 import { Text, View, YStack } from 'tamagui';
-import { BIZLINK_COLORS, BIZLINK_FONTS } from '../../lib/theme';
+import { useBizlinkColors, BIZLINK_FONTS } from '../../lib/theme';
 
 interface BizFieldProps {
   label: string;
@@ -17,9 +17,11 @@ interface BizFieldProps {
 }
 
 /**
- * T-014 Phase 2 (ADR-024): BizLink `.field`/`.inp` — canvas-tinted input,
- * 16px radius, micro-label above. Replaces `Field` within `app/(tabs)` for
- * this phase.
+ * T-014 Phase 2 (ADR-024): BizLink `.field`/`.inp` — white input with a
+ * subtle 1px `line` border (Design-System-Catalog §"Input field"; needed
+ * because these fields sit directly on `canvas`, not inside a white card —
+ * a canvas-on-canvas fill had ~zero contrast), 16px radius, micro-label
+ * above. Replaces `Field` within `app/(tabs)` for this phase.
  */
 export function BizField({
   label,
@@ -32,6 +34,7 @@ export function BizField({
   keyboardType,
   multiline = false,
 }: BizFieldProps) {
+  const BIZLINK_COLORS = useBizlinkColors();
   const [revealed, setRevealed] = useState(false);
   const isSecure = secureTextEntry && !revealed;
 
@@ -58,7 +61,9 @@ export function BizField({
             fontFamily: BIZLINK_FONTS.medium,
             fontSize: 14.5,
             color: BIZLINK_COLORS.text,
-            backgroundColor: BIZLINK_COLORS.canvas,
+            backgroundColor: BIZLINK_COLORS.card,
+            borderWidth: 1,
+            borderColor: BIZLINK_COLORS.line,
             textAlignVertical: multiline ? 'top' : 'center',
           }}
         />

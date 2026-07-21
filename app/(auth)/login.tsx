@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { KeyboardAvoidingView, Platform, Pressable, ScrollView, TextInput } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AlertTriangle, Eye, EyeOff } from 'lucide-react-native';
-import { Text, View, XStack, YStack } from 'tamagui';
+import { Spinner, Text, View, XStack, YStack } from 'tamagui';
 import { BIZLINK_COLORS, BIZLINK_FONTS, BIZLINK_ON_INK } from '../../lib/theme';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../lib/useAuth';
@@ -48,7 +48,7 @@ export default function LoginScreen() {
 
       const { data: profile, error: profileError } = await withTimeout(
         Promise.resolve(
-          supabase.from('profiles').select('id, role, is_active, team_id').eq('user_id', userId).maybeSingle()
+          supabase.from('profiles').select('id, role, is_active, team_id, full_name').eq('user_id', userId).maybeSingle()
         ),
         10000,
         'profiles lookup'
@@ -71,7 +71,7 @@ export default function LoginScreen() {
       if (role === 'sales_manager') {
         setManagerTrack(profile.team_id);
       }
-      signIn(role, profile.team_id, profile.id);
+      signIn(role, profile.team_id, profile.id, profile.full_name ?? null);
       // No manual navigation — RootNavigator's Stack.Protected guards
       // (app/_layout.tsx) switch to the matching route group as soon as
       // isSignedIn/role update above.
@@ -170,9 +170,12 @@ export default function LoginScreen() {
               opacity: canSubmit ? 1 : 0.5,
             }}
           >
-            <Text fontSize={15} fontFamily={BIZLINK_FONTS.semibold} color={BIZLINK_COLORS.ink}>
-              {submitting ? 'Signing in…' : 'Sign in'}
-            </Text>
+            <XStack alignItems="center" gap="$2">
+              {submitting ? <Spinner color={BIZLINK_COLORS.ink} /> : null}
+              <Text fontSize={15} fontFamily={BIZLINK_FONTS.semibold} color={BIZLINK_COLORS.ink}>
+                {submitting ? 'Signing in…' : 'Sign in'}
+              </Text>
+            </XStack>
           </Pressable>
 
           <Text

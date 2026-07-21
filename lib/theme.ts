@@ -1,3 +1,5 @@
+import { useTheme } from 'tamagui';
+
 /** Corporate Emerald — official OracleSalesApp palette (ADR-011). Mirrors the CSS tokens in Wireframe-Agent-Executive.html. */
 export const COLORS = {
   feather: '#005B36',
@@ -46,6 +48,15 @@ export const FONTS = {
  * `COLORS` above is untouched until each screen's own migration phase
  * (ADR-024 Phase 2/3/4). New BizLink-styled screens/components should import
  * this object instead of `COLORS`.
+ *
+ * 2026-07-21 — dark mode: this is the LIGHT-mode value set, and is also the
+ * fallback for any screen not yet migrated to `useBizlinkColors()` below.
+ * These exact values are duplicated into `tamagui.config.ts`'s `bizlinkLight`
+ * theme object — the two must be kept in sync (there's no single source of
+ * truth split out, since Tamagui's `createTamagui()` needs plain literals at
+ * module-init time, before any component/hook can run). Prefer
+ * `useBizlinkColors()` in new/migrated code — it resolves to the DARK
+ * palette automatically when the agent's theme preference is dark.
  */
 export const BIZLINK_COLORS = {
   canvas: '#EFF3F1',
@@ -74,6 +85,14 @@ export const BIZLINK_COLORS = {
  * of drifting per screen as more BizLink screens get built (ADR-024).
  */
 export const BIZLINK_ON_INK = {
+  // 2026-07-21: solid white text/icon color for content sitting on an `ink`
+  // surface — added alongside dark mode. `BIZLINK_COLORS.card` used to
+  // double as "white" for this purpose (safe when `card` was always white,
+  // pre-dark-mode) but `card` is now theme-reactive (dark surface in dark
+  // mode) and `ink` stays constant across both themes — so anything drawn
+  // on an `ink` panel must use THIS instead of `BIZLINK_COLORS.card`, or it
+  // goes dark-text-on-dark-bg in dark mode.
+  solid: '#FFFFFF',
   circleFill: 'rgba(255,255,255,0.12)',
   circleBorder: 'rgba(255,255,255,0.35)',
   textMuted: 'rgba(255,255,255,0.6)',
@@ -93,3 +112,37 @@ export const BIZLINK_FONTS = {
   semibold: 'GeneralSans-Semibold',
   bold: 'GeneralSans-Bold',
 } as const;
+
+export type BizlinkColorTokens = { [K in keyof typeof BIZLINK_COLORS]: string };
+
+/**
+ * Theme-reactive replacement for the static `BIZLINK_COLORS` import — reads
+ * the currently-active Tamagui theme (`tamagui.config.ts`'s `bizlinkLight`/
+ * `bizlinkDark` token sets, switched via `<Theme name={resolvedTheme}>` in
+ * `app/_layout.tsx`) instead of always returning the light-mode literals.
+ * Must be called inside a component body (it's a hook) — screens/components
+ * migrating to dark-mode support should replace
+ * `import { BIZLINK_COLORS } from '.../theme'` with
+ * `const BIZLINK_COLORS = useBizlinkColors();` and leave every other line
+ * (all the `BIZLINK_COLORS.xxx` usages) unchanged — the shape is identical.
+ */
+export function useBizlinkColors(): BizlinkColorTokens {
+  const theme = useTheme();
+  return {
+    canvas: theme.canvas.get(),
+    card: theme.card.get(),
+    tintA: theme.tintA.get(),
+    tintB: theme.tintB.get(),
+    ink: theme.ink.get(),
+    brand: theme.brand.get(),
+    text: theme.text.get(),
+    muted: theme.muted.get(),
+    red: theme.red.get(),
+    navy: theme.navy.get(),
+    soft: theme.soft.get(),
+    line: theme.line.get(),
+    orange: theme.orange.get(),
+    amberSoft: theme.amberSoft.get(),
+    yellow: theme.yellow.get(),
+  };
+}

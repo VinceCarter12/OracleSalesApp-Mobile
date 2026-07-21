@@ -1,13 +1,7 @@
 import { Text, View, YStack } from 'tamagui';
-import { BIZLINK_COLORS, BIZLINK_FONTS } from '../../lib/theme';
+import { useBizlinkColors, BIZLINK_FONTS } from '../../lib/theme';
 
 type StatTone = 'tintA' | 'white' | 'tintB';
-
-const TONE_BG: Record<StatTone, string> = {
-  tintA: BIZLINK_COLORS.tintA,
-  white: BIZLINK_COLORS.card,
-  tintB: BIZLINK_COLORS.tintB,
-};
 
 interface BizStatCardProps {
   value: number | string;
@@ -25,6 +19,12 @@ interface BizStatCardProps {
  * phase (that file stays untouched — still used by Manager/Executive).
  */
 export function BizStatCard({ value, label, caption, tone = 'white', minWidth = 150, onPress }: BizStatCardProps) {
+  const BIZLINK_COLORS = useBizlinkColors();
+  const TONE_BG: Record<StatTone, string> = {
+    tintA: BIZLINK_COLORS.tintA,
+    white: BIZLINK_COLORS.card,
+    tintB: BIZLINK_COLORS.tintB,
+  };
   const isAlarm = tone === 'tintB';
   return (
     <YStack

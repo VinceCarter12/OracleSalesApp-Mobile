@@ -1,6 +1,6 @@
 import { Pressable } from 'react-native';
 import { Text, View } from 'tamagui';
-import { BIZLINK_COLORS, BIZLINK_FONTS } from '../../lib/theme';
+import { useBizlinkColors, BIZLINK_FONTS, BIZLINK_ON_INK } from '../../lib/theme';
 
 interface BizQuickActionProps {
   icon: React.ReactNode;
@@ -16,6 +16,7 @@ interface BizQuickActionProps {
  * Reused as-is (per ADR-024 Phase 3) for Manager quick actions.
  */
 export function BizQuickAction({ icon, label, onPress, badgeCount }: BizQuickActionProps) {
+  const BIZLINK_COLORS = useBizlinkColors();
   return (
     <Pressable
       onPress={onPress}
@@ -44,7 +45,7 @@ export function BizQuickAction({ icon, label, onPress, badgeCount }: BizQuickAct
             alignItems="center"
             justifyContent="center"
           >
-            <Text fontSize={9.5} fontFamily={BIZLINK_FONTS.semibold} color={BIZLINK_COLORS.card}>
+            <Text fontSize={9.5} fontFamily={BIZLINK_FONTS.semibold} color={BIZLINK_ON_INK.solid}>
               {badgeCount}
             </Text>
           </View>

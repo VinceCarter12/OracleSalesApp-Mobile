@@ -1,14 +1,13 @@
-import { useCallback, useState } from 'react';
 import { Image, ScrollView } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { router, useFocusEffect } from 'expo-router';
+import { router } from 'expo-router';
 import { ImagePlus, Key } from 'lucide-react-native';
 import { Text, View, XStack, YStack } from 'tamagui';
 import { BIZLINK_COLORS, BIZLINK_FONTS } from '../../../lib/theme';
 import { useSession } from '../../../lib/session-store';
 import { useAuth } from '../../../lib/useAuth';
+import { useProfileAvatar } from '../../../lib/use-profile-avatar';
 import { showToast } from '../../../lib/toast';
-import { getStoredAvatarUri, pickProfileAvatar } from '../../../lib/profile-avatar';
 import { Avatar } from '../../../components/ui/Avatar';
 import { BizTopBar } from '../../../components/bizlink/BizTopBar';
 import { BizCard } from '../../../components/bizlink/BizCard';
@@ -23,27 +22,8 @@ import { BizButton } from '../../../components/bizlink/BizButton';
 export default function ExecutiveAccountScreen() {
   const insets = useSafeAreaInsets();
   const { signOut } = useSession();
-  const { signOut: signOutSupabase } = useAuth();
-  const [avatarUri, setAvatarUri] = useState<string | null>(null);
-  const [pickingAvatar, setPickingAvatar] = useState(false);
-
-  useFocusEffect(
-    useCallback(() => {
-      getStoredAvatarUri().then(setAvatarUri);
-    }, [])
-  );
-
-  async function handlePickAvatar(): Promise<void> {
-    setPickingAvatar(true);
-    try {
-      const uri = await pickProfileAvatar();
-      if (uri) setAvatarUri(uri);
-    } catch {
-      showToast('Hindi ma-set ang profile picture. Subukan ulit.');
-    } finally {
-      setPickingAvatar(false);
-    }
-  }
+  const { session, signOut: signOutSupabase } = useAuth();
+  const { avatarUri, pickingAvatar, handlePickAvatar } = useProfileAvatar(session?.user.id);
 
   async function handleSignOut(): Promise<void> {
     await signOutSupabase();

@@ -1,5 +1,5 @@
 import { YStack, type YStackProps } from 'tamagui';
-import { BIZLINK_COLORS } from '../../lib/theme';
+import { useBizlinkColors } from '../../lib/theme';
 
 interface BizCardProps extends YStackProps {
   /** Tinted "flat" surface (Design-System-Catalog §3 "Tinted stat card" / .card-flat) instead of the borderless white card. */
@@ -13,6 +13,7 @@ interface BizCardProps extends YStackProps {
  * Executive, out of scope until Phase 3/4) — see Design-System-Catalog §3.
  */
 export function BizCard({ flat = false, children, ...rest }: BizCardProps) {
+  const BIZLINK_COLORS = useBizlinkColors();
   return (
     <YStack
       backgroundColor={flat ? BIZLINK_COLORS.tintA : BIZLINK_COLORS.card}

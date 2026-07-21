@@ -1,15 +1,8 @@
 import { Pressable, type StyleProp, type ViewStyle } from 'react-native';
 import { Text, XStack } from 'tamagui';
-import { BIZLINK_COLORS, BIZLINK_FONTS } from '../../lib/theme';
+import { useBizlinkColors, BIZLINK_FONTS, BIZLINK_ON_INK } from '../../lib/theme';
 
 type BizButtonVariant = 'brand' | 'white' | 'red' | 'navy';
-
-const VARIANTS: Record<BizButtonVariant, { background: string; color: string }> = {
-  brand: { background: BIZLINK_COLORS.brand, color: BIZLINK_COLORS.card },
-  white: { background: BIZLINK_COLORS.card, color: BIZLINK_COLORS.text },
-  red: { background: BIZLINK_COLORS.red, color: BIZLINK_COLORS.card },
-  navy: { background: BIZLINK_COLORS.navy, color: BIZLINK_COLORS.card },
-};
 
 interface BizButtonProps {
   label: string;
@@ -28,6 +21,17 @@ interface BizButtonProps {
  * their own phases (out of scope).
  */
 export function BizButton({ label, onPress, variant = 'brand', disabled = false, small = false, icon, style }: BizButtonProps) {
+  const BIZLINK_COLORS = useBizlinkColors();
+  // brand/red/navy buttons are white text on a colored fill — always white,
+  // same reasoning as BIZLINK_ON_INK.solid (2026-07-21 dark-mode fix: this
+  // used BIZLINK_COLORS.card before, which broke once `card` itself became
+  // theme-reactive — a dark `card` value made button text invisible).
+  const VARIANTS: Record<BizButtonVariant, { background: string; color: string }> = {
+    brand: { background: BIZLINK_COLORS.brand, color: BIZLINK_ON_INK.solid },
+    white: { background: BIZLINK_COLORS.card, color: BIZLINK_COLORS.text },
+    red: { background: BIZLINK_COLORS.red, color: BIZLINK_ON_INK.solid },
+    navy: { background: BIZLINK_COLORS.navy, color: BIZLINK_ON_INK.solid },
+  };
   const v = VARIANTS[variant];
   return (
     <Pressable

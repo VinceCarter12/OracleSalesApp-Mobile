@@ -1,5 +1,5 @@
 import { Text, View, YStack } from 'tamagui';
-import { BIZLINK_COLORS, BIZLINK_FONTS, BIZLINK_ON_INK } from '../../lib/theme';
+import { useBizlinkColors, BIZLINK_FONTS, BIZLINK_ON_INK } from '../../lib/theme';
 
 interface BizHeroCardProps {
   value: number | string;
@@ -11,6 +11,7 @@ interface BizHeroCardProps {
 
 /** T-014 Phase 2 (ADR-024): BizLink dark hero card — one per dashboard, `--ink` bg, 44px numeral. */
 export function BizHeroCard({ value, unit, label, caption, onPress }: BizHeroCardProps) {
+  const BIZLINK_COLORS = useBizlinkColors();
   return (
     <YStack
       onPress={onPress}
@@ -27,14 +28,14 @@ export function BizHeroCard({ value, unit, label, caption, onPress }: BizHeroCar
         paddingVertical={4}
         alignSelf="flex-end"
       >
-        <Text fontSize={10.5} fontFamily={BIZLINK_FONTS.semibold} color={BIZLINK_COLORS.card}>
+        <Text fontSize={10.5} fontFamily={BIZLINK_FONTS.semibold} color={BIZLINK_ON_INK.solid}>
           {caption}
         </Text>
       </View>
-      <Text fontSize={42} fontFamily={BIZLINK_FONTS.semibold} letterSpacing={-1.5} color={BIZLINK_COLORS.card} marginTop={10}>
+      <Text fontSize={42} fontFamily={BIZLINK_FONTS.semibold} letterSpacing={-1.5} color={BIZLINK_ON_INK.solid} marginTop={10}>
         {value}
         {unit ? (
-          <Text fontSize={16} fontFamily={BIZLINK_FONTS.semibold} color={BIZLINK_COLORS.card}> {unit}</Text>
+          <Text fontSize={16} fontFamily={BIZLINK_FONTS.semibold} color={BIZLINK_ON_INK.solid}> {unit}</Text>
         ) : null}
       </Text>
       <Text fontSize={12} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_ON_INK.textMuted} marginTop={8}>
