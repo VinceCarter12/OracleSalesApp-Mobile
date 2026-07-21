@@ -3,9 +3,9 @@ import { Alert, ScrollView } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { ClipboardList, Lightbulb } from 'lucide-react-native';
-import { Text, XStack, YStack } from 'tamagui';
+import { Spinner, Text, XStack, YStack } from 'tamagui';
 import { useSession } from '../../../lib/session-store';
-import { checkCompanyNameDuplicate, createClient, DuplicateCompanyNameError } from '../../../lib/client-service';
+import { checkCompanyNameDuplicate, checkLocalDuplicate, createClient, DuplicateCompanyNameError } from '../../../lib/client-service';
 import { BIZLINK_COLORS, BIZLINK_FONTS } from '../../../lib/theme';
 import { showToast } from '../../../lib/toast';
 import { BizTopBar } from '../../../components/bizlink/BizTopBar';
@@ -36,11 +36,13 @@ export default function CreateClientScreen() {
   const [dupState, setDupState] = useState<DupState>('idle');
   const [saving, setSaving] = useState(false);
 
-  // Debounced duplicate check (T-005): local clients rows (any sync
-  // state) → local snapshot → live Supabase, in that order — see
-  // lib/client-service.ts. City is collected right here (2026-07-15
-  // revision — an agent always knows the city they're in), so this is a
-  // hard (name, city) check, not a deferred soft warning.
+  // Debounced duplicate check (T-005, sped up B-020): the button gates on a
+  // LOCAL-only check (SQLite rows + snapshot cache) — sub-millisecond, so it
+  // no longer waits on a live Supabase round-trip (up to 8s) before
+  // activating. The full check (local + live) still runs in the background
+  // right after, purely to surface an early "may duplicate na sa server"
+  // hint — it can arrive late without blocking anything, since createClient()
+  // re-runs the full check as the actual write-time safety gate anyway.
   useEffect(() => {
     const name = companyName.trim();
     const cityValue = city.trim();
@@ -49,11 +51,25 @@ export default function CreateClientScreen() {
       return;
     }
     setDupState('checking');
+    let cancelled = false;
     const timer = setTimeout(async () => {
-      const result = await checkCompanyNameDuplicate(name, cityValue);
-      setDupState(result === 'duplicate' ? 'duplicate' : 'available');
+      const local = await checkLocalDuplicate(name, cityValue);
+      if (cancelled) return;
+      if (local === 'duplicate') {
+        setDupState('duplicate');
+        return;
+      }
+      setDupState('available');
+      // Background-only from here — never re-blocks the button; only
+      // downgrades to 'duplicate' if the live check lands before submit.
+      checkCompanyNameDuplicate(name, cityValue).then((result) => {
+        if (!cancelled && result === 'duplicate') setDupState('duplicate');
+      });
     }, 400);
-    return () => clearTimeout(timer);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
   }, [companyName, city]);
 
   async function handleCreate(): Promise<void> {
@@ -149,6 +165,7 @@ export default function CreateClientScreen() {
           label={saving ? 'Creating…' : 'Create Client'}
           onPress={handleCreate}
           disabled={!canCreate}
+          icon={saving ? <Spinner color={BIZLINK_COLORS.card} /> : undefined}
         />
         <Text fontSize={13} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} textAlign="center" marginTop="$3">
           Gagana kahit OFFLINE — sa sync queue mapupunta.
