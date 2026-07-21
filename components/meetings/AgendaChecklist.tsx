@@ -1,4 +1,5 @@
-import { Checkbox, Label, Text, XStack, YStack } from 'tamagui';
+import { XStack } from 'tamagui';
+import { BizChip } from '../bizlink/BizChip';
 import { MEETING_AGENDAS } from '../../types';
 
 interface AgendaChecklistProps {
@@ -10,26 +11,24 @@ interface AgendaChecklistProps {
  * Shared agenda checklist — used by both the full Record Meeting form and the
  * existing-client fast path. "Product Presentation" ticks here are what drive
  * the presentation progress-% (B-001), so the fast path must include this too.
+ *
+ * Rewritten 2026-07-21 (was plain Tamagui `Checkbox`/`Label`, the last
+ * pre-BizLink holdout in the Record Meeting flows — Vince flagged the fast
+ * path's "Meeting in progress" screen as visually inconsistent with the rest
+ * of the app) to use `BizChip` pills, matching record.tsx's own inline
+ * agenda rendering (`MeetingWrapUpSection.tsx`) exactly.
  */
 export function AgendaChecklist({ selected, onToggle }: AgendaChecklistProps) {
   return (
-    <YStack gap="$2">
-      <Label>Agenda (select all that apply)</Label>
+    <XStack gap="$2" flexWrap="wrap">
       {MEETING_AGENDAS.map((agenda) => (
-        <XStack key={agenda} gap="$3" alignItems="center">
-          <Checkbox
-            id={agenda}
-            size="$4"
-            checked={selected.includes(agenda)}
-            onCheckedChange={() => onToggle(agenda)}
-          >
-            <Checkbox.Indicator>
-              <Text>✓</Text>
-            </Checkbox.Indicator>
-          </Checkbox>
-          <Label htmlFor={agenda}>{agenda}</Label>
-        </XStack>
+        <BizChip
+          key={agenda}
+          label={agenda}
+          selected={selected.includes(agenda)}
+          onPress={() => onToggle(agenda)}
+        />
       ))}
-    </YStack>
+    </XStack>
   );
 }
