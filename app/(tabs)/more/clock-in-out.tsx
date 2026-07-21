@@ -16,6 +16,7 @@ export default function ClockInOutScreen() {
       icon={<Clock size={40} color={BIZLINK_COLORS.muted} strokeWidth={1.75} />}
       body="Office & event attendance — UI concept lang sa ngayon. Kailangan pa ng full spec (F-006) bago i-build ang totoong logic."
       badgeLabel="F-006 — needs full spec"
+      fallbackHref="/(tabs)/more"
     />
   );
 }

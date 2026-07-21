@@ -9,6 +9,7 @@ export default function AgentMapsScreen() {
       screenTitle="Maps"
       icon={<Map size={40} color={BIZLINK_COLORS.muted} strokeWidth={1.75} />}
       body="Per June 24 meeting, tinanggal ang maps sa mobile agent side — admin/web dashboard lang ang may plano nito."
+      fallbackHref="/(tabs)/more"
     />
   );
 }

@@ -15,32 +15,50 @@ const OUTCOME_BADGES: Record<SyncHistoryOutcome, { label: string; background: st
   failed: { label: 'Failed', background: BIZLINK_COLORS.tintB, color: BIZLINK_COLORS.red },
 };
 
+function createdOnlineLabel(createdOnline: boolean | null): string | null {
+  if (createdOnline === null) return null;
+  return createdOnline ? 'Ginawa habang online' : 'Ginawa habang offline';
+}
+
 function HistoryRow({ entry }: { entry: SyncHistoryEntry }) {
   const badge = OUTCOME_BADGES[entry.status];
+  const createdLabel = createdOnlineLabel(entry.createdOnline);
   return (
-    <XStack
-      alignItems="center"
-      gap="$3"
+    <YStack
       backgroundColor={BIZLINK_COLORS.card}
       borderRadius={20}
       padding={16}
       marginBottom={10}
+      gap="$1"
     >
-      <YStack flex={1} gap="$0.5">
-        <Text fontFamily={BIZLINK_FONTS.semibold} fontSize={14} color={BIZLINK_COLORS.text}>
-          {entry.label}
-        </Text>
-        <Text fontSize={11.5} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted}>
-          {new Date(entry.occurredAt).toLocaleString()}
-        </Text>
-        {entry.status === 'failed' && entry.lastError ? (
-          <Text fontSize={11} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.red} numberOfLines={2}>
-            {entry.lastError}
+      <XStack alignItems="center" gap="$3">
+        <YStack flex={1} gap="$0.5">
+          <Text fontFamily={BIZLINK_FONTS.semibold} fontSize={14} color={BIZLINK_COLORS.text}>
+            {entry.label}
           </Text>
-        ) : null}
-      </YStack>
-      <StatusBadge {...badge} />
-    </XStack>
+          <Text fontSize={11.5} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted}>
+            {entry.status === 'synced' ? 'Na-upload noong ' : 'Huling sinubukan noong '}
+            {new Date(entry.occurredAt).toLocaleString()}
+          </Text>
+          {createdLabel ? (
+            <Text fontSize={11} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted}>
+              {createdLabel} · {new Date(entry.createdAt).toLocaleString()}
+            </Text>
+          ) : null}
+        </YStack>
+        <StatusBadge {...badge} />
+      </XStack>
+      {entry.status === 'failed' && entry.lastError ? (
+        <Text fontSize={11} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.red} numberOfLines={2}>
+          {entry.lastError}
+        </Text>
+      ) : null}
+      {entry.adminMessage ? (
+        <Text fontSize={11} fontFamily={BIZLINK_FONTS.semibold} color={BIZLINK_COLORS.orange} marginTop="$0.5">
+          {entry.adminMessage}
+        </Text>
+      ) : null}
+    </YStack>
   );
 }
 
@@ -68,7 +86,7 @@ export default function SyncHistoryScreen() {
 
   return (
     <YStack flex={1} backgroundColor={BIZLINK_COLORS.canvas} paddingTop={insets.top}>
-      <BizTopBar title="Sync History" />
+      <BizTopBar title="Sync History" fallbackHref="/(tabs)/more" />
       <ScrollView contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 24 }}>
         {loading && entries.length === 0 ? (
           <YStack alignItems="center" padding="$8">

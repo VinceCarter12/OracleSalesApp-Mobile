@@ -58,7 +58,7 @@ export default function NotificationsScreen() {
 
   return (
     <YStack flex={1} backgroundColor={BIZLINK_COLORS.canvas} paddingTop={insets.top}>
-      <BizTopBar title="Notifications" />
+      <BizTopBar title="Notifications" fallbackHref="/(tabs)/more" />
       <ScrollView contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 24 }}>
         {loading && !counts ? (
           <YStack alignItems="center" padding="$8">
