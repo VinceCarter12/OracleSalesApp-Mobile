@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Pressable, ScrollView } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
-import { Bell, Ellipsis, Hourglass, PencilLine, UserRound, Users } from 'lucide-react-native';
+import { Bell, Building2, Ellipsis, History, Hourglass, Users } from 'lucide-react-native';
 import { Spinner, Text, XStack, YStack } from 'tamagui';
 import { BIZLINK_COLORS, BIZLINK_FONTS, OUTCOME_BADGE_STYLES } from '../../lib/theme';
 import { managerProfile } from '../../lib/manager-data';
@@ -69,6 +69,8 @@ export default function ManagerDashboardScreen() {
   const { approvals } = useManagerStore();
   const profile = managerProfile();
   const [syncSheetOpen, setSyncSheetOpen] = useState(false);
+  // B-023: see app/(tabs)/index.tsx's twin — remounts the chip on sheet-close.
+  const [syncChipKey, setSyncChipKey] = useState(0);
 
   if (loading || !summary) {
     return (
@@ -96,7 +98,7 @@ export default function ManagerDashboardScreen() {
           </Text>
           <StatusBadge label={profile.title} background={BIZLINK_COLORS.soft} color={BIZLINK_COLORS.navy} />
         </YStack>
-        <Pressable onPress={() => router.push('/(manager)/approvals')} style={{ marginLeft: 'auto' }} hitSlop={6}>
+        <Pressable onPress={() => router.push('/(manager)/more/notifications')} style={{ marginLeft: 'auto' }} hitSlop={6}>
           <YStack width={44} height={44} borderRadius={22} backgroundColor={BIZLINK_COLORS.card} alignItems="center" justifyContent="center" position="relative">
             <Bell size={17} color={BIZLINK_COLORS.text} strokeWidth={1.75} />
             {approvalBadge > 0 ? (
@@ -159,21 +161,20 @@ export default function ManagerDashboardScreen() {
         <BizSectionHeader title="Quick Actions" />
         <XStack gap="$2.5" flexWrap="wrap">
           <BizQuickAction
-            icon={<PencilLine size={20} color={BIZLINK_COLORS.ink} strokeWidth={1.75} />}
-            label="Approvals"
-            badgeCount={summary.pendingApprovals}
-            onPress={() => router.push('/(manager)/approvals')}
-          />
-          <BizQuickAction
             icon={<Users size={20} color={BIZLINK_COLORS.ink} strokeWidth={1.75} />}
             label="Tag-Along"
             badgeCount={summary.pendingTagAlongRequests}
             onPress={() => router.push('/(manager)/tag-along')}
           />
           <BizQuickAction
-            icon={<UserRound size={20} color={BIZLINK_COLORS.ink} strokeWidth={1.75} />}
-            label="My Team"
-            onPress={() => router.push('/(manager)/team')}
+            icon={<History size={20} color={BIZLINK_COLORS.ink} strokeWidth={1.75} />}
+            label="Sales History"
+            onPress={() => router.push('/(manager)/more/meetings')}
+          />
+          <BizQuickAction
+            icon={<Building2 size={20} color={BIZLINK_COLORS.ink} strokeWidth={1.75} />}
+            label="Clients"
+            onPress={() => router.push('/(manager)/more/clients')}
           />
           <BizQuickAction
             icon={<Ellipsis size={20} color={BIZLINK_COLORS.ink} strokeWidth={1.75} />}
@@ -188,7 +189,7 @@ export default function ManagerDashboardScreen() {
             committed). The old mock "records pending sync" banner
             (`summary.pendingSyncRecords`, always 0 per ADR-021) is replaced by
             this real per-device chip. */}
-        <SyncStatusChip onPress={() => setSyncSheetOpen(true)} />
+        <SyncStatusChip key={syncChipKey} onPress={() => setSyncSheetOpen(true)} />
 
         {summary.deadlineWarningCount > 0 ? (
           <XStack
@@ -230,7 +231,13 @@ export default function ManagerDashboardScreen() {
         )}
       </ScrollView>
 
-      <SyncCenterSheet visible={syncSheetOpen} onClose={() => setSyncSheetOpen(false)} />
+      <SyncCenterSheet
+        visible={syncSheetOpen}
+        onClose={() => {
+          setSyncSheetOpen(false);
+          setSyncChipKey((k) => k + 1);
+        }}
+      />
     </YStack>
   );
 }

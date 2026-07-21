@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import { FlatList, ScrollView, TextInput } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
-import { Search } from 'lucide-react-native';
+import { Plus, Search } from 'lucide-react-native';
 import { Text, XStack, YStack } from 'tamagui';
 import { BIZLINK_COLORS, BIZLINK_FONTS } from '../../../../lib/theme';
 import { CLIENT_STATUS_BADGES } from '../../../../lib/client-status';
@@ -37,9 +37,21 @@ export default function ManagerClientsScreen() {
 
   return (
     <YStack flex={1} backgroundColor={BIZLINK_COLORS.canvas} paddingTop={insets.top}>
-      <BizTopBar title="Clients" />
+      <BizTopBar
+        title="Clients"
+        fallbackHref="/(manager)/more"
+        right={
+          <BizButton
+            small
+            label="New Client"
+            icon={<Plus size={14} color={BIZLINK_COLORS.card} strokeWidth={1.75} />}
+            onPress={() => router.push('/(manager)/more/clients/create')}
+            style={{ paddingHorizontal: 16 }}
+          />
+        }
+      />
       <YStack paddingHorizontal="$4" gap="$2.5">
-        <XStack alignItems="center" backgroundColor={BIZLINK_COLORS.card} borderRadius={16} height={52} paddingHorizontal={16} gap="$2">
+        <XStack alignItems="center" backgroundColor={BIZLINK_COLORS.card} borderWidth={1} borderColor={BIZLINK_COLORS.line} borderRadius={16} height={52} paddingHorizontal={16} gap="$2">
           <Search size={16} color={BIZLINK_COLORS.muted} strokeWidth={1.75} />
           <TextInput
             value={search}
@@ -86,10 +98,6 @@ export default function ManagerClientsScreen() {
           </Text>
         }
       />
-
-      <YStack paddingHorizontal="$4" paddingBottom="$3" paddingTop="$2">
-        <BizButton label="+ New Client" onPress={() => router.push('/(manager)/more/clients/create')} />
-      </YStack>
     </YStack>
   );
 }
