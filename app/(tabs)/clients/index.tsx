@@ -1,56 +1,95 @@
 import { useCallback, useMemo, useState } from 'react';
-import { FlatList, Pressable, RefreshControl, TextInput } from 'react-native';
+import { FlatList, Pressable, RefreshControl, ScrollView, TextInput } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router, useFocusEffect } from 'expo-router';
-import { Building2, Plus } from 'lucide-react-native';
+import { Building2, Calendar, Plus } from 'lucide-react-native';
 import { Spinner, Text, XStack, YStack } from 'tamagui';
-import { BIZLINK_COLORS, BIZLINK_FONTS } from '../../../lib/theme';
+import { useBizlinkColors, BIZLINK_FONTS, BIZLINK_ON_INK } from '../../../lib/theme';
 import { useClients } from '../../../lib/useClients';
+import { useMeetings } from '../../../lib/useMeetings';
 import { CLIENT_STATUS_BADGES, getClientStatus } from '../../../lib/client-status';
-import { BizLockButton } from '../../../components/bizlink/BizLockButton';
+import { getClientDeadlineInfo } from '../../../lib/client-deadline';
+import { getClientProgress } from '../../../lib/client-progress';
 import { StatusBadge } from '../../../components/ui/StatusBadge';
+import { SyncBadge } from '../../../components/sync/SyncBadge';
+import { BizCard } from '../../../components/bizlink/BizCard';
 import { BizChip } from '../../../components/bizlink/BizChip';
-import { CLIENT_STATUSES, type Client, type ClientStatus } from '../../../types';
+import type { OutboxStatus } from '../../../lib/sync/outbox-status';
+import type { Client, ClientStatus, Meeting } from '../../../types';
 
-// NOTE: SyncBadge (per-record sync-state pill) was NOT added to these rows —
-// `Client`/`Meeting` domain types (types/index.ts) have no `sync_status`
-// field, and sync state only lives in the `outbox` table keyed by entity id.
-// No lookup function exists to join outbox status onto a list row today
-// (lib/sync-engine.ts only exposes aggregate getOutboxCounts()). Wiring this
-// would be new data-plumbing, out of scope for a visual-only pass — flagged
-// in the Phase 2 handoff report instead of invented here.
-
+// Wireframe #a-clients' filter row is exactly All/Prospect/New/Existing — no
+// "Inactive" chip (that status is server-side lifecycle only, never agent-
+// facing, per types/index.ts's CLIENT_STATUSES comment).
 type StatusFilter = ClientStatus | 'all';
+const STATUS_FILTERS: Array<{ value: StatusFilter; label: string }> = [
+  { value: 'all', label: 'All' },
+  { value: 'prospect', label: 'Prospect' },
+  { value: 'new', label: 'New' },
+  { value: 'existing', label: 'Existing' },
+];
 
-function ClientRow({ client }: { client: Client }) {
-  const badge = CLIENT_STATUS_BADGES[getClientStatus(client)];
+/** Wireframe #a-clients' static "Jul 2026"-style month chip — decorative, mirrors meetings/index.tsx's. */
+function currentMonthLabel(): string {
+  return new Date().toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
+}
+
+/**
+ * Wireframe #a-clients' exact card anatomy (`aRenderClientsFiltered`): tt →
+ * td → metarow (deadline-or-channel micro-label + status pill + sync pill)
+ * → progress bar (prospect only). Non-prospect rows deliberately show the
+ * channel TWICE — once in `.td`, once again as the metarow's micro-label —
+ * this looks redundant but matches the wireframe byte-for-byte.
+ */
+function ClientRow({ client, meetings }: { client: Client; meetings: Meeting[] }) {
+  const BIZLINK_COLORS = useBizlinkColors();
+  const status = getClientStatus(client);
+  const badge = CLIENT_STATUS_BADGES[status];
+  const isProspect = status === 'prospect';
+  const deadline = isProspect ? getClientDeadlineInfo(client) : null;
+  const progress = isProspect ? getClientProgress(client, meetings) : null;
+  const metaLabel = isProspect ? deadline?.label : client.sales_channel || null;
+
   return (
     <Pressable onPress={() => router.push(`/(tabs)/clients/${client.id}`)}>
-      <XStack
-        alignItems="center"
-        gap="$3"
-        backgroundColor={BIZLINK_COLORS.card}
-        borderRadius={20}
-        padding={16}
-        marginBottom={10}
-      >
-        <YStack flex={1} gap="$0.5">
-          <Text fontFamily={BIZLINK_FONTS.semibold} fontSize={14} color={BIZLINK_COLORS.text}>{client.company_name}</Text>
-          <Text fontSize={11.5} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted}>
-            {client.contact_person || 'Walang contact person pa'}
-            {client.sales_channel ? ` · ${client.sales_channel}` : ''}
-          </Text>
-        </YStack>
-        <StatusBadge {...badge} />
-        <Text color={BIZLINK_COLORS.muted} fontSize={16}>›</Text>
-      </XStack>
+      <BizCard gap="$1.5" paddingVertical={16} paddingHorizontal={18} marginBottom={10}>
+        <Text fontFamily={BIZLINK_FONTS.semibold} fontSize={15} letterSpacing={-0.2} color={BIZLINK_COLORS.text}>{client.company_name}</Text>
+        <Text fontSize={12} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted}>
+          {client.sales_channel || 'Walang detalye pa — kumpletuhin ang info'}
+        </Text>
+
+        <XStack alignItems="center" gap="$2" marginTop="$1.5">
+          {metaLabel ? (
+            <Text fontSize={11} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted}>
+              {isProspect ? 'Deadline ' : ''}
+              <Text fontFamily={BIZLINK_FONTS.semibold} color={isProspect && deadline?.warn ? BIZLINK_COLORS.red : BIZLINK_COLORS.text}>
+                {metaLabel}
+              </Text>
+            </Text>
+          ) : null}
+          <StatusBadge {...badge} />
+          {client.sync_status ? <SyncBadge status={client.sync_status as OutboxStatus} /> : null}
+          <Text color={BIZLINK_COLORS.muted} fontSize={16} marginLeft="auto">›</Text>
+        </XStack>
+
+        {progress !== null ? (
+          <XStack alignItems="center" gap="$2.5" marginTop="$1.5">
+            <Text fontSize={11} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted}>Progress</Text>
+            <YStack flex={1} height={6} borderRadius={999} backgroundColor={BIZLINK_COLORS.soft} overflow="hidden">
+              <YStack height={6} borderRadius={999} backgroundColor={BIZLINK_COLORS.brand} width={`${progress}%`} />
+            </YStack>
+            <Text fontSize={12} fontFamily={BIZLINK_FONTS.semibold} color={BIZLINK_COLORS.text}>{progress}%</Text>
+          </XStack>
+        ) : null}
+      </BizCard>
     </Pressable>
   );
 }
 
 export default function ClientsScreen() {
+  const BIZLINK_COLORS = useBizlinkColors();
   const insets = useSafeAreaInsets();
   const { clients, loading, refresh } = useClients();
+  const { meetings } = useMeetings();
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState<StatusFilter>('all');
 
@@ -86,14 +125,29 @@ export default function ClientsScreen() {
               minHeight: 44,
             }}
           >
-            <Plus size={14} color={BIZLINK_COLORS.card} strokeWidth={1.75} />
-            <Text fontSize={12.5} fontFamily={BIZLINK_FONTS.semibold} color={BIZLINK_COLORS.card}>Create a Client</Text>
+            <Plus size={14} color={BIZLINK_ON_INK.solid} strokeWidth={1.75} />
+            <Text fontSize={12.5} fontFamily={BIZLINK_FONTS.semibold} color={BIZLINK_ON_INK.solid}>Create a Client</Text>
           </Pressable>
-          <BizLockButton />
         </XStack>
       </XStack>
 
-      <YStack paddingHorizontal="$4" gap="$2.5">
+      <XStack paddingHorizontal="$4" justifyContent="flex-start">
+        <XStack
+          alignItems="center"
+          gap="$1.5"
+          backgroundColor={BIZLINK_COLORS.card}
+          borderRadius={999}
+          paddingHorizontal={13}
+          paddingVertical={7}
+        >
+          <Calendar size={12} color={BIZLINK_COLORS.muted} strokeWidth={1.75} />
+          <Text fontSize={11.5} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted}>
+            {currentMonthLabel()}
+          </Text>
+        </XStack>
+      </XStack>
+
+      <YStack paddingHorizontal="$4" gap="$2.5" marginTop="$2">
         <TextInput
           value={search}
           onChangeText={setSearch}
@@ -107,19 +161,22 @@ export default function ClientsScreen() {
             fontSize: 14.5,
             color: BIZLINK_COLORS.text,
             backgroundColor: BIZLINK_COLORS.card,
+            borderWidth: 1,
+            borderColor: BIZLINK_COLORS.line,
           }}
         />
-        <XStack gap="$2" flexWrap="wrap">
-          <BizChip label="All" selected={filter === 'all'} onPress={() => setFilter('all')} />
-          {CLIENT_STATUSES.map((status) => (
-            <BizChip
-              key={status}
-              label={CLIENT_STATUS_BADGES[status].label}
-              selected={filter === status}
-              onPress={() => setFilter(status)}
-            />
-          ))}
-        </XStack>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+          <XStack gap="$2">
+            {STATUS_FILTERS.map((f) => (
+              <BizChip
+                key={f.value}
+                label={f.label}
+                selected={filter === f.value}
+                onPress={() => setFilter(f.value)}
+              />
+            ))}
+          </XStack>
+        </ScrollView>
       </YStack>
 
       {loading && !clients.length ? (
@@ -130,8 +187,8 @@ export default function ClientsScreen() {
         <FlatList
           data={filtered}
           keyExtractor={(item) => item.id}
-          contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 16, paddingTop: 12 }}
-          renderItem={({ item }) => <ClientRow client={item} />}
+          contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 16, paddingTop: 20 }}
+          renderItem={({ item }) => <ClientRow client={item} meetings={meetings} />}
           refreshControl={<RefreshControl refreshing={loading} onRefresh={refresh} />}
           ListEmptyComponent={
             <YStack alignItems="center" padding="$8" gap="$2.5">
