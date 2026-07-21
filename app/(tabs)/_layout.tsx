@@ -1,6 +1,17 @@
+import { Pressable } from 'react-native';
 import { Tabs } from 'expo-router';
 import { Building2, Handshake, House, MoreHorizontal } from 'lucide-react-native';
 import { BIZLINK_COLORS, BIZLINK_FONTS } from '../../lib/theme';
+
+// B-021: default `Tabs` bottom-bar buttons show Android's ripple / iOS's
+// dim-on-press feedback — reads as an unwanted dark rectangle behind the
+// tapped tab (wireframe's floating-pill nav has no such highlight). A plain
+// `Pressable` with the ripple disabled removes it without touching the
+// actual tab-switch behavior (still forwards all props, incl. onPress).
+// Defined inline (not as a separately-typed named function) so it picks up
+// `tabBarButton`'s prop type contextually from `Tabs`' own definitions —
+// the concrete type (`BottomTabBarButtonProps`) lives inside expo-router's
+// bundled copy of react-navigation, not a resolvable top-level import.
 
 /**
  * T-014 Phase 2 (ADR-024): BizLink tab bar.
@@ -29,6 +40,9 @@ export default function TabsLayout() {
         tabBarActiveTintColor: BIZLINK_COLORS.brand,
         tabBarInactiveTintColor: BIZLINK_COLORS.muted,
         tabBarLabelStyle: { fontSize: 10, fontFamily: BIZLINK_FONTS.semibold },
+        tabBarButton: ({ ref: _ref, ...props }) => (
+          <Pressable {...props} android_ripple={{ color: 'transparent', borderless: false }} style={props.style} />
+        ),
         tabBarStyle: {
           height: 78,
           paddingTop: 8,
@@ -43,28 +57,28 @@ export default function TabsLayout() {
         name="index"
         options={{
           title: 'Home',
-          tabBarIcon: ({ focused, color }) => <House size={21} color={color} strokeWidth={1.75} style={{ transform: [{ scale: focused ? 1.12 : 1 }] }} />,
+          tabBarIcon: ({ focused, color }) => <House size={focused ? 23 : 21} color={color} strokeWidth={1.75} />,
         }}
       />
       <Tabs.Screen
         name="clients"
         options={{
           title: 'Clients',
-          tabBarIcon: ({ focused, color }) => <Building2 size={21} color={color} strokeWidth={1.75} style={{ transform: [{ scale: focused ? 1.12 : 1 }] }} />,
+          tabBarIcon: ({ focused, color }) => <Building2 size={focused ? 23 : 21} color={color} strokeWidth={1.75} />,
         }}
       />
       <Tabs.Screen
         name="meetings"
         options={{
           title: 'Meetings',
-          tabBarIcon: ({ focused, color }) => <Handshake size={21} color={color} strokeWidth={1.75} style={{ transform: [{ scale: focused ? 1.12 : 1 }] }} />,
+          tabBarIcon: ({ focused, color }) => <Handshake size={focused ? 23 : 21} color={color} strokeWidth={1.75} />,
         }}
       />
       <Tabs.Screen
         name="more"
         options={{
           title: 'More',
-          tabBarIcon: ({ focused, color }) => <MoreHorizontal size={21} color={color} strokeWidth={1.75} style={{ transform: [{ scale: focused ? 1.12 : 1 }] }} />,
+          tabBarIcon: ({ focused, color }) => <MoreHorizontal size={focused ? 23 : 21} color={color} strokeWidth={1.75} />,
         }}
       />
     </Tabs>
