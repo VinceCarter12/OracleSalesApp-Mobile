@@ -1,91 +1,27 @@
 import { getDb } from './db';
-import { supabase } from './supabase';
-import { withTimeout } from './with-timeout';
 import { uuidv4 } from './uuid';
 import { normalizeCompanyName } from './company-name';
 import { runSync } from './sync-engine';
 import { enqueueOutboxRow } from './sync/entity-registry';
+import { isLikelyOnline } from './sync/connectivity';
 import { toRemoteCustomerType, toRemoteSalesChannel, toRemoteStatus } from './remote-client-mapping';
-import type { ClientStatus, SalesChannel } from '../types';
+import { rowToClient, type LocalClientRow } from './local-client-mapper';
+import { checkCompanyNameDuplicate, DuplicateCompanyNameError } from './client-duplicate-check';
+import type { SalesChannel, Client } from '../types';
 
 // T-005: single write path for client creation — both Create Client
 // (app/(tabs)/clients/create.tsx) and Record Meeting's meeting-first branch
 // (app/(tabs)/meetings/record.tsx) go through this, so dup-check + the
-// local-first write + outbox enqueue only exist in one place.
-
-const LIVE_CHECK_TIMEOUT_MS = 8000;
-
-export type DuplicateCheckResult = 'duplicate' | 'available' | 'unknown';
-
-export class DuplicateCompanyNameError extends Error {
-  constructor(companyName: string) {
-    super(`A client named "${companyName}" already exists.`);
-    this.name = 'DuplicateCompanyNameError';
-  }
-}
-
-/**
- * Checks, in order: (a) local `clients` rows in ANY sync state — including
- * this device's own not-yet-synced writes, which the pre-T-005 check never
- * looked at, (b) the read-only company-name snapshot cache, (c) a live
- * Supabase check if online. City is collected at Create Client itself
- * (2026-07-15 revision — an agent always knows the city they're in), so
- * this is a hard (name, city) check, not a deferred soft warning.
- */
-export async function checkCompanyNameDuplicate(
-  companyName: string,
-  city: string | null,
-  excludeClientId?: string
-): Promise<DuplicateCheckResult> {
-  const normalized = normalizeCompanyName(companyName);
-  if (!normalized) return 'available';
-
-  const db = await getDb();
-  const excludeId = excludeClientId ?? '';
-
-  const localMatch = await db.getFirstAsync<{ id: string }>(
-    city
-      ? 'SELECT id FROM clients WHERE normalized_name = ? AND city = ? AND id != ? LIMIT 1'
-      : 'SELECT id FROM clients WHERE normalized_name = ? AND id != ? LIMIT 1',
-    city ? [normalized, city, excludeId] : [normalized, excludeId]
-  );
-  if (localMatch) return 'duplicate';
-
-  const snapshotMatch = await db.getFirstAsync<{ client_id: string }>(
-    'SELECT client_id FROM company_names_snapshot WHERE normalized_name = ? AND client_id != ? LIMIT 1',
-    [normalized, excludeId]
-  );
-  if (snapshotMatch) return 'duplicate';
-
-  return liveDuplicateCheck(normalized, city, excludeClientId);
-}
-
-/**
- * Queries the (not-yet-applied) generated `normalized_company_name` column —
- * correct once Migration-014-Report.md lands. Until then Postgres rejects
- * the unknown column and this degrades to 'unknown', which callers treat as
- * "can't confirm, fall back to the local-only result".
- */
-async function liveDuplicateCheck(
-  normalized: string,
-  city: string | null,
-  excludeClientId?: string
-): Promise<DuplicateCheckResult> {
-  try {
-    let query = supabase.from('clients').select('id').eq('normalized_company_name', normalized);
-    if (city) query = query.eq('city', city);
-    const { data, error } = await withTimeout(
-      Promise.resolve(query.limit(5)),
-      LIVE_CHECK_TIMEOUT_MS,
-      'client duplicate live check'
-    );
-    if (error) throw error;
-    const matches = (data ?? []).filter((row) => row.id !== excludeClientId);
-    return matches.length > 0 ? 'duplicate' : 'available';
-  } catch {
-    return 'unknown';
-  }
-}
+// local-first write + outbox enqueue only exist in one place. Duplicate-name
+// lookup logic itself lives in lib/client-duplicate-check.ts (split out to
+// stay under the 300-line file limit — see that file's header comment);
+// re-exported below for existing consumers (app/(tabs)/clients/create.tsx).
+export {
+  checkLocalDuplicate,
+  checkCompanyNameDuplicate,
+  DuplicateCompanyNameError,
+  type DuplicateCheckResult,
+} from './client-duplicate-check';
 
 export interface CreateClientInput {
   companyName: string;
@@ -118,6 +54,16 @@ export async function createClient(input: CreateClientInput): Promise<string> {
   const now = new Date().toISOString();
   const normalized = normalizeCompanyName(companyName);
   const contactPerson = input.contactPerson?.trim() ?? '';
+  // 2026-07-21: info-completion deadline ("1-month rule", client-progress.ts's
+  // comment) — computed HERE at creation time, not by a later trigger,
+  // because it's a static value assigned once and never re-derived from
+  // cross-device state (unlike ADR-027's prospect→new promotion, which IS a
+  // server-side trigger because it reacts to async, possibly-cross-device
+  // conditions — this doesn't have that race). Migration-021 mirrors this
+  // exact formula server-side (for manager-created clients + backfilling
+  // pre-existing rows), so local and remote never disagree.
+  const DEADLINE_DAYS = 30;
+  const detailsDeadlineAt = new Date(Date.now() + DEADLINE_DAYS * 24 * 60 * 60 * 1000).toISOString();
   // Local SQLite keeps mobile's own domain-format values (matches what the
   // UI/`Client` type expects when read back); only the outbox payload sent
   // to Supabase needs the remote column names/casing (lib/remote-client-mapping.ts).
@@ -143,14 +89,17 @@ export async function createClient(input: CreateClientInput): Promise<string> {
     assigned_agent_id: input.agentId,
     created_at: now,
     updated_at: now,
+    details_deadline_at: detailsDeadlineAt,
   };
+
+  const createdOnline = await isLikelyOnline();
 
   await db.withTransactionAsync(async () => {
     await db.runAsync(
       `INSERT INTO clients
         (id, company_name, normalized_name, city, contact_person, position, customer_type,
-         sales_channel, status, agent_id, created_at, updated_at, sync_status, local_updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?)`,
+         sales_channel, status, agent_id, created_at, updated_at, details_deadline_at, sync_status, local_updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?)`,
       [
         id,
         companyName,
@@ -167,6 +116,7 @@ export async function createClient(input: CreateClientInput): Promise<string> {
         input.agentId,
         now,
         now,
+        detailsDeadlineAt,
         now,
       ]
     );
@@ -177,6 +127,7 @@ export async function createClient(input: CreateClientInput): Promise<string> {
       operation: 'insert',
       payload: JSON.stringify(remotePayload),
       createdAt: now,
+      createdOnline,
     });
   });
 
@@ -195,19 +146,23 @@ export interface UpdateClientInfoInput {
   contactNumber: string;
   officeAddress: string;
   salesChannel: SalesChannel;
-  // Wireframe a-complete's "Customer type" segmented control (New/Prospect/
-  // Existing) — binds to mobile's local lifecycle `status` field, NOT the
-  // legacy `customer_type` column (unused, see remote-client-mapping.ts).
-  status: ClientStatus;
 }
 
 /**
  * Complete/Edit Info (Wireframe a-complete, F-001 Phase B / F-002): local-first
- * update + outbox enqueue, same pattern as createClient() — this used to be a
- * direct Supabase `.update()` keyed off a row that may not exist there yet
- * for a not-yet-synced local client, throwing "Cannot coerce the result to a
- * single JSON object" on the *read* side (complete.tsx's old `.single()`
- * fetch) before this write path was ever reached.
+ * update + outbox enqueue, same pattern as createClient(). Status is never
+ * agent-chosen here (2026-07-19 rule correction) — this only stamps
+ * `details_completed_at` (first save only) and leaves `status` untouched.
+ *
+ * The prospect→new promotion itself (ADR-027) is deliberately NOT done here
+ * or anywhere on-device — ADR-006 requires lifecycle automations to run
+ * server-side (a Postgres trigger, see Migration-017-Report.md), since a
+ * per-device check can miss the transition entirely when the two
+ * conditions (completed info, a Successful meeting) are satisfied by writes
+ * from two different devices/agents. `details_completed_at` synced up via
+ * the outbox below is exactly the input the server trigger evaluates; the
+ * resulting `status='new'` flows back down through the normal sync-down
+ * pull once the trigger fires remotely.
  */
 export async function updateClientInfo(input: UpdateClientInfoInput): Promise<void> {
   const db = await getDb();
@@ -218,25 +173,39 @@ export async function updateClientInfo(input: UpdateClientInfoInput): Promise<vo
   const contactNumber = input.contactNumber.trim() || null;
   const officeAddress = input.officeAddress.trim() || null;
 
+  const existing = await db.getFirstAsync<{ details_completed_at: string | null }>(
+    'SELECT details_completed_at FROM clients WHERE id = ?',
+    [input.clientId]
+  );
+  const detailsCompletedAt = existing?.details_completed_at ?? now;
+
   const remotePayload = {
     id: input.clientId,
+    // B-041/B-044: this update reaches Supabase via a genuine UPDATE now
+    // (lib/sync/remote-upsert.ts::updateOne, keyed off the outbox row's
+    // `operation`), not an upsert-as-insert — so the UPDATE policy's
+    // USING/WITH CHECK is what actually applies here, not an INSERT branch.
+    // Kept regardless: it's the correct current owner, satisfies the update
+    // policy, and is a harmless idempotent re-set to its existing value.
+    assigned_agent_id: input.agentId,
     contact_person: contactPerson,
     contact_position: position,
     contact_number: contactNumber,
     office_address: officeAddress,
     sales_channel: toRemoteSalesChannel(input.salesChannel),
-    customer_type: toRemoteCustomerType(input.status),
-    status: toRemoteStatus(input.status),
+    details_completed_at: detailsCompletedAt,
     updated_at: now,
   };
+
+  const createdOnline = await isLikelyOnline();
 
   await db.withTransactionAsync(async () => {
     await db.runAsync(
       `UPDATE clients
         SET contact_person = ?, position = ?, contact_number = ?, office_address = ?,
-            sales_channel = ?, status = ?, updated_at = ?, local_updated_at = ?, sync_status = 'pending'
+            sales_channel = ?, details_completed_at = ?, updated_at = ?, local_updated_at = ?, sync_status = 'pending'
        WHERE id = ?`,
-      [contactPerson, position, contactNumber, officeAddress, input.salesChannel, input.status, now, now, input.clientId]
+      [contactPerson, position, contactNumber, officeAddress, input.salesChannel, detailsCompletedAt, now, now, input.clientId]
     );
     await enqueueOutboxRow(db, {
       outboxId,
@@ -245,10 +214,23 @@ export async function updateClientInfo(input: UpdateClientInfoInput): Promise<vo
       operation: 'update',
       payload: JSON.stringify(remotePayload),
       createdAt: now,
+      createdOnline,
     });
   });
 
   runSync(input.agentId).catch((err) => console.error('[client-service] background sync failed:', JSON.stringify(err, null, 2)));
+}
+
+/**
+ * ADR-026 P2 item 8: single shared client-by-id lookup, replacing the
+ * inline `SELECT * FROM clients WHERE id = ?` duplicated across 4 screens.
+ * Local SQLite is the primary read path (ADR-001/T-003) — a `pending`
+ * (not-yet-synced) client only ever exists here until the outbox pushes it.
+ */
+export async function getClientById(clientId: string): Promise<Client | null> {
+  const db = await getDb();
+  const row = await db.getFirstAsync<LocalClientRow>('SELECT * FROM clients WHERE id = ?', [clientId]);
+  return row ? rowToClient(row) : null;
 }
 
 // T-014 (ADR-022 #12): non-blocking duplicate-name/phone warnings live in
