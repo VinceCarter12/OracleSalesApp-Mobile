@@ -24,17 +24,21 @@ const RECORD_PICKER_FILTERS: Array<{ value: RecordPickerFilter; label: string }>
 ];
 
 /**
- * Record Meeting entry point (ADR-015). The branch happens HERE, at client
- * selection — customer type is derived from the record, never asked:
- *   existing        → photo-only fast path (record-visit)
- *   prospect / new  → full form (record)
- * Meeting-first (quick-create inline on the record form) was removed
- * 2026-07-15 — a brand-new company is created via Create Client first, then
- * shows up here under Prospect/New.
+ * Record Meeting entry point (ADR-015, revised 2026-07-21). The branch
+ * happens HERE, at client selection — customer type is derived from the
+ * record, never asked:
+ *   new / existing → photo-only fast path (record-visit)
+ *   prospect       → full form (record)
+ * A 'new' client already has its info completed (ADR-027's auto-promotion
+ * requires it) — there's nothing left to re-ask, so it gets the same fast
+ * path as 'existing'. Only 'prospect' (info not yet complete) still needs
+ * the full form. Meeting-first (quick-create inline on the record form) was
+ * removed 2026-07-15 — a brand-new company is created via Create Client
+ * first, then shows up here under Prospect.
  */
 function openRecordFlow(client: Client): void {
   const status = getClientStatus(client);
-  if (status === 'existing') {
+  if (status !== 'prospect') {
     router.push(`/(tabs)/meetings/record-visit?clientId=${client.id}`);
   } else {
     router.push(`/(tabs)/meetings/record?clientId=${client.id}`);
@@ -44,9 +48,9 @@ function openRecordFlow(client: Client): void {
 function ClientRow({ client }: { client: Client }) {
   const status = getClientStatus(client);
   const badge = CLIENT_STATUS_BADGES[status];
-  // "Log Visit lang" (existing = photo-only fast path) vs "Full form"
-  // (prospect/new) — mirrors openRecordFlow's own branch, display-only.
-  const hint = status === 'existing' ? 'Log Visit lang' : 'Full form';
+  // "Log Visit lang" (new/existing = photo-only fast path) vs "Full form"
+  // (prospect only) — mirrors openRecordFlow's own branch, display-only.
+  const hint = status !== 'prospect' ? 'Log Visit lang' : 'Full form';
   return (
     <Pressable onPress={() => openRecordFlow(client)}>
       <XStack
@@ -88,7 +92,7 @@ export default function SelectClientScreen() {
       <BizTopBar title="Record Meeting" />
       <YStack paddingHorizontal="$4" paddingBottom="$2" gap="$1">
         <Text fontSize={13} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted}>
-          Existing clients go straight to photo capture — no form to re-fill.
+          New at Existing clients go straight to photo capture — no form to re-fill.
         </Text>
       </YStack>
 

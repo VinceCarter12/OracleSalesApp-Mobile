@@ -2,10 +2,17 @@ import { useCallback, useEffect, useState } from 'react';
 import { Pressable, ScrollView } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
-import { useSQLiteContext } from 'expo-sqlite';
 import { Camera, Check, Pencil } from 'lucide-react-native';
 import { Spinner, Text, View, XStack, YStack } from 'tamagui';
-import { rowToClient, type LocalClientRow } from '../../../lib/local-client-mapper';
+import { getClientById } from '../../../lib/client-service';
+import { useSession } from '../../../lib/session-store';
+import {
+  getClientCompanionRequests,
+  companionRequestDisplayStatus,
+  COMPANION_REQUEST_STATUS_LABELS,
+  COMPANION_REQUEST_BADGE_TONES,
+  type ClientCompanionRequest,
+} from '../../../lib/tag-along-service';
 import { OUTCOME_BADGE_STYLES, BIZLINK_COLORS, BIZLINK_FONTS } from '../../../lib/theme';
 import { CLIENT_STATUS_BADGES, getClientStatus } from '../../../lib/client-status';
 import { getClientProgressBreakdown, getInfoChecklist } from '../../../lib/client-progress';
@@ -21,29 +28,44 @@ import type { Client } from '../../../types';
 
 export default function ClientDetailScreen() {
   const insets = useSafeAreaInsets();
-  const db = useSQLiteContext();
   const { id } = useLocalSearchParams<{ id: string }>();
+  const { profileId } = useSession();
   const [client, setClient] = useState<Client | null>(null);
   const [loading, setLoading] = useState(true);
+  const [companionRequests, setCompanionRequests] = useState<ClientCompanionRequest[]>([]);
   const { meetings } = useMeetings(id);
 
   // Local SQLite is the primary read path (ADR-001/T-003) — a `pending`
   // (not-yet-synced) client only ever exists here until the outbox pushes it.
   const loadClient = useCallback(async () => {
     if (!id) return;
-    const row = await db.getFirstAsync<LocalClientRow>('SELECT * FROM clients WHERE id = ?', [id]);
-    setClient(row ? rowToClient(row) : null);
+    const foundClient = await getClientById(id);
+    setClient(foundClient);
     setLoading(false);
-  }, [db, id]);
+  }, [id]);
 
   useEffect(() => {
     loadClient();
   }, [loadClient]);
+
+  // ADR-030 Pass 2: requester-side companion-request chip. `profileId` is
+  // the requester identity (ADR-023) — a companion request another agent
+  // made naming this client isn't this agent's to see here.
+  const loadCompanionRequests = useCallback(async () => {
+    if (!id || !profileId) return;
+    setCompanionRequests(await getClientCompanionRequests(id, profileId));
+  }, [id, profileId]);
+
+  useEffect(() => {
+    loadCompanionRequests();
+  }, [loadCompanionRequests]);
+
   // Refresh after Complete Info saves and navigates back.
   useFocusEffect(
     useCallback(() => {
       loadClient();
-    }, [loadClient])
+      loadCompanionRequests();
+    }, [loadClient, loadCompanionRequests])
   );
 
   if (loading) {
@@ -95,6 +117,38 @@ export default function ClientDetailScreen() {
           </YStack>
         </BizCard>
 
+        {/* ADR-030 Pass 2: requester-side companion-request status — no
+            literal wireframe markup exists for client-detail specifically
+            (only Complete Info's picker + the Notifications accept/decline
+            card are wireframed), but Decisions.md ADR-030 decision 6(d)
+            explicitly specs a client-detail status chip as part of the
+            reconciliation flow. Built with only already-approved primitives
+            (BizSectionHeader + StatusBadge, both used elsewhere on this
+            screen) rather than any new control. */}
+        {companionRequests.length > 0 ? (
+          <>
+            <BizSectionHeader title="Kasama sa visit" />
+            <BizCard gap="$2">
+              {companionRequests.map((request) => {
+                const displayStatus = companionRequestDisplayStatus(request);
+                const tone = COMPANION_REQUEST_BADGE_TONES[displayStatus];
+                return (
+                  <XStack key={request.id} alignItems="center" justifyContent="space-between" gap="$2.5">
+                    <Text fontSize={13.5} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.text} flex={1}>
+                      {request.inviteeName ?? 'Kasama'}
+                    </Text>
+                    <StatusBadge
+                      label={COMPANION_REQUEST_STATUS_LABELS[displayStatus]}
+                      background={BIZLINK_COLORS[tone.background]}
+                      color={BIZLINK_COLORS[tone.color]}
+                    />
+                  </XStack>
+                );
+              })}
+            </BizCard>
+          </>
+        ) : null}
+
         <BizSectionHeader
           title="Info completion"
           helper={status === 'prospect' ? '1-month rule' : undefined}
@@ -134,9 +188,10 @@ export default function ClientDetailScreen() {
         </BizCard>
 
         {/* Two primary actions side-by-side (Wireframe a-detail, ~line 521-524).
-            Record Meeting is hidden here once status === 'existing' — those
-            clients log visits solely through My Meetings (2026-07-15 wireframe
-            note), so there is only one entry point instead of two. */}
+            Record Meeting is hidden here once status !== 'prospect' (revised
+            2026-07-21 — 'new' now shares 'existing's fast path, ADR-015) —
+            those clients log visits solely through My Meetings (2026-07-15
+            wireframe note), so there is only one entry point instead of two. */}
         <XStack gap="$2.5" marginTop="$3.5">
           <YStack flex={1}>
             <BizButton
@@ -146,7 +201,7 @@ export default function ClientDetailScreen() {
               onPress={() => router.push(`/(tabs)/clients/complete?clientId=${client.id}`)}
             />
           </YStack>
-          {status !== 'existing' ? (
+          {status === 'prospect' ? (
             <YStack flex={1}>
               <BizButton
                 label="Record meeting"
@@ -168,7 +223,7 @@ export default function ClientDetailScreen() {
             return (
               <Pressable key={meeting.id} onPress={() => router.push(`/(tabs)/meetings/${meeting.id}`)}>
                 <XStack
-                  alignItems="center"
+                  alignItems="flex-start"
                   gap="$3"
                   backgroundColor={BIZLINK_COLORS.card}
                   borderRadius={20}
