@@ -22,3 +22,6 @@ ios/
 
 expo-env.d.ts
 # @end expo-cli
+# Local-only generated/tooling files (never commit)
+WEB_STATUS.md
+.claude/
