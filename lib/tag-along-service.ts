@@ -21,7 +21,7 @@ export interface CompanionSelection {
 // have already capped the selection.
 export const MAX_COMPANIONS_PER_REQUEST = 2;
 
-interface InsertCompanionRequestsInput {
+export interface InsertCompanionRequestsInput {
   clientId: string;
   meetingId: string;
   requesterId: string;
@@ -258,3 +258,34 @@ export const COMPANION_REQUEST_BADGE_TONES: Record<CompanionRequestDisplayStatus
   declined: { background: 'soft', color: 'red' },
   cancelled: { background: 'soft', color: 'muted' },
 };
+
+interface PendingManagerTagAlongRow {
+  related_client_id: string;
+}
+
+/**
+ * F-204: batch-loads which of the requester's own clients currently have a
+ * PENDING tag-along request to a manager for that client's meeting
+ * (`invitee_kind='manager' AND context='meeting' AND status='pending'`) —
+ * the exact condition Migration 023's `promote_client_to_new()` gate checks
+ * server-side. Display-only: does not touch `ClientStatus` or the
+ * prospect→new promotion itself, just tells list/detail screens whether to
+ * show the "Waiting for Manager Approval" overlay badge. Batched (one query
+ * for the whole list) rather than per-row, mirroring
+ * `app/(tabs)/meetings/index.tsx`'s `getMyCompanionRequests` bulk-load
+ * pattern for its tag-along chip — avoids an N+1 query per client row.
+ */
+export async function getClientIdsWithPendingManagerTagAlong(requesterId: string): Promise<Set<string>> {
+  const db = await getDb();
+  const rows = await db.getAllAsync<PendingManagerTagAlongRow>(
+    `SELECT DISTINCT related_client_id
+       FROM tag_along_requests
+      WHERE requester_id = ?
+        AND invitee_kind = 'manager'
+        AND context = 'meeting'
+        AND status = 'pending'
+        AND related_client_id IS NOT NULL`,
+    [requesterId]
+  );
+  return new Set(rows.map((row) => row.related_client_id));
+}

@@ -142,3 +142,67 @@ export async function updateCompanionRequestStatus(input: UpdateCompanionRequest
     console.error('[tag-along-invitee-service] background sync failed:', JSON.stringify(err, null, 2))
   );
 }
+
+export interface RecentManagerTag {
+  id: string;
+  requesterName: string | null;
+  clientName: string | null;
+  createdAt: string;
+}
+
+interface RecentManagerTagRow {
+  id: string;
+  requester_name: string | null;
+  client_name: string | null;
+  created_at: string;
+}
+
+/**
+ * F-205 item 5 (quality-gate fix): reads this agent's own `tag_along_requests`
+ * rows where they're the invitee AND the row was pre-accepted by a manager
+ * tagging themselves in as requester (`insertAcceptedMeetingCompanions()`,
+ * F-205 decision 2) — NOT a normal request the agent accepted themselves via
+ * `updateCompanionRequestStatus()`.
+ *
+ * `status = 'accepted'` alone is NOT sufficient: `updateCompanionRequestStatus()`
+ * also sets `status = 'accepted'` whenever an agent manually accepts ANY
+ * normal pending request (requested by a manager OR a teammate, per the
+ * B-053 flow), producing a row indistinguishable from a manager-pre-accept
+ * row by status alone. The real distinguishing signal is the REQUESTER's
+ * role: `insertAcceptedMeetingCompanions()` is only ever called with
+ * `requesterId = record.agent_id` where that agent IS a manager recording
+ * their own meeting (`companionsPreAccepted: role === 'sales_manager'`, see
+ * `app/(tabs)/meetings/record.tsx` and `record-visit.tsx`) — a manager is
+ * NEVER the `requester_id` on a normal pending-flow row, since the only two
+ * call sites that create `tag_along_requests` rows (`createMeeting()` in
+ * both Record Meeting screens) always route a manager-as-requester through
+ * the pre-accepted path, never the pending one. So joining
+ * `team_roster_snapshot` on `requester_id` and requiring `role =
+ * 'sales_manager'` is a fully reliable signal, without a schema change.
+ * (Best-effort: if the roster hasn't synced yet on this device, the join
+ * misses and the row is excluded — same tolerated staleness as this file's
+ * other roster joins.) Most recent first, capped to a small count for the
+ * Notifications feed.
+ */
+export async function getRecentCompanionTagsForInvitee(inviteeId: string, limit = 5): Promise<RecentManagerTag[]> {
+  const db = await getDb();
+  const rows = await db.getAllAsync<RecentManagerTagRow>(
+    `SELECT tar.id, trs.full_name AS requester_name, c.company_name AS client_name, tar.created_at
+       FROM tag_along_requests tar
+       JOIN team_roster_snapshot trs ON trs.profile_id = tar.requester_id
+       LEFT JOIN clients c ON c.id = tar.related_client_id
+      WHERE tar.invitee_id = ?
+        AND tar.context = 'meeting'
+        AND tar.status = 'accepted'
+        AND trs.role = 'sales_manager'
+      ORDER BY tar.created_at DESC
+      LIMIT ?`,
+    [inviteeId, limit]
+  );
+  return rows.map((row) => ({
+    id: row.id,
+    requesterName: row.requester_name,
+    clientName: row.client_name,
+    createdAt: row.created_at,
+  }));
+}
