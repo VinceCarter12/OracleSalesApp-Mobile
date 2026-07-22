@@ -1,74 +1,101 @@
-import { Pressable, ScrollView } from 'react-native';
+import { ScrollView } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
-import { Text, View, XStack, YStack } from 'tamagui';
-import { COLORS } from '../../../lib/theme';
-import { EXEC_MANAGERS } from '../../../lib/executive-data';
+import { Spinner, Text, XStack, YStack } from 'tamagui';
+import { BIZLINK_COLORS, BIZLINK_FONTS } from '../../../lib/theme';
+import { useExecutiveOverview } from '../../../lib/use-executive-overview';
+import { avatarPaletteFor } from '../../../lib/avatar-palette';
 import { useGate } from '../../../lib/gate-context';
 import { SecurityGate } from '../../../components/security/SecurityGate';
-import { LockButton } from '../../../components/security/LockButton';
+import { BizLockButton } from '../../../components/bizlink/BizLockButton';
+import { BizButton } from '../../../components/bizlink/BizButton';
+import { Avatar } from '../../../components/ui/Avatar';
 import { StatusBadge } from '../../../components/ui/StatusBadge';
 
-/** Wireframe x-teams — gated: ALL managers company-wide, Sales + RSR tracks together (ADR-014). */
+/**
+ * Wireframe x-teams — ALL managers company-wide, Sales + RSR tracks
+ * together (ADR-014). Gated (ADR-007) — the Manager-only 2026-07-17
+ * amendment does NOT extend to Executive; Executive keeps the passcode gate.
+ * B-054 Phase 2: real data via lib/use-executive-overview.ts.
+ */
 export default function ExecutiveTeamsScreen() {
   const insets = useSafeAreaInsets();
   const { unlocked } = useGate();
+  const { overview, loading, error, reload } = useExecutiveOverview();
 
   if (!unlocked) return <SecurityGate />;
 
   return (
-    <YStack flex={1} backgroundColor={COLORS.snow} paddingTop={insets.top}>
+    <YStack flex={1} backgroundColor={BIZLINK_COLORS.canvas} paddingTop={insets.top}>
       <XStack alignItems="center" paddingHorizontal="$4" paddingTop="$2.5" paddingBottom="$1.5">
-        <Text fontSize={21} fontWeight="800" letterSpacing={-0.4} color={COLORS.eel}>Teams</Text>
-        <XStack marginLeft="auto"><LockButton /></XStack>
+        <Text fontFamily={BIZLINK_FONTS.semibold} fontSize={21} color={BIZLINK_COLORS.text}>Teams</Text>
+        <XStack marginLeft="auto"><BizLockButton /></XStack>
       </XStack>
       <ScrollView contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 24 }}>
-        <Text fontSize={13} fontWeight="600" color={COLORS.hare} marginBottom="$3" lineHeight={19}>
+        <Text fontSize={13} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} marginBottom="$3" lineHeight={19}>
           Lahat ng managers sa buong kumpanya — Sales at RSR (ADR-014) — kasama ang laki ng kanya-kanyang team.
           Executive lang ang nakakakita ng dalawang tracks nang magkasama.
         </Text>
-        {EXEC_MANAGERS.map((manager) => (
-          <Pressable key={manager.id} onPress={() => router.push(`/(executive)/teams/${manager.id}`)}>
-            <XStack
-              alignItems="center"
-              gap="$3"
-              backgroundColor={COLORS.snow}
-              borderWidth={2}
-              borderColor={COLORS.swan}
-              borderRadius={16}
-              padding="$3.5"
-              marginBottom="$2.5"
-            >
-              <View width={44} height={44} borderRadius={22} alignItems="center" justifyContent="center" backgroundColor={manager.avatar.background}>
-                <Text fontWeight="800" fontSize={16} color={manager.avatar.color}>{manager.initials}</Text>
-              </View>
-              <YStack flex={1} gap="$1">
-                <XStack alignItems="center" gap="$1.5" flexWrap="wrap">
-                  <Text fontWeight="800" fontSize={14} color={COLORS.eel}>{manager.name}</Text>
-                  {manager.track === 'rsr' ? (
-                    <StatusBadge label="RSR Manager" background={COLORS.greenTint} color={COLORS.ledgeGreen} />
-                  ) : (
-                    <StatusBadge label="Sales Manager" background={COLORS.purpleSoft} color={COLORS.purple} />
-                  )}
-                </XStack>
-                <XStack gap="$2.5">
-                  <Text fontSize={10.5} fontWeight="800" color={COLORS.wolf}>
-                    <Text color={COLORS.ledgeGreen}>{manager.agentCount}</Text> agents
-                  </Text>
-                  <Text fontSize={10.5} fontWeight="800" color={COLORS.wolf}>
-                    <Text color={COLORS.ledgeGreen}>{manager.meetings}</Text> meetings
-                  </Text>
-                  {manager.track === 'rsr' ? null : (
-                    <Text fontSize={10.5} fontWeight="800" color={COLORS.wolf}>
-                      <Text color={COLORS.ledgeGreen}>{manager.clients}</Text> clients
+
+        {loading ? (
+          <YStack alignItems="center" paddingVertical="$6">
+            <Spinner size="large" color={BIZLINK_COLORS.brand} />
+          </YStack>
+        ) : error ? (
+          <YStack alignItems="center" paddingVertical="$6" gap="$3">
+            <Text fontSize={13} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} textAlign="center">{error}</Text>
+            <BizButton small label="Ulitin" variant="white" onPress={reload} />
+          </YStack>
+        ) : !overview || overview.managers.length === 0 ? (
+          <YStack alignItems="center" paddingVertical="$6">
+            <Text fontSize={13} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted}>
+              Walang manager na naitala.
+            </Text>
+          </YStack>
+        ) : (
+          overview.managers.map((manager) => {
+            const color = avatarPaletteFor(manager.id);
+            return (
+              <XStack
+                key={manager.id}
+                alignItems="center"
+                gap="$3"
+                backgroundColor={BIZLINK_COLORS.card}
+                borderRadius={20}
+                padding={14}
+                marginBottom={10}
+                onPress={() => router.push(`/(executive)/teams/${manager.id}`)}
+                pressStyle={{ opacity: 0.85 }}
+              >
+                <Avatar initials={manager.initials} background={color.background} color={color.color} />
+                <YStack flex={1} gap="$1">
+                  <XStack alignItems="center" gap="$1.5" flexWrap="wrap">
+                    <Text fontFamily={BIZLINK_FONTS.semibold} fontSize={14} color={BIZLINK_COLORS.text}>{manager.name}</Text>
+                    {manager.track === 'rsr' ? (
+                      <StatusBadge label="RSR Manager" background={BIZLINK_COLORS.tintA} color={BIZLINK_COLORS.ink} />
+                    ) : (
+                      <StatusBadge label="Sales Manager" background={BIZLINK_COLORS.soft} color={BIZLINK_COLORS.navy} />
+                    )}
+                  </XStack>
+                  <XStack gap="$2.5">
+                    <Text fontSize={10.5} fontFamily={BIZLINK_FONTS.semibold} color={BIZLINK_COLORS.muted}>
+                      <Text color={BIZLINK_COLORS.brand}>{manager.agentCount}</Text> agents
                     </Text>
-                  )}
-                </XStack>
-              </YStack>
-              <Text color={COLORS.swanLedge} fontSize={16}>›</Text>
-            </XStack>
-          </Pressable>
-        ))}
+                    <Text fontSize={10.5} fontFamily={BIZLINK_FONTS.semibold} color={BIZLINK_COLORS.muted}>
+                      <Text color={BIZLINK_COLORS.brand}>{manager.meetings}</Text> meetings
+                    </Text>
+                    {manager.track === 'rsr' ? null : (
+                      <Text fontSize={10.5} fontFamily={BIZLINK_FONTS.semibold} color={BIZLINK_COLORS.muted}>
+                        <Text color={BIZLINK_COLORS.brand}>{manager.clients}</Text> clients
+                      </Text>
+                    )}
+                  </XStack>
+                </YStack>
+                <Text color={BIZLINK_COLORS.muted} fontSize={16}>›</Text>
+              </XStack>
+            );
+          })
+        )}
       </ScrollView>
     </YStack>
   );

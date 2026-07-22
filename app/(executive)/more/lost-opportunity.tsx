@@ -1,50 +1,85 @@
 import { ScrollView } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Text, XStack, YStack } from 'tamagui';
-import { COLORS } from '../../../lib/theme';
-import { EXEC_LOST_OPP, execAgentById, execManagerById, type ExecLostOppStatus } from '../../../lib/executive-data';
-import { TopBar } from '../../../components/ui/TopBar';
-import { Card } from '../../../components/ui/Card';
+import { Spinner, Text, XStack, YStack } from 'tamagui';
+import { BIZLINK_COLORS, BIZLINK_FONTS } from '../../../lib/theme';
+import {
+  useExecutiveLostOpportunities,
+} from '../../../lib/use-executive-lost-opportunities';
+import type { ExecLostOpportunityStatus } from '../../../lib/executive-lost-opportunity-service';
+import { BizTopBar } from '../../../components/bizlink/BizTopBar';
+import { BizCard } from '../../../components/bizlink/BizCard';
+import { BizButton } from '../../../components/bizlink/BizButton';
 import { StatusBadge } from '../../../components/ui/StatusBadge';
 
-const LOST_STATUS_BADGES: Record<ExecLostOppStatus, { label: string; background: string; color: string }> = {
-  'admin-list': { label: 'Sa admin list', background: COLORS.redSoft, color: COLORS.ledgeRed },
-  released: { label: 'Naka-release na', background: COLORS.amberSoft, color: COLORS.orange },
-  claimed: { label: 'Claimed', background: COLORS.greenSoft, color: COLORS.ledgeGreen },
+const LOST_STATUS_BADGES: Record<ExecLostOpportunityStatus, { label: string; background: string; color: string }> = {
+  cooldown: { label: 'Sa cooldown (14 araw)', background: BIZLINK_COLORS.tintB, color: BIZLINK_COLORS.red },
+  released: { label: 'Naka-release na', background: BIZLINK_COLORS.amberSoft, color: BIZLINK_COLORS.orange },
 };
 
-/** Wireframe x-lostopp — company-wide lost-opportunity list, Admin-level visibility. */
+function formatDate(iso: string | null): string {
+  if (!iso) return '—';
+  return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+}
+
+/**
+ * Wireframe x-lostopp — company-wide lost-opportunity list, Admin-level
+ * visibility. Real data (B-060 addendum, 2026-07-23) via
+ * lib/executive-lost-opportunity-service.ts. Status is DERIVED from
+ * `reassignable_at` vs now (cooldown/released), not a real column — see that
+ * service's header comment. "Claimed by" is deliberately omitted: once
+ * another agent claims a lost client, the row's `status` moves away from
+ * `'lost'` entirely (so it drops out of this list), and there is no column
+ * tracking the original agent who lost it — nothing reliable to show.
+ */
 export default function ExecutiveLostOpportunityScreen() {
   const insets = useSafeAreaInsets();
+  const { items, loading, error, reload } = useExecutiveLostOpportunities();
+
   return (
-    <YStack flex={1} backgroundColor={COLORS.snow} paddingTop={insets.top}>
-      <TopBar title="Lost Opportunity" />
+    <YStack flex={1} backgroundColor={BIZLINK_COLORS.canvas} paddingTop={insets.top}>
+      <BizTopBar title="Lost Opportunity" />
       <ScrollView contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 24 }}>
-        <Text fontSize={13} fontWeight="600" color={COLORS.hare} marginBottom="$3" lineHeight={19}>
-          Company-wide na listahan. Dating "admin side lang" — ngayon makikita mo rin bilang Executive.
+        <Text fontSize={13} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} marginBottom="$3" lineHeight={19}>
+          Company-wide na listahan. Dating &ldquo;admin side lang&rdquo; — ngayon makikita mo rin bilang Executive.
         </Text>
-        {EXEC_LOST_OPP.map((lost) => {
-          const badge = LOST_STATUS_BADGES[lost.status];
-          const agent = execAgentById(lost.agentId);
-          const manager = execManagerById(lost.managerId);
-          return (
-            <Card key={lost.id} marginBottom="$2.5" gap="$1">
-              <XStack alignItems="center">
-                <StatusBadge
-                  label={lost.status === 'claimed' && lost.claimedBy ? `Claimed ni ${lost.claimedBy}` : badge.label}
-                  background={badge.background}
-                  color={badge.color}
-                />
-                <Text fontSize={11.5} fontWeight="600" color={COLORS.hare} marginLeft="auto">{lost.lostDate}</Text>
-              </XStack>
-              <Text fontWeight="800" fontSize={14} color={COLORS.eel}>{lost.name}</Text>
-              <Text fontSize={11.5} fontWeight="600" color={COLORS.hare}>
-                {agent?.name ?? '—'} · team ni {manager?.name ?? '—'}
-              </Text>
-              <Text fontSize={12.5} fontWeight="700" color={COLORS.wolf}>{lost.reason}</Text>
-            </Card>
-          );
-        })}
+
+        {loading ? (
+          <YStack alignItems="center" paddingVertical="$6">
+            <Spinner size="large" color={BIZLINK_COLORS.brand} />
+          </YStack>
+        ) : error ? (
+          <YStack alignItems="center" paddingVertical="$6" gap="$3">
+            <Text fontSize={13} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} textAlign="center">{error}</Text>
+            <BizButton small label="Ulitin" variant="white" onPress={reload} />
+          </YStack>
+        ) : items.length === 0 ? (
+          <YStack alignItems="center" paddingVertical="$6">
+            <Text fontSize={13} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted}>
+              Walang lost opportunity sa ngayon.
+            </Text>
+          </YStack>
+        ) : (
+          items.map((lost) => {
+            const badge = LOST_STATUS_BADGES[lost.status];
+            return (
+              <BizCard key={lost.id} marginBottom={10} gap="$1">
+                <XStack alignItems="center">
+                  <StatusBadge label={badge.label} background={badge.background} color={badge.color} />
+                  <Text fontSize={11.5} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} marginLeft="auto">
+                    {formatDate(lost.lostAt)}
+                  </Text>
+                </XStack>
+                <Text fontFamily={BIZLINK_FONTS.semibold} fontSize={14} color={BIZLINK_COLORS.text}>{lost.companyName}</Text>
+                <Text fontSize={11.5} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted}>
+                  {lost.agentName ?? '—'} · team ni {lost.managerName ?? '—'}
+                </Text>
+                <Text fontSize={12.5} fontFamily={BIZLINK_FONTS.semibold} color={BIZLINK_COLORS.muted}>
+                  {lost.reason ?? 'Walang naitalang dahilan'}
+                </Text>
+              </BizCard>
+            );
+          })
+        )}
       </ScrollView>
     </YStack>
   );

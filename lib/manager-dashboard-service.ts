@@ -1,6 +1,7 @@
 import { supabase } from './supabase';
-import { fromRemoteOutcome } from './meeting-service';
-import type { ManagerDashboardSummary, TeamAgent, TeamMeetingPreview } from '../types';
+import { fromRemoteOutcome } from './remote-meeting-mapping';
+import { buildTeamAgents } from './team-remote-mappers';
+import type { ManagerDashboardSummary, TeamMeetingPreview } from '../types';
 
 // Real cross-agent Supabase queries for the Manager dashboard (2026-07-16,
 // see Sprint.md's 2026-07-16 note) — replaces lib/useManagerDashboard.ts's
@@ -15,12 +16,14 @@ import type { ManagerDashboardSummary, TeamAgent, TeamMeetingPreview } from '../
 // (clients already got a broad authenticated-read policy earlier today, B-009.)
 //
 // NOT wired to real data (no backing table exists remotely at all):
-// pendingApprovals, pendingTagAlongRequests — the approval/tag-along workflow
-// has no Supabase table yet, this is a separate, unscoped future feature, not
-// a quick query away like the rest of this. pendingSyncRecords is also left
-// at 0 — a manager's own outbox only reflects their own device's pending
-// writes, not the team's (each agent's device syncs itself), so there's no
-// single real number to show here yet either.
+// pendingTagAlongRequests — kept as an unused-by-Home-screen field (F-205
+// moved the real pending-tag-along count to a direct
+// `getIncomingCompanionRequests()` read in app/(manager)/index.tsx instead).
+// pendingSyncRecords is also left at 0 — a manager's own outbox only
+// reflects their own device's pending writes, not the team's (each agent's
+// device syncs itself), so there's no single real number to show here yet
+// either. `pendingApprovals` was removed entirely (F-205 — the Approvals
+// concept no longer exists).
 // deadlineWarningCount is left at 0 — the prospect-lifecycle columns
 // (details_deadline_at etc., ADR-006) were never confirmed present on the
 // live `clients` table (only the columns actually queried below have been
@@ -46,11 +49,6 @@ interface MeetingRow {
   agent_id: string;
   outcome: string | null;
   meeting_date: string;
-}
-
-function initialsOf(fullName: string): string {
-  const parts = fullName.trim().split(/\s+/);
-  return parts.map((p) => p[0]).join('').slice(0, 2).toUpperCase() || '—';
 }
 
 function isSameMonth(iso: string, reference: Date): boolean {
@@ -82,18 +80,17 @@ export async function fetchManagerDashboard(
   const now = new Date();
   const thisMonthMeetings = meetings.filter((m) => isSameMonth(m.meeting_date, now));
 
-  const agents: TeamAgent[] = profiles.map((p) => {
-    const agentAllMeetings = meetings.filter((m) => m.agent_id === p.user_id);
-    const successCount = agentAllMeetings.filter((m) => m.outcome === 'successful').length;
-    return {
-      id: p.user_id,
-      name: p.full_name,
-      initials: initialsOf(p.full_name),
-      meetingsThisMonth: thisMonthMeetings.filter((m) => m.agent_id === p.user_id).length,
-      activeClients: clients.filter((c) => c.assigned_agent_id === p.user_id).length,
-      successRate: agentAllMeetings.length ? Math.round((successCount / agentAllMeetings.length) * 100) : 0,
-    };
-  });
+  // Dedup (B-054 Phase 1): shared with lib/manager-team-service.ts via
+  // lib/team-remote-mappers.ts::buildTeamAgents(). No behavior change here —
+  // this still keys agents by `p.user_id` (not `p.id`), the same identity
+  // this file always used; that's a separate known issue (B-055), not fixed
+  // as a drive-by in this dedup pass.
+  const agents = buildTeamAgents(
+    profiles.map((p) => ({ id: p.user_id, full_name: p.full_name })),
+    clients,
+    meetings,
+    now
+  );
   const agentById = new Map(agents.map((a) => [a.id, a]));
   const clientNameById = new Map(clients.map((c) => [c.id, c.company_name]));
 
@@ -125,7 +122,6 @@ export async function fetchManagerDashboard(
     teamMeetings: thisMonthMeetings.length,
     teamMeetingsSuccessful: thisMonthMeetings.filter((m) => m.outcome === 'successful').length,
     agentCount: agents.length,
-    pendingApprovals: 0,
     pendingSyncRecords: 0,
     deadlineWarningCount: 0,
     pendingTagAlongRequests: 0,

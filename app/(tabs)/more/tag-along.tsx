@@ -1,163 +1,154 @@
-import { useState } from 'react';
-import { ScrollView, TextInput } from 'react-native';
+import { useCallback, useEffect, useState } from 'react';
+import { ScrollView } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Text, XStack, YStack } from 'tamagui';
-import { COLORS } from '../../../lib/theme';
-import { showToast } from '../../../lib/toast';
-import { TopBar } from '../../../components/ui/TopBar';
-import { SectionHeader } from '../../../components/ui/SectionHeader';
+import { useFocusEffect } from 'expo-router';
+import { CircleCheckBig, Clock, History } from 'lucide-react-native';
+import { Spinner, Text, XStack, YStack } from 'tamagui';
+import { useSession } from '../../../lib/session-store';
+import {
+  getMyCompanionRequests,
+  companionRequestDisplayStatus,
+  COMPANION_REQUEST_STATUS_LABELS,
+  COMPANION_REQUEST_BADGE_TONES,
+  type MyCompanionRequest,
+} from '../../../lib/tag-along-service';
+import { BIZLINK_COLORS, BIZLINK_FONTS } from '../../../lib/theme';
+import { BizTopBar } from '../../../components/bizlink/BizTopBar';
+import { BizSectionHeader } from '../../../components/bizlink/BizSectionHeader';
+import { BizButton } from '../../../components/bizlink/BizButton';
 import { Avatar } from '../../../components/ui/Avatar';
 import { StatusBadge } from '../../../components/ui/StatusBadge';
-import { DuoButton } from '../../../components/ui/DuoButton';
 
-// Mock rosters until the manager/team directory (T-002+ backend) exists.
-const MANAGERS = [
-  { id: 'm1', name: 'Erika Villanueva', initials: 'EV', role: 'Sales Manager' },
-  { id: 'm2', name: 'Marco Dizon', initials: 'MD', role: 'Sales Manager' },
-];
-const TEAMMATES = [
-  { id: 't1', name: 'Alyssa Reyes', initials: 'AR' },
-  { id: 't2', name: 'Paolo Cruz', initials: 'PC' },
-];
-
-interface PendingRequest {
-  id: string;
-  name: string;
-  status: 'pending' | 'accepted';
-}
-
+/**
+ * "Tag-Along Status" (ADR-030 Pass 2.5, full rewrite from the old mock
+ * send-request form): view-only status center for companion requests THIS
+ * agent has made. Record Meeting's "Kasama sa visit" picker is now the sole
+ * entry point for creating a request — nothing here sends one.
+ */
 export default function TagAlongScreen() {
   const insets = useSafeAreaInsets();
-  const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [note, setNote] = useState('');
-  const [requests, setRequests] = useState<PendingRequest[]>([]);
+  const { profileId } = useSession();
+  const [requests, setRequests] = useState<MyCompanionRequest[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
 
-  function sendRequest(): void {
-    if (!selectedId) return;
-    const person = [...MANAGERS, ...TEAMMATES].find((p) => p.id === selectedId);
-    if (!person) return;
-    setRequests((prev) => [{ id: `${Date.now()}`, name: person.name, status: 'pending' }, ...prev]);
-    setSelectedId(null);
-    setNote('');
-    showToast('✓ Tag-along request sent');
-  }
+  const load = useCallback(async () => {
+    if (!profileId) return;
+    try {
+      setRequests(await getMyCompanionRequests(profileId));
+      setLoadError(false);
+    } catch (err) {
+      console.error('[TagAlongStatus] load failed:', err instanceof Error ? err.message : String(err));
+      setLoadError(true);
+    } finally {
+      setLoading(false);
+    }
+  }, [profileId]);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  useFocusEffect(
+    useCallback(() => {
+      load();
+    }, [load])
+  );
+
+  const pending = requests.filter((r) => {
+    const status = companionRequestDisplayStatus(r);
+    return status === 'pending_offline' || status === 'pending_synced';
+  });
+  const accepted = requests.filter((r) => companionRequestDisplayStatus(r) === 'accepted');
+  const history = requests.filter((r) => {
+    const status = companionRequestDisplayStatus(r);
+    return status === 'declined' || status === 'cancelled';
+  });
 
   return (
-    <YStack flex={1} backgroundColor={COLORS.snow} paddingTop={insets.top}>
-      <TopBar title="Request Tag-Along" />
+    <YStack flex={1} backgroundColor={BIZLINK_COLORS.canvas} paddingTop={insets.top}>
+      <BizTopBar title="Tag-Along Status" />
       <ScrollView contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 32 }}>
-        <Text fontSize={13} fontWeight="600" color={COLORS.hare} marginBottom="$2" lineHeight={19}>
-          Hilingin sa isang manager o ka-team na sumama sa susunod mong client visit. Ikaw pa rin ang
-          magre-record ng buong meeting (client info, GPS, litrato, notes) — kasama lang sila sa litrato
-          bilang proof.
+        <Text fontSize={13} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} marginBottom="$2" lineHeight={19}>
+          Makikita dito ang mga kasamang hiniling mo — pumili sa Record Meeting screen kapag may susunod kang
+          i-record na visit. Dito mo lang mabantayan kung tinanggap na, at ang kasaysayan ng mga naunang request.
         </Text>
 
-        <SectionHeader title="Manager" helper="· kahit sinong manager, walang restriction" />
-        {MANAGERS.map((person) => (
-          <RosterRow
-            key={person.id}
-            name={person.name}
-            initials={person.initials}
-            subtitle={person.role}
-            selected={selectedId === person.id}
-            onPress={() => setSelectedId(person.id)}
-          />
-        ))}
-
-        <SectionHeader title="Ka-team" helper="· ka-team mo lang — bawal ang hindi ka-team (per client)" />
-        {TEAMMATES.map((person) => (
-          <RosterRow
-            key={person.id}
-            name={person.name}
-            initials={person.initials}
-            selected={selectedId === person.id}
-            onPress={() => setSelectedId(person.id)}
-          />
-        ))}
-
-        <SectionHeader title="Note (optional)" />
-        <TextInput
-          value={note}
-          onChangeText={setNote}
-          placeholder="e.g. Closing meeting bukas, sana kasama ka…"
-          placeholderTextColor={COLORS.hare}
-          multiline
-          style={{
-            height: 70,
-            borderWidth: 2,
-            borderColor: COLORS.swan,
-            borderRadius: 12,
-            paddingHorizontal: 14,
-            paddingVertical: 12,
-            fontWeight: '700',
-            fontSize: 14.5,
-            color: COLORS.eel,
-            textAlignVertical: 'top',
-          }}
-        />
-
-        <YStack marginTop="$4">
-          <DuoButton label="Send Request" onPress={sendRequest} disabled={!selectedId} />
-        </YStack>
-
-        <SectionHeader title="Mga request mo" />
-        {requests.length === 0 ? (
-          <Text fontSize={13} fontWeight="600" color={COLORS.hare}>Wala ka pang requests.</Text>
+        {loading ? (
+          <YStack alignItems="center" paddingVertical="$6">
+            <Spinner size="large" color={BIZLINK_COLORS.brand} />
+          </YStack>
+        ) : loadError ? (
+          <YStack alignItems="center" paddingVertical="$6" gap="$3">
+            <Text fontSize={13} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} textAlign="center">
+              Hindi na-load ang mga request mo.
+            </Text>
+            <BizButton small label="Ulitin" variant="white" onPress={load} />
+          </YStack>
         ) : (
-          requests.map((req) => (
-            <XStack
-              key={req.id}
-              alignItems="center"
-              justifyContent="space-between"
-              paddingVertical={11}
-              borderBottomWidth={2}
-              borderBottomColor={COLORS.polar}
-            >
-              <Text fontWeight="700" fontSize={13} color={COLORS.eel}>{req.name}</Text>
-              <StatusBadge
-                label={req.status === 'pending' ? 'Pending' : 'Accepted'}
-                background={req.status === 'pending' ? COLORS.amberSoft : COLORS.greenSoft}
-                color={req.status === 'pending' ? COLORS.orange : COLORS.ledgeGreen}
-              />
-            </XStack>
-          ))
+          <>
+            <BizSectionHeader title="Pending" />
+            {pending.length === 0 ? (
+              <EmptyState icon={<Clock size={28} color={BIZLINK_COLORS.muted} strokeWidth={1.75} />} label="Walang naghihintay na request." />
+            ) : (
+              pending.map((request) => <RequestRow key={request.id} request={request} />)
+            )}
+
+            <BizSectionHeader title="Accepted" />
+            {accepted.length === 0 ? (
+              <EmptyState icon={<CircleCheckBig size={28} color={BIZLINK_COLORS.muted} strokeWidth={1.75} />} label="Wala pang tumatanggap na kasama." />
+            ) : (
+              accepted.map((request) => <RequestRow key={request.id} request={request} />)
+            )}
+
+            <BizSectionHeader title="History" />
+            {history.length === 0 ? (
+              <EmptyState icon={<History size={28} color={BIZLINK_COLORS.muted} strokeWidth={1.75} />} label="Wala pang tapos na request." />
+            ) : (
+              history.map((request) => <RequestRow key={request.id} request={request} />)
+            )}
+          </>
         )}
       </ScrollView>
     </YStack>
   );
 }
 
-function RosterRow({
-  name,
-  initials,
-  subtitle,
-  selected,
-  onPress,
-}: {
-  name: string;
-  initials: string;
-  subtitle?: string;
-  selected: boolean;
-  onPress: () => void;
-}) {
+function RequestRow({ request }: { request: MyCompanionRequest }) {
+  const displayStatus = companionRequestDisplayStatus(request);
+  const tone = COMPANION_REQUEST_BADGE_TONES[displayStatus];
+  const name = request.inviteeName ?? 'Kasama';
   return (
     <XStack
-      onPress={onPress}
       alignItems="center"
       gap="$3"
-      backgroundColor={selected ? COLORS.greenTint : COLORS.snow}
-      borderWidth={2}
-      borderColor={selected ? COLORS.feather : COLORS.swan}
-      borderRadius={16}
-      padding="$3"
-      marginBottom="$2.5"
+      backgroundColor={BIZLINK_COLORS.card}
+      borderRadius={20}
+      padding={14}
+      marginBottom={10}
+      minHeight={44}
     >
-      <Avatar initials={initials} size="sm" />
+      <Avatar initials={name.slice(0, 2).toUpperCase()} size="sm" background={BIZLINK_COLORS.soft} color={BIZLINK_COLORS.ink} />
       <YStack flex={1}>
-        <Text fontWeight="800" fontSize={13.5} color={COLORS.eel}>{name}</Text>
-        {subtitle ? <Text fontSize={11} fontWeight="600" color={COLORS.hare}>{subtitle}</Text> : null}
+        <Text fontFamily={BIZLINK_FONTS.semibold} fontSize={13.5} color={BIZLINK_COLORS.text}>{name}</Text>
+        <Text fontSize={11} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted}>
+          {request.clientName ?? 'Client'}
+        </Text>
       </YStack>
-      {selected ? <StatusBadge label="Selected" background={COLORS.feather} color={COLORS.snow} /> : null}
+      <StatusBadge
+        label={COMPANION_REQUEST_STATUS_LABELS[displayStatus]}
+        background={BIZLINK_COLORS[tone.background]}
+        color={BIZLINK_COLORS[tone.color]}
+      />
     </XStack>
+  );
+}
+
+function EmptyState({ icon, label }: { icon: React.ReactNode; label: string }) {
+  return (
+    <YStack alignItems="center" paddingVertical="$5" gap="$2" marginBottom="$2">
+      {icon}
+      <Text fontSize={13} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} textAlign="center">{label}</Text>
+    </YStack>
   );
 }

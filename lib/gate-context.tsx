@@ -10,10 +10,12 @@ const GateContext = createContext<GateStore | null>(null);
 
 /**
  * Session-scoped unlock for sensitive client info (ADR-007 "Client info
- * protection" — fingerprint/passcode). Demo gate: any 4-digit code or the
- * fingerprint tap unlocks for the rest of the session, matching the
- * wireframe's aUnlockSuccess() behavior. Real biometric/passcode storage is
- * out of scope until backend auth lands.
+ * protection" — passcode). A verified 4-digit passcode (B-064, see
+ * `lib/passcode.ts`) unlocks for the rest of the session, matching the
+ * wireframe's aUnlockSuccess() behavior. The fingerprint icon was a
+ * direct-unlock stub with no real biometric check and was removed (B-064
+ * addendum) as a security fix; real biometric hardware auth remains a
+ * separate future task.
  */
 export function GateProvider({ children }: { children: ReactNode }) {
   const [unlocked, setUnlocked] = useState(false);

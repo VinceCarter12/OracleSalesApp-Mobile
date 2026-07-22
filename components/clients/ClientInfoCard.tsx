@@ -1,5 +1,5 @@
 import { Text, YStack } from 'tamagui';
-import { COLORS } from '../../lib/theme';
+import { BIZLINK_COLORS, BIZLINK_FONTS } from '../../lib/theme';
 import type { Client } from '../../types';
 
 interface ClientInfoCardProps {
@@ -9,8 +9,8 @@ interface ClientInfoCardProps {
 function InfoRow({ label, value }: { label: string; value: string }) {
   return (
     <YStack gap="$0.5">
-      <Text fontSize="$2" color="$colorPress">{label}</Text>
-      <Text fontSize="$4">{value || '—'}</Text>
+      <Text fontSize={11} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted}>{label}</Text>
+      <Text fontSize={14} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.text}>{value || '—'}</Text>
     </YStack>
   );
 }
@@ -23,13 +23,15 @@ export function ClientInfoCard({ client }: ClientInfoCardProps) {
   return (
     <YStack
       gap="$3"
-      padding="$4"
-      borderRadius="$4"
-      borderWidth={1}
-      borderColor={COLORS.swan}
-      backgroundColor={COLORS.polar}
+      padding={18}
+      borderRadius={24}
+      backgroundColor={BIZLINK_COLORS.card}
+      shadowColor="rgba(18,39,28,0.05)"
+      shadowOffset={{ width: 0, height: 1 }}
+      shadowOpacity={1}
+      shadowRadius={2}
     >
-      <Text fontSize="$5" fontWeight="700">{client.company_name}</Text>
+      <Text fontSize={15.5} fontFamily={BIZLINK_FONTS.semibold} color={BIZLINK_COLORS.text}>{client.company_name}</Text>
       <InfoRow label="Contact Person" value={client.contact_person} />
       <InfoRow label="Customer Type" value={client.customer_type} />
       <InfoRow label="Sales Channel" value={client.sales_channel} />

@@ -1,4 +1,4 @@
-import { upsertSyncedClient, upsertSyncedMeeting } from './entity-appliers';
+import { upsertSyncedClient, upsertSyncedMeeting, upsertSyncedTagAlongRequest } from './entity-appliers';
 import type { SQLiteDatabase } from 'expo-sqlite';
 
 // T-014 (ADR-022 #9): single source of truth for "what tables sync" —
@@ -6,7 +6,19 @@ import type { SQLiteDatabase } from 'expo-sqlite';
 // per-table `if/else` branches in sync-down.ts. Adding a future entity
 // (Tasks, etc.) is one more entry here, not a multi-file hardcoded change.
 
-export type EntityTableName = 'clients' | 'meetings';
+export type EntityTableName = 'clients' | 'meetings' | 'tag_along_requests';
+
+/**
+ * Structural constraint for `SyncEntityConfig.applyScope` (ADR-030): matches
+ * the fluent shape of Supabase's PostgrestFilterBuilder (`.eq()`/`.or()`
+ * both return `this`) without importing its concrete, deeply-generic type —
+ * keeps this file decoupled from postgrest-js's exact type params while
+ * staying fully typed (no `any`).
+ */
+export interface ScopableQuery<Self> {
+  eq: (column: string, value: string) => Self;
+  or: (filters: string) => Self;
+}
 
 export interface EntityDependency {
   /** The other entity this one's outbox row depends on (e.g. a meeting depends on its client). */
@@ -20,9 +32,17 @@ export interface SyncEntityConfig {
   /** Lower pushes first (business entities are single/low tens; the sync_audit lane in ./audit-log.ts uses 900 so it never jumps ahead). */
   priority: number;
   onConflict: string;
-  /** Applies a synced-down remote row to the local SQLite mirror (replaces sync-down.ts's old per-table branch). */
-  applyRemoteRow: (db: SQLiteDatabase, row: Record<string, unknown>, now: string) => Promise<void>;
+  /** Applies a synced-down remote row to the local SQLite mirror (replaces sync-down.ts's old per-table branch). `agentId` is threaded through for LWW-overwrite audit enqueueing (ADR-026 P3 item 13) — not every applier uses it. */
+  applyRemoteRow: (db: SQLiteDatabase, row: Record<string, unknown>, now: string, agentId: string) => Promise<void>;
   dependencies?: EntityDependency[];
+  /**
+   * Scopes the sync-down pull query. Defaults to `sync-down.ts::pullEntity`'s
+   * own `.eq(agentColumn, agentId)` when absent. `tag_along_requests` is the
+   * first entity needing an OR-scoped "things other people created that
+   * reference me" pull (ADR-030) — built as a generalizable registry
+   * capability for F-004's real build and future T-006 approvals.
+   */
+  applyScope?: <Q extends ScopableQuery<Q>>(query: Q, agentId: string) => Q;
 }
 
 export const ENTITY_REGISTRY: Record<EntityTableName, SyncEntityConfig> = {
@@ -41,6 +61,30 @@ export const ENTITY_REGISTRY: Record<EntityTableName, SyncEntityConfig> = {
       {
         table: 'clients',
         extractForeignKey: (payload) => (payload.client_id as string | null | undefined) ?? null,
+      },
+    ],
+  },
+  // ADR-030: shared table (meeting companions as of the Pass 2.5 relocation;
+  // F-004's future meeting tag-alongs reuse the same `context`-discriminated
+  // table). Depends on BOTH `clients` (via `related_client_id`) and
+  // `meetings` (via `related_meeting_id`, added Pass 2.5) so a companion
+  // request never outraces either of its own client's or meeting's push
+  // (same guard shape as meetings→clients above; meeting dependency guards
+  // against the same failure class as B-013).
+  tag_along_requests: {
+    remoteTable: 'tag_along_requests',
+    priority: 30,
+    onConflict: 'id',
+    applyRemoteRow: upsertSyncedTagAlongRequest,
+    applyScope: (query, agentId) => query.or(`requester_id.eq.${agentId},invitee_id.eq.${agentId}`),
+    dependencies: [
+      {
+        table: 'clients',
+        extractForeignKey: (payload) => (payload.related_client_id as string | null | undefined) ?? null,
+      },
+      {
+        table: 'meetings',
+        extractForeignKey: (payload) => (payload.related_meeting_id as string | null | undefined) ?? null,
       },
     ],
   },
@@ -88,14 +132,25 @@ export interface EnqueueOutboxRowInput {
   operation: 'insert' | 'update';
   payload: string;
   createdAt: string;
+  /** B-027: was this device online (link-level, not a full backend probe) at the moment this row was queued? Null if the caller didn't check. */
+  createdOnline?: boolean | null;
 }
 
 /** Enqueues a business-entity outbox row with its registry-assigned priority (lower = pushed first). Used by client-service.ts/meeting-service.ts instead of a raw INSERT so priority assignment lives in one place. */
 export async function enqueueOutboxRow(db: SQLiteDatabase, input: EnqueueOutboxRowInput): Promise<void> {
   const { priority } = ENTITY_REGISTRY[input.tableName];
   await db.runAsync(
-    `INSERT INTO outbox (id, record_id, table_name, operation, payload, created_at, status, priority)
-     VALUES (?, ?, ?, ?, ?, ?, 'pending', ?)`,
-    [input.outboxId, input.recordId, input.tableName, input.operation, input.payload, input.createdAt, priority]
+    `INSERT INTO outbox (id, record_id, table_name, operation, payload, created_at, status, priority, created_online)
+     VALUES (?, ?, ?, ?, ?, ?, 'pending', ?, ?)`,
+    [
+      input.outboxId,
+      input.recordId,
+      input.tableName,
+      input.operation,
+      input.payload,
+      input.createdAt,
+      priority,
+      input.createdOnline === undefined || input.createdOnline === null ? null : input.createdOnline ? 1 : 0,
+    ]
   );
 }

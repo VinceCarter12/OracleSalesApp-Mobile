@@ -16,6 +16,8 @@ export interface LocalClientRow {
   agent_id: string;
   created_at: string;
   updated_at: string;
+  details_deadline_at: string | null;
+  sync_status: string;
 }
 
 export function rowToClient(row: LocalClientRow): Client {
@@ -32,5 +34,7 @@ export function rowToClient(row: LocalClientRow): Client {
     agent_id: row.agent_id,
     created_at: row.created_at,
     updated_at: row.updated_at,
+    details_deadline_at: row.details_deadline_at,
+    sync_status: row.sync_status,
   };
 }

@@ -20,3 +20,18 @@ export const CLIENT_STATUS_BADGES: Record<
   existing: { label: 'EXISTING', background: COLORS.polar, color: COLORS.wolf },
   inactive: { label: 'INACTIVE', background: COLORS.swan, color: COLORS.wolf },
 };
+
+/**
+ * F-204: an OVERLAY badge, not a `ClientStatus` value — Migration 023 gates
+ * the prospect→new auto-promotion server-side on there being no pending
+ * manager tag-along for the client's meeting; this is the mobile-side
+ * display of that same condition (see
+ * `lib/tag-along-service.ts#getClientIdsWithPendingManagerTagAlong`). Uses
+ * the BizLink amber/yellow tokens already established for warning/deadline
+ * treatments (`amberSoft`/`orange`), not a new color.
+ */
+export const WAITING_MANAGER_APPROVAL_BADGE = {
+  label: 'Waiting for Manager Approval',
+  background: 'amberSoft' as const,
+  color: 'orange' as const,
+};

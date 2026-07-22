@@ -22,6 +22,12 @@ export interface LocalMeetingRow {
   end_captured_at: string | null;
   logged_at: string;
   created_at: string;
+  contact_person: string | null;
+  contact_position: string | null;
+  location_type: string | null;
+  location_name: string | null;
+  remarks: string | null;
+  sync_status: string;
 }
 
 export function rowToMeeting(row: LocalMeetingRow): Meeting {
@@ -42,5 +48,11 @@ export function rowToMeeting(row: LocalMeetingRow): Meeting {
     end_captured_at: row.end_captured_at,
     logged_at: row.logged_at,
     created_at: row.created_at,
+    contact_person: row.contact_person,
+    contact_position: row.contact_position,
+    location_type: row.location_type,
+    location_name: row.location_name,
+    remarks: row.remarks,
+    sync_status: row.sync_status,
   };
 }

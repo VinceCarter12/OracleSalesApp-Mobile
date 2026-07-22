@@ -17,6 +17,14 @@ export type RemoteLocationType = 'client_office' | 'other';
 export type RemoteOnlinePlatform = 'zoom' | 'googlemeet';
 export type RemoteMeetingOutcome = 'successful' | 'follow_up' | 'no_decision' | 'lost_opportunity';
 
+// ADR-030 / Migration 019 (drafted — see Migration-019-Report.md, not yet
+// applied to Supabase): shared table serving both client-creation companions
+// (`context='client_creation'`) and F-004's future meeting tag-alongs
+// (`context='meeting'`).
+export type RemoteTagAlongContext = 'client_creation' | 'meeting';
+export type RemoteTagAlongInviteeKind = 'manager' | 'teammate';
+export type RemoteTagAlongStatus = 'pending' | 'accepted' | 'declined' | 'cancelled';
+
 /**
  * Supabase database type stubs.
  * Replace with the generated types from: npx supabase gen types typescript --project-id <your-id>
@@ -41,6 +49,14 @@ export type Database = {
           status: RemoteClientStatus;
           lost_at: string | null;
           reassignable_at: string | null;
+          // Confirmed present on the live schema (Database.md's 2026-07-14
+          // `information_schema.columns` verification) — populated by the
+          // manual Inactive→Lost-Opportunity flow (web-side today; no
+          // mobile write path sets this yet, mirrors local schema's
+          // `clients.inactive_reason TEXT`, lib/db.ts). Previously missing
+          // from this stub even though `lib/sync/entity-appliers.ts` already
+          // reads it off a loosely-typed remote row during sync-down.
+          inactive_reason: string | null;
           // Real column name, confirmed via PostgREST introspection
           // (2026-07-15) — NOT `agent_id`, unlike `meetings`.
           assigned_agent_id: string;
@@ -49,12 +65,20 @@ export type Database = {
           // (column doesn't exist) until Vince applies the migration; T-005's
           // duplicate check catches that and falls back to local-only checks.
           normalized_company_name: string | null;
+          // Live since Migration 013 (2026-07-14)/021 (2026-07-21, B-052) —
+          // confirmed present via `information_schema.columns`
+          // (Database.md's migration table). Previously missing from this
+          // stub even though `lib/client-service.ts::createClient()` already
+          // writes it (that path goes through JSON.stringify + a same-`any`
+          // cast at push time, so the gap never surfaced there); a direct
+          // typed `.select()`/`.update()` call needs it declared here.
+          details_deadline_at: string | null;
           created_at: string;
           updated_at: string;
         };
         Insert: Omit<
           Database['public']['Tables']['clients']['Row'],
-          'id' | 'created_at' | 'updated_at' | 'normalized_company_name' | 'lost_at' | 'reassignable_at'
+          'id' | 'created_at' | 'updated_at' | 'normalized_company_name' | 'lost_at' | 'reassignable_at' | 'inactive_reason'
         >;
         Update: Partial<Database['public']['Tables']['clients']['Insert']>;
         Relationships: [];
@@ -145,9 +169,44 @@ export type Database = {
           team_id: string | null;
           is_active: boolean;
           created_at: string | null;
+          // Live since web Migration 012 (2026-07-14) — public `avatars`
+          // Storage bucket + column, RLS-restricted UPDATE to this column
+          // (+ full_name) only. See ADR-029 (2026-07-20) for the mobile sync.
+          avatar_url: string | null;
         };
         Insert: Omit<Database['public']['Tables']['profiles']['Row'], 'id' | 'created_at'>;
         Update: Partial<Database['public']['Tables']['profiles']['Insert']>;
+        Relationships: [];
+      };
+      // ADR-030 / Migration 019 (DRAFTED, NOT yet applied — see
+      // Migration-019-Report.md; Vince must live-verify the two flagged RLS
+      // items before applying). Shape mirrors the SQL in that report exactly
+      // — do not invent a parallel shape.
+      tag_along_requests: {
+        Row: {
+          id: string;
+          context: RemoteTagAlongContext;
+          requester_id: string;
+          invitee_id: string;
+          invitee_kind: RemoteTagAlongInviteeKind;
+          related_client_id: string | null;
+          related_meeting_id: string | null;
+          status: RemoteTagAlongStatus;
+          created_at: string;
+          responded_at: string | null;
+          updated_at: string;
+        };
+        Insert: Omit<
+          Database['public']['Tables']['tag_along_requests']['Row'],
+          'id' | 'created_at' | 'updated_at' | 'status' | 'responded_at'
+        >;
+        Update: Partial<Database['public']['Tables']['tag_along_requests']['Insert']> & {
+          status?: RemoteTagAlongStatus;
+          responded_at?: string | null;
+          // ADR-030 Pass 3: invitee accept/decline (updateCompanionRequestStatus,
+          // lib/tag-along-invitee-service.ts) also re-stamps updated_at.
+          updated_at?: string;
+        };
         Relationships: [];
       };
     };

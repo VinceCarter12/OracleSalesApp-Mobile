@@ -1,9 +1,11 @@
 import { useState } from 'react';
-import { Alert, Image } from 'react-native';
+import { Alert, Image, Pressable } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
-import { Button, Spinner, Text, YStack } from 'tamagui';
+import { Spinner, Text, YStack } from 'tamagui';
 import { captureGps } from '../../lib/gps';
-import { COLORS } from '../../lib/theme';
+import { BIZLINK_COLORS, BIZLINK_FONTS } from '../../lib/theme';
+import { BizButton } from '../bizlink/BizButton';
+import { PhotoLightbox } from './PhotoLightbox';
 
 export interface CapturedPhoto {
   uri: string;
@@ -19,25 +21,33 @@ interface PhotoCaptureProps {
   confirmButtonLabel: string;
   /** Fires once the photo is confirmed — after this the photo is locked. */
   onConfirm: (photo: CapturedPhoto) => void;
+  /** Gates the initial capture button (e.g. Wireframe's agenda-gate on End Photo, `#a-visitEndBtn disabled`). Defaults to enabled. */
+  disabled?: boolean;
 }
 
-async function takePhotoWithGps(): Promise<CapturedPhoto | null> {
+/** Camera only — no gallery (F-010/ADR-008). Returns null on cancel/deny. */
+async function takePhoto(): Promise<string | null> {
   const camera = await ImagePicker.requestCameraPermissionsAsync();
   if (camera.status !== 'granted') {
     Alert.alert('Permission denied', 'Camera permission is required.');
     return null;
   }
-  // Camera only — no gallery (F-010/ADR-008).
   const result = await ImagePicker.launchCameraAsync({
     mediaTypes: ImagePicker.MediaTypeOptions.Images,
     quality: 0.7,
     allowsEditing: false,
   });
   if (result.canceled || result.assets.length === 0) return null;
+  return result.assets[0].uri;
+}
+
+async function takePhotoWithGps(): Promise<CapturedPhoto | null> {
+  const uri = await takePhoto();
+  if (!uri) return null;
   try {
     const gps = await captureGps();
     return {
-      uri: result.assets[0].uri,
+      uri,
       capturedAt: new Date().toISOString(),
       gpsLat: gps.lat,
       gpsLng: gps.lng,
@@ -50,23 +60,37 @@ async function takePhotoWithGps(): Promise<CapturedPhoto | null> {
 
 /**
  * Camera-only photo capture with preview → retake/confirm → lock semantics
- * (ADR-015). GPS + timestamp are bound at shutter time; a retake replaces
- * both. Once confirmed, the photo can no longer change.
+ * (ADR-015). GPS + timestamp are bound at the FIRST shutter press only
+ * (2026-07-21 revision, Vince) — a retake replaces just the photo, never the
+ * GPS/timestamp, so the locked location/time always reflects the moment the
+ * agent actually arrived, not whichever shot they ended up keeping. Once
+ * confirmed, the photo can no longer change.
  */
 export function PhotoCapture({
   label,
   captureButtonLabel,
   confirmButtonLabel,
   onConfirm,
+  disabled = false,
 }: PhotoCaptureProps) {
   const [photo, setPhoto] = useState<CapturedPhoto | null>(null);
   const [busy, setBusy] = useState(false);
   const [locked, setLocked] = useState(false);
+  const [previewOpen, setPreviewOpen] = useState(false);
 
   async function capture(): Promise<void> {
     setBusy(true);
     const captured = await takePhotoWithGps();
     if (captured) setPhoto(captured);
+    setBusy(false);
+  }
+
+  /** Retake: photo only — reuses the first shot's locked GPS/timestamp. */
+  async function retake(): Promise<void> {
+    if (!photo) return;
+    setBusy(true);
+    const uri = await takePhoto();
+    if (uri) setPhoto({ ...photo, uri });
     setBusy(false);
   }
 
@@ -79,7 +103,7 @@ export function PhotoCapture({
   if (locked && photo) {
     return (
       <YStack gap="$2">
-        <Text fontSize="$3" color={COLORS.ledgeGreen} fontWeight="700">
+        <Text fontSize={13.5} color={BIZLINK_COLORS.brand} fontFamily={BIZLINK_FONTS.semibold}>
           ✓ {label} locked — {new Date(photo.capturedAt).toLocaleTimeString()}
         </Text>
       </YStack>
@@ -88,32 +112,35 @@ export function PhotoCapture({
 
   return (
     <YStack gap="$2">
-      <Text fontSize="$3" fontWeight="600">{label}</Text>
+      <Text fontSize={13.5} fontFamily={BIZLINK_FONTS.semibold} color={BIZLINK_COLORS.text}>{label}</Text>
       {photo ? (
         <YStack gap="$2">
-          <Image
-            source={{ uri: photo.uri }}
-            style={{ width: '100%', height: 200, borderRadius: 8 }}
-            resizeMode="cover"
-          />
-          <Text fontSize="$2" color="$colorPress">
+          <Pressable onPress={() => setPreviewOpen(true)}>
+            <Image
+              source={{ uri: photo.uri }}
+              style={{ width: '100%', height: 200, borderRadius: 20 }}
+              resizeMode="cover"
+            />
+          </Pressable>
+          <Text fontSize={12} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted}>
             GPS {photo.gpsLat.toFixed(4)}, {photo.gpsLng.toFixed(4)} ·{' '}
             {new Date(photo.capturedAt).toLocaleTimeString()}
           </Text>
-          <Button size="$3" onPress={capture} disabled={busy}>
-            Retake (resets timestamp)
-          </Button>
-          <Button size="$4" theme="active" onPress={confirm}>
-            {confirmButtonLabel}
-          </Button>
-          <Text fontSize="$2" color="$colorPress">
+          <BizButton label="Retake" variant="white" small onPress={retake} disabled={busy} />
+          <BizButton label={confirmButtonLabel} variant="brand" onPress={confirm} />
+          <Text fontSize={12} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted}>
             Once confirmed, the photo and timestamp are locked.
           </Text>
+          <PhotoLightbox uri={photo.uri} visible={previewOpen} onClose={() => setPreviewOpen(false)} />
         </YStack>
       ) : (
-        <Button size="$4" theme="active" onPress={capture} disabled={busy} icon={busy ? <Spinner /> : undefined}>
-          {busy ? 'Opening camera…' : captureButtonLabel}
-        </Button>
+        <BizButton
+          label={busy ? 'Opening camera…' : captureButtonLabel}
+          variant="brand"
+          onPress={capture}
+          disabled={busy || disabled}
+          icon={busy ? <Spinner color={BIZLINK_COLORS.card} /> : undefined}
+        />
       )}
     </YStack>
   );

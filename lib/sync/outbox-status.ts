@@ -11,10 +11,18 @@ export type OutboxStatus = 'pending' | 'syncing' | 'synced' | 'conflict' | 'fail
 export const BACKOFF_SCHEDULE_MS = [1000, 2000, 4000, 8000, 15000];
 export const MAX_OUTBOX_ATTEMPTS = 10;
 export const UNIQUE_VIOLATION_CODE = '23505';
+export const RLS_PERMISSION_DENIED_CODE = '42501';
 const JITTER_RATIO = 0.2;
+
+// ADR-026 P2 item 5: diagnostic-only classification of WHY a row failed —
+// deliberately a separate axis from `kind` below. `kind` decides whether/how
+// the sync engine retries a row; `failureClass` decides what message the
+// agent/admin sees (lib/sync-history.ts). Never let one drive the other.
+export type FailureClass = 'validation' | 'network' | 'authentication' | 'conflict' | 'server' | 'unknown';
 
 export interface ClassifiedError {
   kind: 'conflict' | 'transient' | 'permanent';
+  failureClass: FailureClass;
   code?: string;
   message: string;
 }
@@ -28,6 +36,29 @@ function extractMessage(err: unknown): string {
   return String(err);
 }
 
+const JWT_ERROR_PATTERN = /jwt expired|invalid jwt/i;
+const DATA_EXCEPTION_CODE_PREFIXES = ['23', '22'];
+const SERVER_ERROR_PATTERN = /5\d\d/;
+const NETWORK_ERROR_PATTERN = /timed out|network|fetch failed|ECONNRESET|ETIMEDOUT/i;
+
+/**
+ * ADR-026 P2 item 5: computes `failureClass`, a diagnostic classification
+ * evaluated in a fixed priority order (5xx before the general network
+ * pattern, since both are "server-side" symptoms but classify differently).
+ * This is purely additive — it never changes `kind`/retry behavior below.
+ */
+function classifyFailureClass(code: string | undefined, message: string): FailureClass {
+  if (code === UNIQUE_VIOLATION_CODE) return 'conflict';
+  if (code === RLS_PERMISSION_DENIED_CODE) return 'authentication';
+  if (JWT_ERROR_PATTERN.test(message)) return 'authentication';
+  if (code !== undefined && DATA_EXCEPTION_CODE_PREFIXES.some((prefix) => code.startsWith(prefix))) {
+    return 'validation';
+  }
+  if (SERVER_ERROR_PATTERN.test(message)) return 'server';
+  if (NETWORK_ERROR_PATTERN.test(message)) return 'network';
+  return 'unknown';
+}
+
 /** 23505 (Postgres unique violation) is a real duplicate, never auto-retried; timeouts/network/5xx retry with backoff; anything else fails immediately (bad payload, RLS denial, etc). */
 export function classifySyncError(err: unknown): ClassifiedError {
   const message = extractMessage(err);
@@ -36,10 +67,15 @@ export function classifySyncError(err: unknown): ClassifiedError {
       ? String((err as { code?: unknown }).code)
       : undefined;
 
-  if (code === UNIQUE_VIOLATION_CODE) return { kind: 'conflict', code, message };
+  const failureClass = classifyFailureClass(code, message);
 
+  if (code === UNIQUE_VIOLATION_CODE) return { kind: 'conflict', failureClass, code, message };
+
+  // `kind`'s retry-decision logic is UNCHANGED from before failureClass
+  // existed — deliberately kept as its own regex so this axis never drifts
+  // from `classifyFailureClass()`'s more granular breakdown above.
   const isTransient = /timed out|network|fetch failed|ECONNRESET|ETIMEDOUT|5\d\d/i.test(message);
-  return { kind: isTransient ? 'transient' : 'permanent', code, message };
+  return { kind: isTransient ? 'transient' : 'permanent', failureClass, code, message };
 }
 
 /**
@@ -72,8 +108,8 @@ export async function markOutboxRow(
   const now = new Date().toISOString();
   const errorText = `${classified.code ?? ''} ${classified.message}`.trim();
   await db.runAsync(
-    'UPDATE outbox SET status = ?, last_error = ?, last_attempt_at = ?, retry_count = ? WHERE id = ?',
-    [status, errorText, now, retryCount, outboxId]
+    'UPDATE outbox SET status = ?, last_error = ?, last_attempt_at = ?, retry_count = ?, failure_class = ? WHERE id = ?',
+    [status, errorText, now, retryCount, classified.failureClass, outboxId]
   );
   if (isEntityTableName(tableName)) {
     await db.runAsync(`UPDATE ${tableName} SET sync_status = ?, sync_error = ? WHERE id = ?`, [
@@ -95,9 +131,9 @@ export async function scheduleRetry(
   const nextAttemptAt = new Date(Date.now() + backoffDelayMs(retryCount)).toISOString();
   const errorText = `${classified.code ?? ''} ${classified.message}`.trim();
   await db.runAsync(
-    `UPDATE outbox SET status = 'pending', retry_count = ?, last_error = ?, last_attempt_at = ?, next_attempt_at = ?
+    `UPDATE outbox SET status = 'pending', retry_count = ?, last_error = ?, last_attempt_at = ?, next_attempt_at = ?, failure_class = ?
      WHERE id = ?`,
-    [retryCount, errorText, now, nextAttemptAt, outboxId]
+    [retryCount, errorText, now, nextAttemptAt, classified.failureClass, outboxId]
   );
 }
 
@@ -110,4 +146,19 @@ export async function scheduleRetry(
  */
 export async function recoverStuckSyncingRows(db: SQLiteDatabase): Promise<void> {
   await db.runAsync("UPDATE outbox SET status = 'pending' WHERE status = 'syncing'");
+}
+
+// ADR-026 P2 item 7: the local `outbox` table is never pruned otherwise (see
+// lib/sync-history.ts's header comment) — a device that's been in use for
+// months would otherwise accumulate an unbounded number of terminal 'synced'
+// rows. Only ever deletes rows already confirmed synced; pending/syncing/
+// conflict/failed rows are untouched regardless of age.
+export const OUTBOX_PRUNE_RETENTION_DAYS = 7;
+
+export async function pruneSyncedOutboxRows(db: SQLiteDatabase): Promise<void> {
+  const cutoff = new Date(Date.now() - OUTBOX_PRUNE_RETENTION_DAYS * 24 * 60 * 60 * 1000).toISOString();
+  await db.runAsync(
+    "DELETE FROM outbox WHERE status = 'synced' AND synced_at IS NOT NULL AND synced_at < ?",
+    [cutoff]
+  );
 }
