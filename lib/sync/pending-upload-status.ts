@@ -64,3 +64,19 @@ export async function scheduleUploadRetry(
 export async function recoverStuckPendingUploads(db: SQLiteDatabase): Promise<void> {
   await db.runAsync("UPDATE pending_uploads SET status = 'pending' WHERE status = 'syncing'");
 }
+
+/**
+ * B-059: `retryAllFailedOutboxRows()` (sync-engine.ts) only ever re-queued
+ * `outbox` rows — a dead-lettered `pending_uploads` row (a photo that never
+ * made it to Storage after MAX_OUTBOX_ATTEMPTS) was counted in
+ * `getOutboxCounts()`'s "failed" total (sync-engine.ts folds both tables
+ * together) but the "Retry lahat" button never actually touched it. Mirrors
+ * retryFailedOutboxRow()'s reset semantics, minus the source-table
+ * sync_status side effect (pending_uploads has no mirrored remote table).
+ */
+export async function retryFailedPendingUpload(db: SQLiteDatabase, id: string): Promise<void> {
+  await db.runAsync(
+    "UPDATE pending_uploads SET status = 'pending', retry_count = 0, next_attempt_at = NULL, last_error = NULL WHERE id = ? AND status = 'failed'",
+    [id]
+  );
+}

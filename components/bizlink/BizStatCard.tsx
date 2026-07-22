@@ -6,7 +6,9 @@ type StatTone = 'tintA' | 'white' | 'tintB';
 interface BizStatCardProps {
   value: number | string;
   label: string;
-  caption: string;
+  // B-063: optional — omit the pill entirely rather than showing a fake/
+  // non-meaningful caption when a caller has no real trend data to show.
+  caption?: string;
   tone?: StatTone;
   minWidth?: number;
   onPress?: () => void;
@@ -40,17 +42,19 @@ export function BizStatCard({ value, label, caption, tone = 'white', minWidth = 
       shadowRadius={tone === 'white' ? 2 : undefined}
       pressStyle={onPress ? { opacity: 0.85 } : undefined}
     >
-      <View
-        backgroundColor="rgba(255,255,255,0.85)"
-        borderRadius={999}
-        paddingHorizontal={10}
-        paddingVertical={4}
-        alignSelf="flex-start"
-      >
-        <Text fontSize={10.5} fontFamily={BIZLINK_FONTS.semibold} color={BIZLINK_COLORS.text}>
-          {caption}
-        </Text>
-      </View>
+      {caption ? (
+        <View
+          backgroundColor="rgba(255,255,255,0.85)"
+          borderRadius={999}
+          paddingHorizontal={10}
+          paddingVertical={4}
+          alignSelf="flex-start"
+        >
+          <Text fontSize={10.5} fontFamily={BIZLINK_FONTS.semibold} color={BIZLINK_COLORS.text}>
+            {caption}
+          </Text>
+        </View>
+      ) : null}
       <Text
         marginTop={12}
         fontSize={34}

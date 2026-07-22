@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { useSQLiteContext } from 'expo-sqlite';
 import { useSession } from './session-store';
 import { rowToMeeting, type LocalMeetingRow } from './local-meeting-mapper';
+import { subscribeSyncComplete } from './sync/sync-events';
 import type { Meeting } from '../types';
 
 // T-004: local SQLite is the primary read path (ADR-001), mirroring
@@ -49,6 +50,12 @@ export function useMeetings(clientId?: string) {
   useEffect(() => {
     fetch();
   }, [fetch]);
+
+  // B-071: a background syncDown() (e.g. right after login) writes to
+  // SQLite well after this hook's initial fetch already ran — without this,
+  // the screen stays on its stale (often empty, post-account-switch) read
+  // until the user manually pulls to refresh or navigates away and back.
+  useEffect(() => subscribeSyncComplete(fetch), [fetch]);
 
   return { meetings, loading, refresh: fetch };
 }

@@ -48,12 +48,28 @@ function MeetingRow({ meeting, hasTagAlong }: { meeting: Meeting; hasTagAlong: b
         <Text fontFamily={BIZLINK_FONTS.semibold} fontSize={15} letterSpacing={-0.2} color={BIZLINK_COLORS.text}>
           {meeting.client_name ?? 'Unknown Client'}
         </Text>
-        <XStack alignItems="center" gap="$1.5" flexWrap="wrap">
-          <Text fontSize={11.5} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted}>
+        <XStack alignItems="center" gap="$1.5">
+          <Text
+            flexShrink={1}
+            minWidth={0}
+            numberOfLines={1}
+            ellipsizeMode="tail"
+            fontSize={11.5}
+            fontFamily={BIZLINK_FONTS.medium}
+            color={BIZLINK_COLORS.muted}
+          >
             {descriptionParts.join(' · ')}
           </Text>
           {hasTagAlong ? (
-            <XStack alignItems="center" gap="$1" backgroundColor={BIZLINK_COLORS.soft} borderRadius={999} paddingHorizontal={8} paddingVertical={2}>
+            <XStack
+              flexShrink={0}
+              alignItems="center"
+              gap="$1"
+              backgroundColor={BIZLINK_COLORS.soft}
+              borderRadius={999}
+              paddingHorizontal={8}
+              paddingVertical={2}
+            >
               <Users size={10} color={BIZLINK_COLORS.navy} strokeWidth={1.75} />
               <Text fontSize={10.5} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.navy}>tag-along</Text>
             </XStack>
@@ -188,6 +204,7 @@ export default function MeetingsScreen() {
         <FlatList
           data={filtered}
           keyExtractor={(item) => item.id}
+          style={{ flex: 1 }}
           contentContainerStyle={{ paddingHorizontal: 16, paddingTop: 12 }}
           renderItem={({ item }) => <MeetingRow meeting={item} hasTagAlong={tagAlongMeetingIds.has(item.id)} />}
           refreshControl={<RefreshControl refreshing={loading} onRefresh={refresh} />}

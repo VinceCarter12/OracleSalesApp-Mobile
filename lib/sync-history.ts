@@ -45,6 +45,22 @@ interface OutboxHistoryRow {
   failure_class: FailureClass | null;
 }
 
+interface PendingUploadHistoryRow {
+  id: string;
+  kind: 'selfie' | 'start' | 'end';
+  status: OutboxStatus;
+  created_at: string;
+  last_error: string | null;
+  retry_count: number;
+  failure_class: FailureClass | null;
+}
+
+const UPLOAD_KIND_LABEL: Record<PendingUploadHistoryRow['kind'], string> = {
+  selfie: 'Meeting selfie photo',
+  start: 'Meeting start photo',
+  end: 'Meeting end photo',
+};
+
 function labelFor(tableName: string, payload: string): string {
   try {
     const parsed = JSON.parse(payload) as Record<string, unknown>;
@@ -151,6 +167,14 @@ export interface PendingSyncEntry {
  * in the local `outbox` table the whole time. Reuses `labelFor()` so this
  * and Sync History render the same "Oracle Petroleum" / "Meeting record"
  * labels instead of a bare table name.
+ *
+ * B-059: `getOutboxCounts()` (sync-engine.ts) folds `pending_uploads` (the
+ * separate photo-upload queue, ADR-026 P1 item 4) into the same
+ * pending/failed totals this list is meant to explain — but this function
+ * only ever read `outbox`, so a dead-lettered photo upload inflated the
+ * Sync Center's "N nabigo" count with no matching row in the list (and
+ * "Retry lahat" silently skipped it too — see retryAllFailedOutboxRows()).
+ * Now merges both sources so the count and the list always agree.
  */
 export async function getPendingSyncEntries(limit = 20): Promise<PendingSyncEntry[]> {
   const db = await getDb();
@@ -162,7 +186,7 @@ export async function getPendingSyncEntries(limit = 20): Promise<PendingSyncEntr
      LIMIT ?`,
     [AUDIT_OUTBOX_TABLE_NAME, limit]
   );
-  return rows.map((row) => ({
+  const outboxEntries: PendingSyncEntry[] = rows.map((row) => ({
     id: row.id,
     tableName: row.table_name,
     status: row.status,
@@ -171,4 +195,26 @@ export async function getPendingSyncEntries(limit = 20): Promise<PendingSyncEntr
     createdOnline: toCreatedOnline(row.created_online),
     adminMessage: adminMessageFor(row.status, row.retry_count, row.last_error, row.failure_class),
   }));
+
+  const uploadRows = await db.getAllAsync<PendingUploadHistoryRow>(
+    `SELECT id, kind, status, created_at, last_error, retry_count, failure_class
+     FROM pending_uploads
+     WHERE status IN ('pending', 'syncing', 'conflict', 'failed')
+     ORDER BY created_at DESC
+     LIMIT ?`,
+    [limit]
+  );
+  const uploadEntries: PendingSyncEntry[] = uploadRows.map((row) => ({
+    id: row.id,
+    tableName: 'pending_uploads',
+    status: row.status,
+    label: UPLOAD_KIND_LABEL[row.kind],
+    createdAt: row.created_at,
+    createdOnline: null,
+    adminMessage: adminMessageFor(row.status, row.retry_count, row.last_error, row.failure_class),
+  }));
+
+  return [...outboxEntries, ...uploadEntries]
+    .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+    .slice(0, limit);
 }

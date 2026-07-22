@@ -10,20 +10,29 @@ interface AutoCapturedPanelProps {
   photoUri: string | null;
   onOpenCamera: () => void;
   onPreviewPress: () => void;
+  onRetryLocation: () => void;
 }
 
 /**
  * Record Meeting's GPS + timestamp + selfie block, extracted so
  * record.tsx (already near the 300-line file cap) stays under it.
  */
-export function AutoCapturedPanel({ loadingLocation, location, photoUri, onOpenCamera, onPreviewPress }: AutoCapturedPanelProps) {
+export function AutoCapturedPanel({
+  loadingLocation,
+  location,
+  photoUri,
+  onOpenCamera,
+  onPreviewPress,
+  onRetryLocation,
+}: AutoCapturedPanelProps) {
+  const gpsFailed = !loadingLocation && !location;
   return (
     <>
       <Text fontSize={11} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} letterSpacing={0.5} marginTop="$4" marginBottom="$1">
         Auto-captured
       </Text>
       <YStack backgroundColor={BIZLINK_COLORS.ink} borderRadius={24} padding={16} gap="$2.5">
-        <XStack alignItems="center" gap="$2">
+        <XStack alignItems="center" gap="$2" flexWrap="wrap">
           <Check size={14} color="#8FD7B4" strokeWidth={1.75} />
           <Text fontSize={12.5} fontFamily={BIZLINK_FONTS.semibold} color={BIZLINK_COLORS.card}>GPS</Text>
           <Text fontSize={12.5} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_ON_INK.textMuted}>
@@ -31,8 +40,19 @@ export function AutoCapturedPanel({ loadingLocation, location, photoUri, onOpenC
               ? 'Capturing…'
               : location
                 ? `${location.lat.toFixed(4)}° N, ${location.lng.toFixed(4)}° E (at capture)`
-                : 'Not captured'}
+                : 'Not captured — move to an open area'}
           </Text>
+          {gpsFailed ? (
+            <Pressable
+              onPress={onRetryLocation}
+              hitSlop={8}
+              style={{ minHeight: 44, minWidth: 44, alignItems: 'center', justifyContent: 'center' }}
+            >
+              <Text fontSize={12.5} fontFamily={BIZLINK_FONTS.semibold} color="#8FD7B4">
+                Retry
+              </Text>
+            </Pressable>
+          ) : null}
         </XStack>
         <XStack alignItems="center" gap="$2">
           <Check size={14} color="#8FD7B4" strokeWidth={1.75} />

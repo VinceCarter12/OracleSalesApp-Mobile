@@ -1,7 +1,7 @@
 import { ScrollView } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
-import { BarChart3, Bell, Clock, History, Map, User, Users } from 'lucide-react-native';
+import { BarChart3, Bell, History, Map, User, Users } from 'lucide-react-native';
 import { Text, XStack, YStack } from 'tamagui';
 import { BIZLINK_COLORS, BIZLINK_FONTS } from '../../../lib/theme';
 import { BizMoreTile } from '../../../components/bizlink/BizMoreTile';
@@ -43,12 +43,6 @@ export default function MoreScreen() {
             title="My Performance"
             subtitle={<Text fontSize={10.5} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted}>Sariling stats lang</Text>}
             onPress={() => router.push('/(tabs)/more/reports')}
-          />
-          <BizMoreTile
-            icon={<Clock size={18} color={BIZLINK_COLORS.ink} strokeWidth={1.75} />}
-            title="Clock In/Out"
-            subtitle={<Text fontSize={10.5} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted}>Office & event attendance</Text>}
-            onPress={() => router.push('/(tabs)/more/clock-in-out')}
           />
           <BizMoreTile
             icon={<Map size={18} color={BIZLINK_COLORS.ink} strokeWidth={1.75} />}

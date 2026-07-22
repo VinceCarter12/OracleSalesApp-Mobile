@@ -9,6 +9,7 @@ import { useAuth } from '../../lib/useAuth';
 import { useSession } from '../../lib/session-store';
 import { setManagerTrack } from '../../lib/manager-data';
 import { withTimeout } from '../../lib/with-timeout';
+import { wipeLocalDataIfAccountChanged } from '../../lib/wipe-local-data';
 import type { UserRole } from '../../types';
 
 /** Maps raw Supabase/network errors to the wireframe's login-error copy (a-loginErr). */
@@ -64,6 +65,14 @@ export default function LoginScreen() {
         await supabase.auth.signOut();
         return;
       }
+
+      // B-061: wipe any previous account's local SQLite data BEFORE the new
+      // session proceeds — local tables aren't scoped by profileId (ADR-001
+      // assumes one device = one agent), so a device shared across test/
+      // real accounts would otherwise leak stale Sync Center records into
+      // the newly signed-in account. No-ops for the same account or a
+      // first-ever launch.
+      await wipeLocalDataIfAccountChanged(profile.id);
 
       const role = profile.role as UserRole;
       // Track (Sales vs RSR) is keyed off team_id, not role — ADR-017: there

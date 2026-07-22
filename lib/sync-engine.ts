@@ -9,7 +9,7 @@ import { pushDueOutboxRows, type OutboxRow, type OutboxSyncResult } from './sync
 import { AUDIT_OUTBOX_TABLE_NAME } from './sync/audit-log';
 import { processPendingUploads, recoverStuckPendingUploads } from './sync/photo-uploads';
 import { uploadPendingAvatar } from './profile-avatar';
-import type { PendingUploadStatus } from './sync/pending-upload-status';
+import { retryFailedPendingUpload, type PendingUploadStatus } from './sync/pending-upload-status';
 
 // T-002/T-005/T-014: pushes queued local writes (T-001's `outbox`) to
 // Supabase, dispatching per-table behavior via the entity registry
@@ -60,6 +60,11 @@ export async function retryFailedOutboxRow(id: string): Promise<void> {
  * nothing let an agent actually trigger that retry, so failed counts stayed
  * red forever even back online. Re-queues every currently-failed row, then
  * runs a normal sync pass to push them.
+ *
+ * B-059: also re-queues dead-lettered `pending_uploads` rows (photo
+ * uploads) — `getOutboxCounts()` folds their 'failed' count into the same
+ * total this button advertises ("Retry lahat (N)"), so the button must
+ * actually retry all N, not just the `outbox` subset.
  */
 export async function retryAllFailedOutboxRows(agentId: string): Promise<SyncResult | null> {
   const db = await getDb();
@@ -72,6 +77,13 @@ export async function retryAllFailedOutboxRows(agentId: string): Promise<SyncRes
   );
   for (const { id } of failedIds) {
     await retryFailedOutboxRow(id);
+  }
+  const failedUploadIds = await db.getAllAsync<{ id: string }>(
+    "SELECT id FROM pending_uploads WHERE agent_id = ? AND status = 'failed'",
+    [agentId]
+  );
+  for (const { id } of failedUploadIds) {
+    await retryFailedPendingUpload(db, id);
   }
   return runSync(agentId);
 }
