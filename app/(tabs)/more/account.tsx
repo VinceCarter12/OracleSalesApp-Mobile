@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { Alert, Image, ScrollView } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
@@ -9,13 +10,13 @@ import { useProfileAvatar } from '../../../lib/use-profile-avatar';
 import { initialsFromName } from '../../../lib/display-name';
 import { useBizlinkColors, BIZLINK_FONTS, BIZLINK_ON_INK } from '../../../lib/theme';
 import { useThemePreference, type ThemePreference } from '../../../lib/theme-preference';
-import { showToast } from '../../../lib/toast';
 import { Avatar } from '../../../components/ui/Avatar';
 import { BizTopBar } from '../../../components/bizlink/BizTopBar';
 import { BizCard } from '../../../components/bizlink/BizCard';
 import { BizSectionHeader } from '../../../components/bizlink/BizSectionHeader';
 import { BizChip } from '../../../components/bizlink/BizChip';
 import { BizButton } from '../../../components/bizlink/BizButton';
+import { ChangePasscodeSheet } from '../../../components/security/ChangePasscodeSheet';
 
 const APPEARANCE_OPTIONS: Array<{ value: ThemePreference; label: string }> = [
   { value: 'system', label: 'System' },
@@ -44,6 +45,9 @@ export default function AgentAccountScreen() {
   const { avatarUri, pickingAvatar, handlePickAvatar } = useProfileAvatar(session?.user.id);
   const BIZLINK_COLORS = useBizlinkColors();
   const { preference, setPreference } = useThemePreference();
+  // B-064: real passcode-change flow (components/security/ChangePasscodeSheet.tsx)
+  // replacing the toast-only stub.
+  const [passcodeSheetOpen, setPasscodeSheetOpen] = useState(false);
 
   // Moved inside the component (was module-level) so its icon colors are
   // theme-reactive via the hook-resolved BIZLINK_COLORS above.
@@ -52,13 +56,13 @@ export default function AgentAccountScreen() {
       key: 'passcode',
       icon: <Key size={16} color={BIZLINK_COLORS.text} strokeWidth={1.75} />,
       label: 'Change passcode',
-      onPress: () => showToast('✓ Passcode updated (demo)'),
+      onPress: () => setPasscodeSheetOpen(true),
     },
     {
       key: 'client-info-protection',
       icon: <Lock size={16} color={BIZLINK_COLORS.text} strokeWidth={1.75} />,
       label: 'Client info protection',
-      sublabel: 'Fingerprint / passcode required to view',
+      sublabel: 'Passcode required to view',
     },
   ];
 
@@ -166,6 +170,8 @@ export default function AgentAccountScreen() {
           <BizButton label="Sign Out" variant="red" onPress={confirmSignOut} />
         </YStack>
       </ScrollView>
+
+      <ChangePasscodeSheet visible={passcodeSheetOpen} onClose={() => setPasscodeSheetOpen(false)} />
     </YStack>
   );
 }
