@@ -1,12 +1,15 @@
 import { COLORS } from './theme';
 import { isRsrTeam } from '../types';
-import type { TeamAgent, TeamApproval, TeamClient, TeamMeeting, TagAlongRequest } from '../types';
+import type { TeamAgent, TeamClient, TeamMeeting } from '../types';
 
 /**
  * Manager team mock data — mirrors Wireframe.html's mock arrays 1:1 (agents,
- * clients, meetings, approvals, tagAlongRequests) so the app and the spec of
- * record (ADR-010) never disagree. No manager aggregate tables exist in
- * Supabase yet (Sprint.md) — swap for real queries once that's scoped.
+ * clients, meetings) so the app and the spec of record (ADR-010) never
+ * disagree. No manager aggregate tables exist in Supabase yet (Sprint.md) —
+ * swap for real queries once that's scoped. F-205 retired the
+ * approvals/tagAlongRequests mock arrays entirely — Approvals no longer
+ * exists, and tag-along accept/decline now reads real data
+ * (`lib/tag-along-invitee-service.ts`, B-053).
  *
  * Track-aware (ADR-017, 2026-07-14): there is one `sales_manager` role, not a
  * separate `rsr_manager` — which track a manager sees is determined by their
@@ -28,7 +31,6 @@ export function getManagerTrack(): ManagerTrack {
 }
 
 export interface ManagerProfile {
-  /** Stable id for clients the manager creates themselves — see `managerAsAgent()`. */
   id: string;
   firstName: string;
   fullName: string;
@@ -58,19 +60,6 @@ export const AGENT_COLORS: Record<string, { background: string; color: string }>
   'mgr-sales': { background: COLORS.purpleSoft, color: COLORS.purple },
   'mgr-rsr': { background: COLORS.purpleSoft, color: COLORS.purple },
 };
-
-/** A manager can create their own clients (no SM approval needed — they ARE the approver). Represented as a pseudo-`TeamAgent` so ClientRow/agentById lookups work without special-casing "is this the manager" everywhere. */
-export function managerAsAgent(): TeamAgent {
-  const profile = managerProfile();
-  return {
-    id: profile.id,
-    name: profile.fullName,
-    initials: profile.firstName.slice(0, 2).toUpperCase(),
-    meetingsThisMonth: 0,
-    activeClients: 0,
-    successRate: 0,
-  };
-}
 
 const SALES_AGENTS: TeamAgent[] = [
   { id: 'a1', name: 'Miguel Santos', initials: 'MS', meetingsThisMonth: 14, activeClients: 22, successRate: 72 },
@@ -174,20 +163,6 @@ const SALES_MEETINGS: TeamMeeting[] = [
   },
 ];
 
-const SALES_APPROVALS: TeamApproval[] = [
-  { id: 'ap1', type: 'edit', clientId: 'c1', agentId: 'a1', field: 'Sales Channel', from: 'Distributor', to: 'Dealer', requested: 'Jul 5' },
-  { id: 'ap2', type: 'reassign', clientId: 'c3', agentId: 'a1', toAgentId: 'a2', requested: 'Jul 5' },
-  { id: 'ap3', type: 'edit', clientId: 'c4', agentId: 'a2', field: 'Customer Type', from: 'New', to: 'Existing', requested: 'Jul 6' },
-  { id: 'ap4', type: 'tagalong', clientId: 'c1', agentId: 'a1', meetingId: 'm108', requested: 'Jul 7' },
-];
-
-// Sales Rep requests → Manager accepts/declines → Sales Rep alone records the
-// meeting → Manager Approves/Rejects (Meeting-2026-07-08, final single-owner model).
-const SALES_TAG_ALONG_REQUESTS: TagAlongRequest[] = [
-  { id: 'ta1', agentId: 'a3', clientId: 'c6', note: 'Follow-up demo bukas ng umaga, gusto sana ni Paolo na kasama ka.' },
-  { id: 'ta2', agentId: 'a4', clientId: 'c8', note: 'Closing meeting sa Greenline — kasama sana kita para sa renewal talks.' },
-];
-
 // ─── RSR track dataset (ADR-013/ADR-017) ───────────────────────────────────────
 // Same shapes, dealer/motorshop-flavored: RSR agents are field-based and carry
 // the 12-visits/day quota (F-012) — reflected in denser meeting volume.
@@ -262,24 +237,12 @@ const RSR_MEETINGS: TeamMeeting[] = [
   },
 ];
 
-const RSR_APPROVALS: TeamApproval[] = [
-  { id: 'rap1', type: 'edit', clientId: 'rc4', agentId: 'r2', field: 'Sales Channel', from: 'End-User', to: 'Dealer', requested: 'Jul 8' },
-  { id: 'rap2', type: 'reassign', clientId: 'rc2', agentId: 'r2', toAgentId: 'r3', requested: 'Jul 9' },
-  { id: 'rap3', type: 'tagalong', clientId: 'rc1', agentId: 'r1', meetingId: 'rm104', requested: 'Jul 9' },
-];
-
-const RSR_TAG_ALONG_REQUESTS: TagAlongRequest[] = [
-  { id: 'rta1', agentId: 'r5', clientId: 'rc6', note: 'Bagong dealer sa Laguna — sama ka sana sa intro visit bukas.' },
-];
-
 // ─── Track-selected accessors ──────────────────────────────────────────────────
 
 interface ManagerDataset {
   agents: TeamAgent[];
   clients: TeamClient[];
   meetings: TeamMeeting[];
-  approvals: TeamApproval[];
-  tagAlongRequests: TagAlongRequest[];
 }
 
 const DATASETS: Record<ManagerTrack, ManagerDataset> = {
@@ -287,15 +250,11 @@ const DATASETS: Record<ManagerTrack, ManagerDataset> = {
     agents: SALES_AGENTS,
     clients: SALES_CLIENTS,
     meetings: SALES_MEETINGS,
-    approvals: SALES_APPROVALS,
-    tagAlongRequests: SALES_TAG_ALONG_REQUESTS,
   },
   rsr: {
     agents: RSR_AGENTS,
     clients: RSR_CLIENTS,
     meetings: RSR_MEETINGS,
-    approvals: RSR_APPROVALS,
-    tagAlongRequests: RSR_TAG_ALONG_REQUESTS,
   },
 };
 
@@ -311,24 +270,6 @@ export function getManagerClients(): TeamClient[] {
 }
 export function getManagerMeetings(): TeamMeeting[] {
   return dataset().meetings;
-}
-export function getManagerApprovals(): TeamApproval[] {
-  return dataset().approvals;
-}
-export function getManagerTagAlongRequests(): TagAlongRequest[] {
-  return dataset().tagAlongRequests;
-}
-
-export function agentById(id: string): TeamAgent | undefined {
-  const managerSelf = managerAsAgent();
-  if (id === managerSelf.id) return managerSelf;
-  return dataset().agents.find((a) => a.id === id);
-}
-export function clientById(id: string): TeamClient | undefined {
-  return dataset().clients.find((c) => c.id === id);
-}
-export function meetingById(id: string): TeamMeeting | undefined {
-  return dataset().meetings.find((m) => m.id === id);
 }
 
 /**
@@ -368,7 +309,4 @@ export function meetingsForAgent(agentId: string): TeamMeeting[] {
 }
 export function clientsForAgent(agentId: string): TeamClient[] {
   return dataset().clients.filter((c) => c.agentId === agentId);
-}
-export function pendingApprovalForClient(clientId: string): TeamApproval | undefined {
-  return dataset().approvals.find((a) => a.clientId === clientId && a.type !== 'tagalong');
 }

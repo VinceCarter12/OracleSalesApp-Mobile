@@ -2,32 +2,44 @@ import { useCallback, useState } from 'react';
 import { ScrollView } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect } from 'expo-router';
-import { AlertTriangle, Bell, CircleAlert, RefreshCw } from 'lucide-react-native';
+import { AlertTriangle, Bell, CircleAlert, RefreshCw, Users } from 'lucide-react-native';
 import { Spinner, Text, XStack, YStack } from 'tamagui';
 import { BIZLINK_COLORS, BIZLINK_FONTS } from '../../../lib/theme';
 import { getOutboxCounts, type OutboxCounts } from '../../../lib/sync-engine';
+import { getRecentCompanionTagsForInvitee, type RecentManagerTag } from '../../../lib/tag-along-invitee-service';
+import { useSession } from '../../../lib/session-store';
 import { BizTopBar } from '../../../components/bizlink/BizTopBar';
 
 /**
  * Wireframe `id="a-notifications"` (`aRenderNotifications()`, ~line 1036)
  * mocks a richer feed (deadline reminders, tag-along updates, approvals) —
- * none of that has a real client-side data source yet (deadline countdown
- * is T-018, tag-along/approval events aren't tracked locally at all). To
- * avoid inventing a fake backend, this screen is deliberately scoped to
- * what's genuinely derivable right now: real sync-outbox counts
- * (`getOutboxCounts()`), same source as the Home screen's sync chip.
+ * most of that still has no real client-side data source (deadline
+ * countdown is T-018, approvals no longer exist at all per F-205). Tag-along
+ * updates DO now have a real source (F-205 / B-053) — a manager tagging this
+ * agent directly into their own meeting (`insertAcceptedMeetingCompanions()`)
+ * — so this screen is scoped to what's genuinely derivable: real
+ * sync-outbox counts (`getOutboxCounts()`, same source as the Home screen's
+ * sync chip) plus this agent's own recent manager tag-alongs.
  */
 export default function NotificationsScreen() {
   const insets = useSafeAreaInsets();
+  const { profileId } = useSession();
   const [counts, setCounts] = useState<OutboxCounts | null>(null);
+  const [managerTags, setManagerTags] = useState<RecentManagerTag[]>([]);
   const [loading, setLoading] = useState(true);
 
   const load = useCallback(() => {
     setLoading(true);
-    getOutboxCounts()
-      .then(setCounts)
+    Promise.all([
+      getOutboxCounts(),
+      profileId ? getRecentCompanionTagsForInvitee(profileId) : Promise.resolve([]),
+    ])
+      .then(([outboxCounts, tags]) => {
+        setCounts(outboxCounts);
+        setManagerTags(tags);
+      })
       .finally(() => setLoading(false));
-  }, []);
+  }, [profileId]);
 
   useFocusEffect(useCallback(() => { load(); }, [load]));
 
@@ -54,6 +66,14 @@ export default function NotificationsScreen() {
         body: 'Auto-uploads kapag may signal.',
       });
     }
+  }
+  for (const tag of managerTags) {
+    const managerName = tag.requesterName ?? 'Manager mo';
+    items.push({
+      icon: <Users size={16} color={BIZLINK_COLORS.brand} strokeWidth={1.75} />,
+      title: `${managerName} tinag ka sa isang meeting`,
+      body: tag.clientName ? `${tag.clientName} — ${new Date(tag.createdAt).toLocaleDateString()}` : new Date(tag.createdAt).toLocaleDateString(),
+    });
   }
 
   return (

@@ -4,13 +4,14 @@ import { router } from 'expo-router';
 import { BarChart3, Bell, Building2, History, Info, Map, User, Users } from 'lucide-react-native';
 import { Text, XStack, YStack } from 'tamagui';
 import { BIZLINK_COLORS, BIZLINK_FONTS } from '../../../lib/theme';
-import { managerProfile } from '../../../lib/manager-data';
+import { useSession } from '../../../lib/session-store';
 import { BizMoreTile } from '../../../components/bizlink/BizMoreTile';
 import { StatusBadge } from '../../../components/ui/StatusBadge';
 
 /** Wireframe s-more — hub for occasional-use features. (Client info protection gate removed for Manager, 2026-07-17 — see ADR-007 follow-up.) */
 export default function ManagerMoreScreen() {
   const insets = useSafeAreaInsets();
+  const { teamId } = useSession();
   return (
     <YStack flex={1} backgroundColor={BIZLINK_COLORS.canvas} paddingTop={insets.top}>
       <XStack alignItems="center" paddingHorizontal="$4" paddingTop="$2.5" paddingBottom="$1.5">
@@ -29,7 +30,7 @@ export default function ManagerMoreScreen() {
           </XStack>
           <Text fontSize={12} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} lineHeight={17}>
             Iisang Sales Manager role lang — walang hiwalay na RSR Manager (tinanggal 2026-07-14, ADR-017). Ang
-            track na nakikita mo (Sales o RSR) ay depende sa {managerProfile().team} mo, hindi sa role.
+            track na nakikita mo (Sales o RSR) ay depende sa team_id mo ({teamId ?? '—'}), hindi sa role.
           </Text>
         </YStack>
 

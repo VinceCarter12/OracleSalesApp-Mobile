@@ -7,6 +7,7 @@ import { buildMeetingPhotoStoragePath } from './meeting-photo-service';
 import { isLikelyOnline } from './sync/connectivity';
 import { toRemoteLocationType, toRemoteMeetingType, toRemoteOutcome } from './remote-meeting-mapping';
 import { insertMeetingCompanionRequests, type CompanionSelection } from './tag-along-service';
+import { insertAcceptedMeetingCompanions } from './tag-along-manager-service';
 import type { MeetingMode, MeetingOutcome } from '../types';
 
 export { buildMeetingPhotoStoragePath, uploadMeetingPhoto, enqueueMeetingPhotoUrlUpdate, MEETING_PHOTO_BUCKET, PHOTO_UPLOAD_TIMEOUT_MS } from './meeting-photo-service';
@@ -85,6 +86,14 @@ export interface NewMeetingRecord {
   } | null;
   /** ADR-030 Pass 2.5: 0–2 companions picked in Record Meeting's "Kasama sa visit" section — optional/omittable, never gates the save. */
   companions?: CompanionSelection[];
+  /**
+   * F-205 decision 2: true when the requester (`agent_id`) is a manager
+   * recording their own meeting — the companion rows insert pre-accepted
+   * (`insertAcceptedMeetingCompanions`) instead of pending
+   * (`insertMeetingCompanionRequests`), since there's no counterpart to
+   * approve a manager's own request. Omit/false for the normal agent path.
+   */
+  companionsPreAccepted?: boolean;
 }
 
 /**
@@ -197,7 +206,10 @@ export async function createMeeting(record: NewMeetingRecord): Promise<string> {
     // insert + its outbox row above, so a crash between the two can never
     // strand a companion request without its outbox row, or vice versa.
     if (record.companions?.length && record.client_id) {
-      await insertMeetingCompanionRequests(db, {
+      const insertCompanions = record.companionsPreAccepted
+        ? insertAcceptedMeetingCompanions
+        : insertMeetingCompanionRequests;
+      await insertCompanions(db, {
         clientId: record.client_id,
         meetingId: id,
         requesterId: record.agent_id,

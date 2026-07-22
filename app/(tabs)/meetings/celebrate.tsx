@@ -2,6 +2,7 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { CloudUpload, RefreshCw } from 'lucide-react-native';
 import { Text, View, XStack, YStack } from 'tamagui';
 import { BIZLINK_COLORS, BIZLINK_FONTS, BIZLINK_ON_INK } from '../../../lib/theme';
+import { useClientFlowRoutes } from '../../../lib/use-role-routes';
 import { BizButton } from '../../../components/bizlink/BizButton';
 
 /**
@@ -21,6 +22,7 @@ import { BizButton } from '../../../components/bizlink/BizButton';
 export default function MeetingCelebrateScreen() {
   const { online } = useLocalSearchParams<{ online?: string }>();
   const isOnline = online === 'true';
+  const routes = useClientFlowRoutes();
 
   return (
     <YStack flex={1} backgroundColor={BIZLINK_COLORS.ink} alignItems="center" justifyContent="center" gap="$4" paddingHorizontal="$6">
@@ -73,8 +75,18 @@ export default function MeetingCelebrateScreen() {
             // stack instead of the Meetings list. `dismissAll()` collapses
             // this tab's stack to its root first, so the Meetings tab is
             // fresh by the time the agent switches back to it.
-            router.dismissAll();
-            router.replace('/(tabs)');
+            //
+            // B-058: `dismissAll()` dispatches a POP_TO_TOP-style action
+            // that no navigator handles when the stack is already at its
+            // root (nothing to dismiss), producing a LogBox warning. Guard
+            // with `canDismiss()` — a real expo-router API that reports
+            // whether the current stack has more than one screen — so we
+            // only collapse the stack when there's actually something to
+            // collapse.
+            if (router.canDismiss()) {
+              router.dismissAll();
+            }
+            router.replace(routes.home());
           }}
         />
       </YStack>

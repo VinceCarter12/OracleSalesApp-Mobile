@@ -48,7 +48,7 @@ export default function RecordVisitScreen() {
   const insets = useSafeAreaInsets();
   const { clientId } = useLocalSearchParams<{ clientId: string }>();
   const { session } = useAuth();
-  const { profileId } = useSession();
+  const { profileId, role } = useSession();
 
   const [client, setClient] = useState<Client | null>(null);
   const [loading, setLoading] = useState(true);
@@ -208,6 +208,14 @@ export default function RecordVisitScreen() {
           profileId: entry.profileId,
           kind: inviteeKindForRole(entry.role),
         })),
+        // F-205 decision 2 (quality-gate fix): mirrors record.tsx exactly —
+        // this fast path was missed when the picker was added to
+        // record-visit.tsx (Pass 2.5 Completeness Fix), leaving a manager's
+        // own companion requests here landing as normal PENDING rows
+        // (requester_id = the manager, same as any other requester) with no
+        // counterpart able to approve them. Role-based so it stays correct
+        // regardless of which route renders this shared screen.
+        companionsPreAccepted: role === 'sales_manager',
       });
       // The draft must never survive past a successful save (ADR-026 P1 item
       // 3) — best-effort: a cleanup failure here shouldn't surface as a save

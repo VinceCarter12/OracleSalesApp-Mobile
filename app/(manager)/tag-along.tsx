@@ -1,12 +1,10 @@
 import { useCallback, useEffect, useState } from 'react';
 import { ScrollView } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { router, useFocusEffect } from 'expo-router';
-import { CircleCheckBig, Handshake } from 'lucide-react-native';
+import { useFocusEffect } from 'expo-router';
+import { CircleCheckBig } from 'lucide-react-native';
 import { Spinner, Text, XStack, YStack } from 'tamagui';
 import { BIZLINK_COLORS, BIZLINK_FONTS } from '../../lib/theme';
-import { agentById, clientById } from '../../lib/manager-data';
-import { useManagerStore } from '../../lib/manager-store';
 import { useSession } from '../../lib/session-store';
 import {
   getIncomingCompanionRequests,
@@ -27,17 +25,17 @@ import { StatusBadge } from '../../components/ui/StatusBadge';
  * Wireframe s-tagalong — ungated: accept/decline only, the sales rep still
  * owns and records the meeting (Meeting-2026-07-08, final single-owner model).
  *
- * B-053 (ADR-030 Pass 3): the top "Mga request" section now reads real
- * incoming companion requests (`lib/tag-along-invitee-service.ts`) instead of
- * `useManagerStore()`'s mock `tagAlongRequests`. The second section ("Mga
- * natapos na meeting") is intentionally left untouched — still mock-backed,
- * tracked separately as B-054.
+ * B-053 (ADR-030 Pass 3): reads real incoming companion requests
+ * (`lib/tag-along-invitee-service.ts`) instead of any mock data.
+ *
+ * F-205: the second section ("Mga natapos na meeting — kailangan ng approval
+ * mo") is removed — Approvals is fully retired, so "meetings needing
+ * post-meeting approval" is no longer a concept in the Manager role. This
+ * screen is now accept/decline only.
  */
 export default function TagAlongRequestsScreen() {
   const insets = useSafeAreaInsets();
   const { profileId } = useSession();
-  const { approvals } = useManagerStore();
-  const pendingTagAlongApprovals = approvals.filter((a) => a.type === 'tagalong');
 
   const [requests, setRequests] = useState<IncomingCompanionRequest[]>([]);
   const [loading, setLoading] = useState(true);
@@ -95,8 +93,7 @@ export default function TagAlongRequestsScreen() {
       <ScrollView contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 24 }}>
         <Text fontSize={13} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} marginBottom="$3" lineHeight={19}>
           Hindi ka na gumagawa ng sariling meeting record. Ang sales rep ang nagre-record ng buong client visit
-          (kasama ka sa litrato niya bilang proof) — dito mo lang ito ku-kumpirmahin na sumama ka pagkatapos ng
-          meeting mismo, at ia-approve o irereject pagkatapos ang buong record.
+          (kasama ka sa litrato niya bilang proof) — dito mo lang ito ku-kumpirmahin na sumama ka.
         </Text>
 
         <SectionLabel title="Mga request — kumpirmahin na sumama ka" />
@@ -170,35 +167,6 @@ export default function TagAlongRequestsScreen() {
               );
             })}
           </>
-        )}
-
-        <SectionLabel title="Mga natapos na meeting — kailangan ng approval mo" />
-        <Text fontSize={12} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} marginBottom="$2">Makikita rin ito sa Approvals tab.</Text>
-        {pendingTagAlongApprovals.length === 0 ? (
-          <EmptyState icon={<Handshake size={28} color={BIZLINK_COLORS.muted} strokeWidth={1.75} />} label="Walang tag-along meeting na naghihintay ng approval." />
-        ) : (
-          pendingTagAlongApprovals.map((a) => {
-            const client = clientById(a.clientId);
-            const agent = agentById(a.agentId);
-            return (
-              <XStack
-                key={a.id}
-                alignItems="center"
-                gap="$3"
-                backgroundColor={BIZLINK_COLORS.card}
-                borderRadius={20}
-                padding={14}
-                marginBottom={10}
-                onPress={() => router.push('/(manager)/approvals')}
-              >
-                <YStack flex={1}>
-                  <Text fontFamily={BIZLINK_FONTS.semibold} fontSize={14} color={BIZLINK_COLORS.text}>{client?.name}</Text>
-                  <Text fontSize={11.5} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted}>{agent?.name} · {a.requested}</Text>
-                </YStack>
-                <StatusBadge label="Pending approval" background={BIZLINK_COLORS.tintA} color={BIZLINK_COLORS.brand} />
-              </XStack>
-            );
-          })
         )}
       </ScrollView>
     </YStack>

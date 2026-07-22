@@ -1,13 +1,15 @@
-import { useState } from 'react';
+import { useCallback, useState } from 'react';
 import { Pressable, ScrollView } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { router } from 'expo-router';
+import { router, useFocusEffect } from 'expo-router';
 import { Bell, Building2, Ellipsis, History, Hourglass, Users } from 'lucide-react-native';
 import { Spinner, Text, XStack, YStack } from 'tamagui';
 import { BIZLINK_COLORS, BIZLINK_FONTS, OUTCOME_BADGE_STYLES } from '../../lib/theme';
-import { managerProfile } from '../../lib/manager-data';
 import { useManagerDashboard } from '../../lib/useManagerDashboard';
-import { useManagerStore } from '../../lib/manager-store';
+import { useTeamOverview } from '../../lib/use-team-overview';
+import { getIncomingCompanionRequests } from '../../lib/tag-along-invitee-service';
+import { useSession } from '../../lib/session-store';
+import { firstName, initialsFromName } from '../../lib/display-name';
 import { Avatar } from '../../components/ui/Avatar';
 import { StatusBadge } from '../../components/ui/StatusBadge';
 import { BizStatCard } from '../../components/bizlink/BizStatCard';
@@ -66,11 +68,27 @@ function RecentMeetingRow({ meeting, onPress }: { meeting: TeamMeetingPreview; o
 export default function ManagerDashboardScreen() {
   const insets = useSafeAreaInsets();
   const { summary, loading } = useManagerDashboard();
-  const { approvals } = useManagerStore();
-  const profile = managerProfile();
+  // B-054 Phase 1 item 6: real "this week" trend numbers for the two stat
+  // captions below.
+  const { overview } = useTeamOverview();
+  const { fullName, profileId } = useSession();
   const [syncSheetOpen, setSyncSheetOpen] = useState(false);
   // B-023: see app/(tabs)/index.tsx's twin — remounts the chip on sheet-close.
   const [syncChipKey, setSyncChipKey] = useState(0);
+  // F-205: the "Pending approvals" stat card is retired along with the
+  // Approvals screen — replaced by a real count of pending tag-along
+  // requests needing this manager's accept/reject (the one remaining
+  // "needs my action" queue for a manager, B-053's real invitee-side data).
+  const [pendingTagAlongCount, setPendingTagAlongCount] = useState(0);
+
+  const loadPendingTagAlong = useCallback(() => {
+    if (!profileId) return;
+    getIncomingCompanionRequests(profileId)
+      .then((requests) => setPendingTagAlongCount(requests.filter((r) => r.status === 'pending').length))
+      .catch((err) => console.error('[ManagerHome] pending tag-along count failed:', err instanceof Error ? err.message : String(err)));
+  }, [profileId]);
+
+  useFocusEffect(useCallback(() => { loadPendingTagAlong(); }, [loadPendingTagAlong]));
 
   if (loading || !summary) {
     return (
@@ -80,23 +98,22 @@ export default function ManagerDashboardScreen() {
     );
   }
 
-  const approvalBadge = approvals.length || summary.pendingApprovals;
+  const approvalBadge = pendingTagAlongCount;
+  const initials = initialsFromName(fullName);
+  const greetingName = firstName(fullName) || summary.managerName;
 
   return (
     <YStack flex={1} backgroundColor={BIZLINK_COLORS.canvas} paddingTop={insets.top}>
       <XStack alignItems="center" gap="$3" paddingHorizontal="$4" paddingTop="$2.5" paddingBottom="$1.5">
         <AvatarStatusRing>
-          <Avatar
-            initials={profile.fullName.split(' ').map((part) => part[0]).join('')}
-            background={BIZLINK_COLORS.tintA}
-            color={BIZLINK_COLORS.ink}
-          />
+          <Avatar initials={initials} background={BIZLINK_COLORS.tintA} color={BIZLINK_COLORS.ink} />
         </AvatarStatusRing>
         <YStack gap="$1">
           <Text fontFamily={BIZLINK_FONTS.semibold} fontSize={15.5} color={BIZLINK_COLORS.text}>
-            Good morning, {summary.managerName}!
+            Good morning, {greetingName}!
           </Text>
-          <StatusBadge label={profile.title} background={BIZLINK_COLORS.soft} color={BIZLINK_COLORS.navy} />
+          {/* ADR-017: a single `sales_manager` role — never a separate "RSR Manager" title. */}
+          <StatusBadge label="Sales Manager" background={BIZLINK_COLORS.soft} color={BIZLINK_COLORS.navy} />
         </YStack>
         <Pressable onPress={() => router.push('/(manager)/more/notifications')} style={{ marginLeft: 'auto' }} hitSlop={6}>
           <YStack width={44} height={44} borderRadius={22} backgroundColor={BIZLINK_COLORS.card} alignItems="center" justifyContent="center" position="relative">
@@ -115,7 +132,7 @@ export default function ManagerDashboardScreen() {
               tone="tintA"
               value={summary.teamProspects}
               label="Team Prospects"
-              caption="+3 this week"
+              caption={`+${overview?.newProspectsThisWeek ?? 0} this week`}
               onPress={() => router.push('/(manager)/more/clients')}
             />
           </YStack>
@@ -124,7 +141,7 @@ export default function ManagerDashboardScreen() {
               tone="white"
               value={summary.teamClients}
               label="Team Clients"
-              caption="+12.1% vs last mo."
+              caption={`+${overview?.newTeamClientsThisWeek ?? 0} this week`}
               onPress={() => router.push('/(manager)/more/clients')}
             />
           </YStack>
@@ -142,10 +159,10 @@ export default function ManagerDashboardScreen() {
           <YStack flex={1}>
             <BizStatCard
               tone="white"
-              value={summary.pendingApprovals}
-              label="Pending approvals"
-              caption="edits + reassignments"
-              onPress={() => router.push('/(manager)/approvals')}
+              value={pendingTagAlongCount}
+              label="Tag-Along"
+              caption="accept/reject"
+              onPress={() => router.push('/(manager)/tag-along')}
             />
           </YStack>
         </XStack>
@@ -163,7 +180,7 @@ export default function ManagerDashboardScreen() {
           <BizQuickAction
             icon={<Users size={20} color={BIZLINK_COLORS.ink} strokeWidth={1.75} />}
             label="Tag-Along"
-            badgeCount={summary.pendingTagAlongRequests}
+            badgeCount={pendingTagAlongCount}
             onPress={() => router.push('/(manager)/tag-along')}
           />
           <BizQuickAction

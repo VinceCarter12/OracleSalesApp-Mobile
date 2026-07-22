@@ -13,6 +13,7 @@ import { BIZLINK_COLORS, BIZLINK_FONTS } from '../../../lib/theme';
 import { createMeeting } from '../../../lib/meeting-service';
 import { getTeamRoster, inviteeKindForRole } from '../../../lib/team-roster';
 import { MAX_COMPANIONS_PER_REQUEST } from '../../../lib/tag-along-service';
+import { useClientFlowRoutes } from '../../../lib/use-role-routes';
 import { showToast } from '../../../lib/toast';
 import { BizTopBar } from '../../../components/bizlink/BizTopBar';
 import { BizField } from '../../../components/bizlink/BizField';
@@ -34,7 +35,8 @@ export default function RecordMeetingScreen() {
   const insets = useSafeAreaInsets();
   const { clientId } = useLocalSearchParams<{ clientId?: string }>();
   const { session } = useAuth();
-  const { profileId } = useSession();
+  const { profileId, role } = useSession();
+  const routes = useClientFlowRoutes();
 
   const [clientName, setClientName] = useState<string | null>(null);
   const [roster, setRoster] = useState<TeamRosterEntry[]>([]);
@@ -95,7 +97,7 @@ export default function RecordMeetingScreen() {
     });
   }
 
-  async function captureLocation() {
+  async function captureLocation(): Promise<void> {
     setLoadingLocation(true);
     try {
       const gps = await captureGps();
@@ -193,9 +195,15 @@ export default function RecordMeetingScreen() {
           profileId: entry.profileId,
           kind: inviteeKindForRole(entry.role),
         })),
+        // F-205 decision 2: a manager requesting companions on their OWN
+        // meeting has no counterpart to approve it (they'd be approving
+        // themselves) — those rows insert pre-accepted instead of pending.
+        // Role-based (not route-based) so this stays correct regardless of
+        // which route group renders this shared screen.
+        companionsPreAccepted: role === 'sales_manager',
       });
       const connectivity = await checkConnectivity();
-      router.replace(`/(tabs)/meetings/celebrate?online=${connectivity === 'online'}`);
+      router.replace(routes.celebrate(connectivity === 'online'));
     } catch (err) {
       // PostgrestError isn't an Error instance — log the raw object (code/
       // details/hint) so on-device debugging isn't limited to err.message.
@@ -223,6 +231,7 @@ export default function RecordMeetingScreen() {
           photoUri={photoUri}
           onOpenCamera={captureSelfie}
           onPreviewPress={() => setSelfiePreviewOpen(true)}
+          onRetryLocation={captureLocation}
         />
 
         <BizSectionHeader title="Actual contact person" />

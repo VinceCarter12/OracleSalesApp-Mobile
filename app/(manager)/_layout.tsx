@@ -1,9 +1,8 @@
 import { Pressable } from 'react-native';
 import { Tabs } from 'expo-router';
-import { House, MoreHorizontal, PencilLine, Users } from 'lucide-react-native';
+import { Building2, House, MoreHorizontal, Users } from 'lucide-react-native';
 import { BIZLINK_COLORS, BIZLINK_FONTS } from '../../lib/theme';
-import { useManagerDashboard } from '../../lib/useManagerDashboard';
-import { ManagerStoreProvider, useManagerStore } from '../../lib/manager-store';
+import { ManagerStoreProvider } from '../../lib/manager-store';
 
 type LucideIcon = typeof House;
 
@@ -40,10 +39,6 @@ export default function ManagerTabsLayout() {
 }
 
 function ManagerTabs() {
-  const { summary } = useManagerDashboard();
-  const { approvals } = useManagerStore();
-  const approvalBadge = approvals.length || summary?.pendingApprovals;
-
   return (
     <Tabs
       screenOptions={{
@@ -76,12 +71,10 @@ function ManagerTabs() {
         options={{ title: 'Team', tabBarIcon: ({ focused }) => <TabIcon focused={focused} Icon={Users} /> }}
       />
       <Tabs.Screen
-        name="approvals"
+        name="clients"
         options={{
-          title: 'Approvals',
-          tabBarIcon: ({ focused }) => <TabIcon focused={focused} Icon={PencilLine} />,
-          tabBarBadge: approvalBadge && approvalBadge > 0 ? approvalBadge : undefined,
-          tabBarBadgeStyle: { backgroundColor: BIZLINK_COLORS.red, fontSize: 9, fontFamily: BIZLINK_FONTS.semibold },
+          title: 'Clients',
+          tabBarIcon: ({ focused }) => <TabIcon focused={focused} Icon={Building2} />,
         }}
       />
       <Tabs.Screen
