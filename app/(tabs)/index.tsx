@@ -1,7 +1,7 @@
-import { useState } from 'react';
+import { useCallback, useState } from 'react';
 import { Pressable, ScrollView } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { router } from 'expo-router';
+import { router, useFocusEffect } from 'expo-router';
 import {
   Bell,
   Building2,
@@ -18,12 +18,15 @@ import { Text, View, XStack, YStack } from 'tamagui';
 import { useBizlinkColors, BIZLINK_FONTS } from '../../lib/theme';
 import { useClients } from '../../lib/useClients';
 import { useMeetings } from '../../lib/useMeetings';
-import { getClientStatus, CLIENT_STATUS_BADGES } from '../../lib/client-status';
+import { getClientStatus, CLIENT_STATUS_BADGES, WAITING_MANAGER_APPROVAL_BADGE } from '../../lib/client-status';
+import { getClientIdsWithPendingManagerTagAlong } from '../../lib/tag-along-service';
+import { countCreatedSince } from '../../lib/team-remote-mappers';
 import { Avatar } from '../../components/ui/Avatar';
 import { StatusBadge } from '../../components/ui/StatusBadge';
 import { BizStatCard } from '../../components/bizlink/BizStatCard';
 import { BizHeroCard } from '../../components/bizlink/BizHeroCard';
 import { BizSectionHeader } from '../../components/bizlink/BizSectionHeader';
+import { BizDashboardAlert } from '../../components/bizlink/BizDashboardAlert';
 import { BizQuickAction } from '../../components/bizlink/BizQuickAction';
 import { AvatarStatusRing } from '../../components/bizlink/AvatarStatusRing';
 import { SyncStatusChip } from '../../components/sync/SyncStatusChip';
@@ -73,7 +76,7 @@ function RsrQuotaWidget({ meetings }: { meetings: Meeting[] }) {
   );
 }
 
-function ClientPreviewRow({ client }: { client: Client }) {
+function ClientPreviewRow({ client, waitingManagerApproval }: { client: Client; waitingManagerApproval: boolean }) {
   const BIZLINK_COLORS = useBizlinkColors();
   const badge = CLIENT_STATUS_BADGES[getClientStatus(client)];
   return (
@@ -85,6 +88,7 @@ function ClientPreviewRow({ client }: { client: Client }) {
         borderRadius={20}
         padding={14}
         marginBottom={10}
+        flexWrap="wrap"
       >
         <YStack flex={1} gap="$0.5">
           <Text fontFamily={BIZLINK_FONTS.semibold} fontSize={14} color={BIZLINK_COLORS.text}>{client.company_name}</Text>
@@ -92,19 +96,60 @@ function ClientPreviewRow({ client }: { client: Client }) {
             {client.contact_person || 'Walang contact person pa'}
           </Text>
         </YStack>
-        <StatusBadge {...badge} />
+        <YStack alignItems="flex-end" gap="$1">
+          <StatusBadge {...badge} />
+          {/* F-204: overlay badge, NOT a replacement for the status pill above. */}
+          {waitingManagerApproval ? (
+            <StatusBadge
+              label={WAITING_MANAGER_APPROVAL_BADGE.label}
+              background={BIZLINK_COLORS[WAITING_MANAGER_APPROVAL_BADGE.background]}
+              color={BIZLINK_COLORS[WAITING_MANAGER_APPROVAL_BADGE.color]}
+            />
+          ) : null}
+        </YStack>
         <Text color={BIZLINK_COLORS.muted} fontSize={16}>›</Text>
       </XStack>
     </Pressable>
   );
 }
 
+function AgentHomeHeader({ greetingName, isRsr, fullName }: { greetingName: string; isRsr: boolean; fullName: string | null }) {
+  const BIZLINK_COLORS = useBizlinkColors();
+  return (
+    <XStack alignItems="center" gap="$3" paddingHorizontal="$4" paddingTop="$2.5" paddingBottom="$1.5">
+      <Pressable onPress={() => router.push('/(tabs)/more/account')} hitSlop={4}>
+        <AvatarStatusRing>
+          <Avatar initials={initialsFromName(fullName)} background={BIZLINK_COLORS.tintA} color={BIZLINK_COLORS.ink} />
+        </AvatarStatusRing>
+      </Pressable>
+      <YStack gap="$1">
+        <Text fontFamily={BIZLINK_FONTS.semibold} fontSize={15.5} color={BIZLINK_COLORS.text}>
+          {greetingName ? `Kamusta, ${greetingName}!` : 'Kamusta!'}
+        </Text>
+        <StatusBadge label={isRsr ? 'RSR' : 'Sales Specialist'} background={BIZLINK_COLORS.tintA} color={BIZLINK_COLORS.ink} />
+      </YStack>
+      <Pressable onPress={() => router.push('/(tabs)/more/notifications')} style={{ marginLeft: 'auto' }} hitSlop={6}>
+        <View
+          width={44}
+          height={44}
+          borderRadius={22}
+          backgroundColor={BIZLINK_COLORS.card}
+          alignItems="center"
+          justifyContent="center"
+        >
+          <Bell size={17} color={BIZLINK_COLORS.text} strokeWidth={1.75} />
+        </View>
+      </Pressable>
+    </XStack>
+  );
+}
+
 export default function AgentHomeScreen() {
   const BIZLINK_COLORS = useBizlinkColors();
   const insets = useSafeAreaInsets();
-  const { clients } = useClients();
-  const { meetings } = useMeetings();
-  const { role, fullName } = useSession();
+  const { clients, refresh: refreshClients } = useClients();
+  const { meetings, refresh: refreshMeetings } = useMeetings();
+  const { role, fullName, profileId } = useSession();
   const isRsr = role === 'rsr';
   const greetingName = firstName(fullName);
   const [syncSheetOpen, setSyncSheetOpen] = useState(false);
@@ -112,10 +157,46 @@ export default function AgentHomeScreen() {
   // sheet is reflected immediately — the chip's own useFocusEffect never
   // re-fires here since the Modal never actually blurs this screen.
   const [syncChipKey, setSyncChipKey] = useState(0);
+  // F-204: bulk-loaded once per focus (not per-row) — same N+1 avoidance
+  // pattern as meetings/index.tsx's getMyCompanionRequests bulk-load.
+  const [waitingManagerApprovalIds, setWaitingManagerApprovalIds] = useState<Set<string>>(new Set());
+
+  // Bug fix: Home was only fetching clients/meetings once on mount (its
+  // hooks' own useEffect), unlike clients/index.tsx and meetings/index.tsx
+  // which both re-fetch via useFocusEffect — so stat cards froze at whatever
+  // was loaded the first time Home mounted (often all-zero, before any data
+  // existed) and never reflected data added elsewhere in the session.
+  useFocusEffect(
+    useCallback(() => {
+      refreshClients();
+      refreshMeetings();
+    }, [refreshClients, refreshMeetings])
+  );
+
+  useFocusEffect(
+    useCallback(() => {
+      if (!profileId) return;
+      getClientIdsWithPendingManagerTagAlong(profileId)
+        .then(setWaitingManagerApprovalIds)
+        .catch((err) => console.error('[Home] pending manager tag-along lookup failed:', err instanceof Error ? err.message : String(err)));
+    }, [profileId])
+  );
 
   const prospects = clients.filter((c) => getClientStatus(c) === 'prospect');
   const nonProspects = clients.filter((c) => getClientStatus(c) !== 'prospect');
+  // F-204: intersected with `prospects`, not the raw Set size — the Set can
+  // include non-prospect clients once Migration 023 lands (a `new`-status
+  // client with a still-pending tag-along), so this keeps the "n prospects
+  // waiting" copy accurate rather than relying on today's select-client.tsx
+  // invariant that only prospects can start a tag-along.
+  const waitingManagerApprovalProspects = prospects.filter((c) => waitingManagerApprovalIds.has(c.id));
   const now = new Date();
+  // B-063: real "this week" delta (same countCreatedSince helper used by
+  // lib/manager-team-service.ts's newProspectsThisWeek) instead of a
+  // hardcoded "+1 this week" literal. Omit the caption entirely when there's
+  // nothing meaningful to show, rather than displaying "+0 this week".
+  const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+  const newProspectsThisWeek = countCreatedSince(prospects, weekAgo);
   const thisMonth = meetings.filter((m) => {
     const d = new Date(m.logged_at);
     return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
@@ -124,31 +205,7 @@ export default function AgentHomeScreen() {
 
   return (
     <YStack flex={1} backgroundColor={BIZLINK_COLORS.canvas} paddingTop={insets.top}>
-      <XStack alignItems="center" gap="$3" paddingHorizontal="$4" paddingTop="$2.5" paddingBottom="$1.5">
-        <Pressable onPress={() => router.push('/(tabs)/more/account')} hitSlop={4}>
-          <AvatarStatusRing>
-            <Avatar initials={initialsFromName(fullName)} background={BIZLINK_COLORS.tintA} color={BIZLINK_COLORS.ink} />
-          </AvatarStatusRing>
-        </Pressable>
-        <YStack gap="$1">
-          <Text fontFamily={BIZLINK_FONTS.semibold} fontSize={15.5} color={BIZLINK_COLORS.text}>
-            {greetingName ? `Kamusta, ${greetingName}!` : 'Kamusta!'}
-          </Text>
-          <StatusBadge label={isRsr ? 'RSR' : 'Sales Specialist'} background={BIZLINK_COLORS.tintA} color={BIZLINK_COLORS.ink} />
-        </YStack>
-        <Pressable onPress={() => router.push('/(tabs)/more/notifications')} style={{ marginLeft: 'auto' }} hitSlop={6}>
-          <View
-            width={44}
-            height={44}
-            borderRadius={22}
-            backgroundColor={BIZLINK_COLORS.card}
-            alignItems="center"
-            justifyContent="center"
-          >
-            <Bell size={17} color={BIZLINK_COLORS.text} strokeWidth={1.75} />
-          </View>
-        </Pressable>
-      </XStack>
+      <AgentHomeHeader greetingName={greetingName} isRsr={isRsr} fullName={fullName} />
 
       <ScrollView contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 96 }}>
         <XStack gap={10} marginTop={6}>
@@ -157,7 +214,7 @@ export default function AgentHomeScreen() {
               tone="tintA"
               value={prospects.length}
               label="Prospects ko"
-              caption="+1 this week"
+              caption={newProspectsThisWeek > 0 ? `+${newProspectsThisWeek} this week` : undefined}
               onPress={() => router.push('/(tabs)/clients')}
             />
           </YStack>
@@ -195,24 +252,27 @@ export default function AgentHomeScreen() {
         <SyncStatusChip key={syncChipKey} onPress={() => setSyncSheetOpen(true)} />
 
         {prospects.length > 0 ? (
-          <XStack
-            alignItems="center"
-            gap="$2.5"
-            backgroundColor={BIZLINK_COLORS.tintB}
-            borderRadius={24}
-            paddingHorizontal={16}
-            paddingVertical={14}
-            marginTop={10}
+          <BizDashboardAlert
+            tone="red"
+            icon={<Hourglass size={18} color={BIZLINK_COLORS.red} strokeWidth={1.75} />}
+            title={`${prospects.length} prospect${prospects.length > 1 ? 's' : ''} na kailangan kumpletuhin`}
+            caption="1-month rule — kumpletuhin o auto-delete"
             onPress={() => router.push('/(tabs)/clients')}
-          >
-            <Hourglass size={18} color={BIZLINK_COLORS.red} strokeWidth={1.75} />
-            <YStack flex={1}>
-              <Text fontSize={12.5} fontFamily={BIZLINK_FONTS.semibold} color={BIZLINK_COLORS.red}>
-                {prospects.length} prospect{prospects.length > 1 ? 's' : ''} na kailangan kumpletuhin
-              </Text>
-              <Text fontSize={11} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.red}>1-month rule — kumpletuhin o auto-delete</Text>
-            </YStack>
-          </XStack>
+          />
+        ) : null}
+
+        {/* F-204: overlay indicator, directly under the prospects-need-completing
+            banner above (per F-204's placement requirement) — a separate row
+            rather than folding into the red banner, since this is a distinct
+            condition (pending manager tag-along, not the 1-month deadline). */}
+        {waitingManagerApprovalProspects.length > 0 ? (
+          <BizDashboardAlert
+            tone="amber"
+            icon={<Hourglass size={18} color={BIZLINK_COLORS.orange} strokeWidth={1.75} />}
+            title={`${waitingManagerApprovalProspects.length} prospect${waitingManagerApprovalProspects.length > 1 ? 's' : ''} waiting for manager approval`}
+            caption="Hinihintay ang sagot ng manager sa tag-along bago mag-progress"
+            onPress={() => router.push('/(tabs)/clients')}
+          />
         ) : null}
 
         <BizSectionHeader
@@ -221,7 +281,11 @@ export default function AgentHomeScreen() {
           onAction={() => router.push('/(tabs)/clients')}
         />
         {clients.slice(0, 3).map((client) => (
-          <ClientPreviewRow key={client.id} client={client} />
+          <ClientPreviewRow
+            key={client.id}
+            client={client}
+            waitingManagerApproval={waitingManagerApprovalIds.has(client.id)}
+          />
         ))}
         {clients.length === 0 ? (
           <Text fontSize={13} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} paddingVertical="$3">

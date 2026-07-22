@@ -8,15 +8,17 @@ import { getClientById } from '../../../lib/client-service';
 import { useSession } from '../../../lib/session-store';
 import {
   getClientCompanionRequests,
+  getClientIdsWithPendingManagerTagAlong,
   companionRequestDisplayStatus,
   COMPANION_REQUEST_STATUS_LABELS,
   COMPANION_REQUEST_BADGE_TONES,
   type ClientCompanionRequest,
 } from '../../../lib/tag-along-service';
 import { OUTCOME_BADGE_STYLES, BIZLINK_COLORS, BIZLINK_FONTS } from '../../../lib/theme';
-import { CLIENT_STATUS_BADGES, getClientStatus } from '../../../lib/client-status';
+import { CLIENT_STATUS_BADGES, getClientStatus, WAITING_MANAGER_APPROVAL_BADGE } from '../../../lib/client-status';
 import { getClientProgressBreakdown, getInfoChecklist } from '../../../lib/client-progress';
 import { useMeetings } from '../../../lib/useMeetings';
+import { useClientFlowRoutes } from '../../../lib/use-role-routes';
 import { BizTopBar } from '../../../components/bizlink/BizTopBar';
 import { BizLockButton } from '../../../components/bizlink/BizLockButton';
 import { BizCard } from '../../../components/bizlink/BizCard';
@@ -30,9 +32,11 @@ export default function ClientDetailScreen() {
   const insets = useSafeAreaInsets();
   const { id } = useLocalSearchParams<{ id: string }>();
   const { profileId } = useSession();
+  const routes = useClientFlowRoutes();
   const [client, setClient] = useState<Client | null>(null);
   const [loading, setLoading] = useState(true);
   const [companionRequests, setCompanionRequests] = useState<ClientCompanionRequest[]>([]);
+  const [waitingManagerApproval, setWaitingManagerApproval] = useState(false);
   const { meetings } = useMeetings(id);
 
   // Local SQLite is the primary read path (ADR-001/T-003) — a `pending`
@@ -56,16 +60,31 @@ export default function ClientDetailScreen() {
     setCompanionRequests(await getClientCompanionRequests(id, profileId));
   }, [id, profileId]);
 
+  // F-204: single-client check via the batch query — this screen only ever
+  // needs its own client's membership, so re-using the Set-returning helper
+  // (rather than adding a second single-row query function) keeps one
+  // source of truth for the WHERE clause.
+  const loadWaitingManagerApproval = useCallback(async () => {
+    if (!id || !profileId) return;
+    const ids = await getClientIdsWithPendingManagerTagAlong(profileId);
+    setWaitingManagerApproval(ids.has(id));
+  }, [id, profileId]);
+
   useEffect(() => {
     loadCompanionRequests();
   }, [loadCompanionRequests]);
+
+  useEffect(() => {
+    loadWaitingManagerApproval();
+  }, [loadWaitingManagerApproval]);
 
   // Refresh after Complete Info saves and navigates back.
   useFocusEffect(
     useCallback(() => {
       loadClient();
       loadCompanionRequests();
-    }, [loadClient, loadCompanionRequests])
+      loadWaitingManagerApproval();
+    }, [loadClient, loadCompanionRequests, loadWaitingManagerApproval])
   );
 
   if (loading) {
@@ -100,8 +119,16 @@ export default function ClientDetailScreen() {
             <Text fontFamily={BIZLINK_FONTS.semibold} fontSize={17} color={BIZLINK_COLORS.text} lineHeight={20}>
               {client.company_name}
             </Text>
-            <XStack gap="$1.5">
+            <XStack gap="$1.5" flexWrap="wrap">
               <StatusBadge {...badge} />
+              {/* F-204: overlay badge alongside (not replacing) the status pill. */}
+              {waitingManagerApproval ? (
+                <StatusBadge
+                  label={WAITING_MANAGER_APPROVAL_BADGE.label}
+                  background={BIZLINK_COLORS[WAITING_MANAGER_APPROVAL_BADGE.background]}
+                  color={BIZLINK_COLORS[WAITING_MANAGER_APPROVAL_BADGE.color]}
+                />
+              ) : null}
               {client.sales_channel ? (
                 <StatusBadge label={client.sales_channel} background={BIZLINK_COLORS.soft} color={BIZLINK_COLORS.navy} />
               ) : null}
@@ -198,7 +225,7 @@ export default function ClientDetailScreen() {
               label="Edit info"
               variant="white"
               icon={<Pencil size={15} color={BIZLINK_COLORS.text} strokeWidth={1.75} />}
-              onPress={() => router.push(`/(tabs)/clients/complete?clientId=${client.id}`)}
+              onPress={() => router.push(routes.completeInfo(client.id))}
             />
           </YStack>
           {status === 'prospect' ? (
@@ -206,7 +233,7 @@ export default function ClientDetailScreen() {
               <BizButton
                 label="Record meeting"
                 icon={<Camera size={15} color={BIZLINK_COLORS.card} strokeWidth={1.75} />}
-                onPress={() => router.push(`/(tabs)/meetings/record?clientId=${client.id}`)}
+                onPress={() => router.push(routes.recordMeeting(client.id))}
               />
             </YStack>
           ) : null}
@@ -221,7 +248,7 @@ export default function ClientDetailScreen() {
           meetings.map((meeting) => {
             const outcomeStyle = meeting.outcome ? OUTCOME_BADGE_STYLES[meeting.outcome] : null;
             return (
-              <Pressable key={meeting.id} onPress={() => router.push(`/(tabs)/meetings/${meeting.id}`)}>
+              <Pressable key={meeting.id} onPress={() => router.push(routes.meetingDetail(meeting.id))}>
                 <XStack
                   alignItems="flex-start"
                   gap="$3"

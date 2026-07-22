@@ -7,9 +7,12 @@ import { Spinner, Text, XStack, YStack } from 'tamagui';
 import { useBizlinkColors, BIZLINK_FONTS, BIZLINK_ON_INK } from '../../../lib/theme';
 import { useClients } from '../../../lib/useClients';
 import { useMeetings } from '../../../lib/useMeetings';
-import { CLIENT_STATUS_BADGES, getClientStatus } from '../../../lib/client-status';
+import { CLIENT_STATUS_BADGES, getClientStatus, WAITING_MANAGER_APPROVAL_BADGE } from '../../../lib/client-status';
 import { getClientDeadlineInfo } from '../../../lib/client-deadline';
 import { getClientProgress } from '../../../lib/client-progress';
+import { getClientIdsWithPendingManagerTagAlong } from '../../../lib/tag-along-service';
+import { useSession } from '../../../lib/session-store';
+import { useClientFlowRoutes } from '../../../lib/use-role-routes';
 import { StatusBadge } from '../../../components/ui/StatusBadge';
 import { SyncBadge } from '../../../components/sync/SyncBadge';
 import { BizCard } from '../../../components/bizlink/BizCard';
@@ -40,8 +43,9 @@ function currentMonthLabel(): string {
  * channel TWICE — once in `.td`, once again as the metarow's micro-label —
  * this looks redundant but matches the wireframe byte-for-byte.
  */
-function ClientRow({ client, meetings }: { client: Client; meetings: Meeting[] }) {
+function ClientRow({ client, meetings, waitingManagerApproval }: { client: Client; meetings: Meeting[]; waitingManagerApproval: boolean }) {
   const BIZLINK_COLORS = useBizlinkColors();
+  const routes = useClientFlowRoutes();
   const status = getClientStatus(client);
   const badge = CLIENT_STATUS_BADGES[status];
   const isProspect = status === 'prospect';
@@ -50,14 +54,14 @@ function ClientRow({ client, meetings }: { client: Client; meetings: Meeting[] }
   const metaLabel = isProspect ? deadline?.label : client.sales_channel || null;
 
   return (
-    <Pressable onPress={() => router.push(`/(tabs)/clients/${client.id}`)}>
+    <Pressable onPress={() => router.push(routes.clientDetail(client.id))}>
       <BizCard gap="$1.5" paddingVertical={16} paddingHorizontal={18} marginBottom={10}>
         <Text fontFamily={BIZLINK_FONTS.semibold} fontSize={15} letterSpacing={-0.2} color={BIZLINK_COLORS.text}>{client.company_name}</Text>
         <Text fontSize={12} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted}>
           {client.sales_channel || 'Walang detalye pa — kumpletuhin ang info'}
         </Text>
 
-        <XStack alignItems="center" gap="$2" marginTop="$1.5">
+        <XStack alignItems="center" gap="$2" marginTop="$1.5" flexWrap="wrap">
           {metaLabel ? (
             <Text fontSize={11} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted}>
               {isProspect ? 'Deadline ' : ''}
@@ -67,6 +71,14 @@ function ClientRow({ client, meetings }: { client: Client; meetings: Meeting[] }
             </Text>
           ) : null}
           <StatusBadge {...badge} />
+          {/* F-204: overlay badge alongside (not replacing) the status pill. */}
+          {waitingManagerApproval ? (
+            <StatusBadge
+              label={WAITING_MANAGER_APPROVAL_BADGE.label}
+              background={BIZLINK_COLORS[WAITING_MANAGER_APPROVAL_BADGE.background]}
+              color={BIZLINK_COLORS[WAITING_MANAGER_APPROVAL_BADGE.color]}
+            />
+          ) : null}
           {client.sync_status ? <SyncBadge status={client.sync_status as OutboxStatus} /> : null}
           <Text color={BIZLINK_COLORS.muted} fontSize={16} marginLeft="auto">›</Text>
         </XStack>
@@ -88,15 +100,29 @@ function ClientRow({ client, meetings }: { client: Client; meetings: Meeting[] }
 export default function ClientsScreen() {
   const BIZLINK_COLORS = useBizlinkColors();
   const insets = useSafeAreaInsets();
+  const routes = useClientFlowRoutes();
   const { clients, loading, refresh } = useClients();
   const { meetings } = useMeetings();
+  const { profileId } = useSession();
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState<StatusFilter>('all');
+  // F-204: batch-loaded once per focus, not per-row (same N+1 avoidance as
+  // meetings/index.tsx's getMyCompanionRequests bulk-load).
+  const [waitingManagerApprovalIds, setWaitingManagerApprovalIds] = useState<Set<string>>(new Set());
 
   // Refreshes on every return to this screen — e.g. right after Create
   // Client saves locally (client-service.ts), so the new row shows up
   // without needing a manual pull-to-refresh.
   useFocusEffect(useCallback(() => { refresh(); }, [refresh]));
+
+  useFocusEffect(
+    useCallback(() => {
+      if (!profileId) return;
+      getClientIdsWithPendingManagerTagAlong(profileId)
+        .then(setWaitingManagerApprovalIds)
+        .catch((err) => console.error('[MyClients] pending manager tag-along lookup failed:', err instanceof Error ? err.message : String(err)));
+    }, [profileId])
+  );
 
   const filtered = useMemo(() => {
     const query = search.trim().toLowerCase();
@@ -113,7 +139,7 @@ export default function ClientsScreen() {
         <Text fontSize={26} fontFamily={BIZLINK_FONTS.semibold} color={BIZLINK_COLORS.text}>My Clients</Text>
         <XStack marginLeft="auto" gap="$2" alignItems="center">
           <Pressable
-            onPress={() => router.push('/(tabs)/clients/create')}
+            onPress={() => router.push(routes.createClient())}
             style={{
               flexDirection: 'row',
               alignItems: 'center',
@@ -188,7 +214,13 @@ export default function ClientsScreen() {
           data={filtered}
           keyExtractor={(item) => item.id}
           contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 16, paddingTop: 20 }}
-          renderItem={({ item }) => <ClientRow client={item} meetings={meetings} />}
+          renderItem={({ item }) => (
+            <ClientRow
+              client={item}
+              meetings={meetings}
+              waitingManagerApproval={waitingManagerApprovalIds.has(item.id)}
+            />
+          )}
           refreshControl={<RefreshControl refreshing={loading} onRefresh={refresh} />}
           ListEmptyComponent={
             <YStack alignItems="center" padding="$8" gap="$2.5">
