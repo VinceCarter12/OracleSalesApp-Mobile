@@ -27,8 +27,8 @@ export default function ExecutiveMoreScreen() {
           />
           <BizMoreTile
             icon={<PencilLine size={19} color={BIZLINK_COLORS.text} strokeWidth={1.75} />}
-            title="Approvals Log"
-            subtitle={<Text fontSize={10.5} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted}>Read-only audit, lahat ng managers</Text>}
+            title="Tag-Along Log"
+            subtitle={<Text fontSize={10.5} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted}>Read-only decision history, company-wide</Text>}
             onPress={() => router.push('/(executive)/more/approvals-log')}
           />
           <BizMoreTile
