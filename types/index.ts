@@ -180,7 +180,6 @@ export interface ManagerDashboardSummary {
   teamMeetings: number;
   teamMeetingsSuccessful: number;
   agentCount: number;
-  pendingApprovals: number;
   pendingSyncRecords: number;
   deadlineWarningCount: number;
   pendingTagAlongRequests: number;
@@ -219,6 +218,8 @@ export interface TeamClient {
   checklist: TeamClientChecklist;
   deadline: string;
   deadlineWarn?: boolean;
+  /** B-060 addendum: `clients.created_at`, real-data-only (real read path via `lib/manager-team-service.ts` always sets it; mock fixtures in `lib/manager-data.ts` don't carry a real timestamp so leave it unset there). Used for Reports' timeframe-scoped "new clients acquired" stat. */
+  createdAt?: string;
 }
 
 export interface TeamMeeting {
@@ -244,28 +245,14 @@ export interface TeamMeeting {
   fastPath?: boolean;
   startTime?: string;
   endTime?: string;
-}
-
-export type ApprovalType = 'edit' | 'reassign' | 'tagalong';
-
-export interface TeamApproval {
-  id: string;
-  type: ApprovalType;
-  clientId: string;
-  agentId: string;
-  field?: string;
-  from?: string;
-  to?: string;
-  toAgentId?: string;
-  meetingId?: string;
-  requested: string;
-}
-
-export interface TagAlongRequest {
-  id: string;
-  agentId: string;
-  clientId: string;
-  note: string;
+  // Quality-gate fix (2026-07-22): raw `meetings.meeting_date` ISO string,
+  // real-data-only (real read path via `lib/team-remote-mappers.ts` always
+  // sets it; mock fixtures in `lib/manager-data.ts` don't carry one, same
+  // optional-field tradeoff as `TeamClient.createdAt`). Lets Reports screens
+  // scope "Total meetings"/"Successful"/"Lost opportunities" to the selected
+  // Timeframe chip via `lib/report-timeframe.ts::filterMeetingsByTimeframe()`
+  // — the pre-formatted `date` string above can't be parsed back reliably.
+  meetingDateIso?: string;
 }
 
 // ─── Tag-Along companion selector (ADR-030, F-015) ─────────────────────────────
@@ -278,4 +265,86 @@ export interface TeamRosterEntry {
   teamId: string;
   avatarUrl: string | null;
   syncedAt: string;
+}
+
+// ─── Executive company-wide data (B-054 Phase 2) ───────────────────────────────
+// Originally moved here from `lib/executive-data.ts` (2026-07-21) — these
+// were mock-only shapes; `lib/executive-overview-service.ts` now assembles
+// real instances of them from Supabase. `lib/executive-data.ts` itself was
+// deleted 2026-07-23 (B-060 addendum) once its last three mock consumers
+// (Lost Opportunity, Approvals Log → Tag-Along Log, Maps) were wired to real
+// data — see lib/executive-lost-opportunity-service.ts and
+// lib/executive-tagalong-log-service.ts for the two new read paths.
+
+export interface ExecAvatarStyle {
+  background: string;
+  color: string;
+}
+
+export interface ExecManager {
+  id: string;
+  name: string;
+  initials: string;
+  avatar: ExecAvatarStyle;
+  meetings: number;
+  clients: number;
+  agentCount: number;
+  track: 'sales' | 'rsr';
+}
+
+export interface ExecAgent {
+  id: string;
+  // Null-safe (B-054 Phase 2): a real agent profile's team_id may not match
+  // any manager profile's team_id (e.g. an orphaned/unassigned team) — never
+  // guessed at, unlike the mock data where every agent had a manager.
+  managerId: string | null;
+  name: string;
+  initials: string;
+  avatar: ExecAvatarStyle;
+  meetings: number;
+  clients: number;
+  rate: number;
+}
+
+export interface ExecClientChecklist {
+  name: boolean;
+  contact: boolean;
+  number: boolean;
+  address: boolean;
+  channel: boolean;
+}
+
+export interface ExecClient {
+  id: string;
+  name: string;
+  agentId: string;
+  managerId: string | null;
+  status: ClientStatus;
+  channel: string;
+  checklist: ExecClientChecklist;
+  /** B-060 addendum: `clients.created_at`, real-data-only — see `TeamClient.createdAt` for the same tradeoff note. Used for Executive Reports' timeframe-scoped "new clients acquired" stat. */
+  createdAt?: string;
+}
+
+export interface ExecMeeting {
+  id: string;
+  clientId: string;
+  /** B-060 addendum: company name, looked up against ALL clients (not just active ones — a meeting can belong to a since-lost/deleted client) for the Executive Maps list. */
+  companyName: string;
+  agentId: string;
+  date: string;
+  time: string;
+  location: string;
+  contact: string;
+  position: string;
+  agenda: string[];
+  remarks: string;
+  // ADR-015 existing-client fast-path meetings have no outcome — nullable
+  // since real live-read rows include those, unlike the old mock data.
+  outcome: ManagerOutcome | null;
+  gps: string;
+  synced: boolean;
+  // Quality-gate fix (2026-07-22): see `TeamMeeting.meetingDateIso` for the
+  // same rationale — used by the Executive Reports Timeframe filter.
+  meetingDateIso?: string;
 }

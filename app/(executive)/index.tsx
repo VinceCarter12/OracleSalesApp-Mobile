@@ -2,15 +2,17 @@ import { Pressable, ScrollView } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { Bell, Building2, Map, RefreshCw, Users } from 'lucide-react-native';
-import { Text, XStack, YStack } from 'tamagui';
+import { Spinner, Text, XStack, YStack } from 'tamagui';
 import { BIZLINK_COLORS, BIZLINK_FONTS } from '../../lib/theme';
-import { EXEC_AGENTS, EXEC_MANAGERS } from '../../lib/executive-data';
+import { useExecutiveOverview } from '../../lib/use-executive-overview';
+import { avatarPaletteFor } from '../../lib/avatar-palette';
 import { Avatar } from '../../components/ui/Avatar';
 import { StatusBadge } from '../../components/ui/StatusBadge';
 import { BizStatCard } from '../../components/bizlink/BizStatCard';
 import { BizHeroCard } from '../../components/bizlink/BizHeroCard';
 import { BizSectionHeader } from '../../components/bizlink/BizSectionHeader';
 import { BizQuickAction } from '../../components/bizlink/BizQuickAction';
+import { BizButton } from '../../components/bizlink/BizButton';
 
 /**
  * Wireframe x-home — company-wide metrics across BOTH tracks (Sales + RSR),
@@ -19,13 +21,34 @@ import { BizQuickAction } from '../../components/bizlink/BizQuickAction';
  * outbox-style sync chip has nothing real to report — see wireframe's own
  * code comment on `#x-home`. A passive "Data as of ..." freshness line
  * answers the question that actually applies to a read-only aggregate view.
+ *
+ * B-054 Phase 2 (2026-07-21): real company-wide data via
+ * lib/use-executive-overview.ts, replacing the EXEC_* mock reductions.
  */
 export default function ExecutiveHomeScreen() {
   const insets = useSafeAreaInsets();
-  const totalMeetings = EXEC_MANAGERS.reduce((sum, m) => sum + m.meetings, 0);
-  const totalClients = EXEC_MANAGERS.reduce((sum, m) => sum + m.clients, 0);
-  const totalAgents = EXEC_MANAGERS.reduce((sum, m) => sum + m.agentCount, 0) || EXEC_AGENTS.length;
+  const { overview, loading, error, reload } = useExecutiveOverview();
   const freshnessTime = new Date().toLocaleTimeString('en-PH', { hour: 'numeric', minute: '2-digit' });
+
+  if (loading || !overview) {
+    return (
+      <YStack flex={1} justifyContent="center" alignItems="center" backgroundColor={BIZLINK_COLORS.canvas}>
+        <Spinner size="large" color={BIZLINK_COLORS.brand} />
+      </YStack>
+    );
+  }
+
+  if (error) {
+    return (
+      <YStack flex={1} justifyContent="center" alignItems="center" backgroundColor={BIZLINK_COLORS.canvas} gap="$3" paddingHorizontal="$5">
+        <Text fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} textAlign="center">{error}</Text>
+        <BizButton small label="Ulitin" variant="white" onPress={reload} />
+      </YStack>
+    );
+  }
+
+  const { totals, managers } = overview;
+  const totalMeetings = managers.reduce((sum, m) => sum + m.meetings, 0);
 
   return (
     <YStack flex={1} backgroundColor={BIZLINK_COLORS.canvas} paddingTop={insets.top}>
@@ -56,28 +79,28 @@ export default function ExecutiveHomeScreen() {
           <YStack flex={1}>
             <BizStatCard
               tone="tintA"
-              value={42}
+              value={totals.prospects}
               label="Total Prospects"
-              caption="+7 this week"
+              caption="company-wide"
               onPress={() => router.push('/(executive)/clients')}
             />
           </YStack>
           <YStack flex={1}>
             <BizStatCard
               tone="white"
-              value={totalClients}
+              value={totals.clients}
               label="Total Clients"
-              caption="+14 vs last mo."
+              caption="company-wide"
               onPress={() => router.push('/(executive)/clients')}
             />
           </YStack>
         </XStack>
 
         <BizHeroCard
-          value={totalMeetings}
+          value={totals.meetingsThisMonth}
           unit="meetings"
           label="Company meetings · this month"
-          caption="89 successful"
+          caption={`${totals.successfulThisMonth} successful`}
           onPress={() => router.push('/(executive)/more/reports')}
         />
 
@@ -110,16 +133,16 @@ export default function ExecutiveHomeScreen() {
           <YStack flex={1}>
             <BizStatCard
               tone="white"
-              value={EXEC_MANAGERS.length}
-              label={`Teams / Managers · ${totalAgents} agents total`}
-              caption="↑ 6.1%"
+              value={managers.length}
+              label={`Teams / Managers · ${totals.agents} agents total`}
+              caption="company-wide"
               onPress={() => router.push('/(executive)/teams')}
             />
           </YStack>
           <YStack flex={1}>
             <BizStatCard
               tone="tintB"
-              value={9}
+              value={totals.lostCompanyWide}
               label="Lost Opportunities · Company-wide"
               caption="bantayan"
               onPress={() => router.push('/(executive)/more/lost-opportunity')}
@@ -128,28 +151,31 @@ export default function ExecutiveHomeScreen() {
         </XStack>
 
         <BizSectionHeader title="Teams" actionLabel="Tingnan lahat" onAction={() => router.push('/(executive)/teams')} />
-        {EXEC_MANAGERS.map((manager) => (
-          <XStack
-            key={manager.id}
-            alignItems="center"
-            gap="$3"
-            backgroundColor={BIZLINK_COLORS.card}
-            borderRadius={20}
-            padding={14}
-            marginBottom={10}
-            onPress={() => router.push(`/(executive)/teams/${manager.id}`)}
-            pressStyle={{ opacity: 0.85 }}
-          >
-            <Avatar initials={manager.initials} size="sm" background={manager.avatar.background} color={manager.avatar.color} />
-            <YStack flex={1} gap="$0.5">
-              <Text fontFamily={BIZLINK_FONTS.semibold} fontSize={14} color={BIZLINK_COLORS.text}>{manager.name}</Text>
-              <Text fontSize={11.5} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted}>
-                {manager.agentCount} agents · {manager.clients} clients
-              </Text>
-            </YStack>
-            <Text color={BIZLINK_COLORS.muted} fontSize={16}>›</Text>
-          </XStack>
-        ))}
+        {managers.map((manager) => {
+          const color = avatarPaletteFor(manager.id);
+          return (
+            <XStack
+              key={manager.id}
+              alignItems="center"
+              gap="$3"
+              backgroundColor={BIZLINK_COLORS.card}
+              borderRadius={20}
+              padding={14}
+              marginBottom={10}
+              onPress={() => router.push(`/(executive)/teams/${manager.id}`)}
+              pressStyle={{ opacity: 0.85 }}
+            >
+              <Avatar initials={manager.initials} size="sm" background={color.background} color={color.color} />
+              <YStack flex={1} gap="$0.5">
+                <Text fontFamily={BIZLINK_FONTS.semibold} fontSize={14} color={BIZLINK_COLORS.text}>{manager.name}</Text>
+                <Text fontSize={11.5} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted}>
+                  {manager.agentCount} agents · {manager.clients} clients
+                </Text>
+              </YStack>
+              <Text color={BIZLINK_COLORS.muted} fontSize={16}>›</Text>
+            </XStack>
+          );
+        })}
       </ScrollView>
     </YStack>
   );

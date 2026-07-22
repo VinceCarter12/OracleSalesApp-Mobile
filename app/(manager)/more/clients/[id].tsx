@@ -1,12 +1,12 @@
 import { ScrollView } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router, useLocalSearchParams } from 'expo-router';
-import { Calendar, Clock, Handshake, Repeat, Users as UsersIcon } from 'lucide-react-native';
-import { Text, XStack, YStack } from 'tamagui';
+import { Calendar, Handshake, Repeat, Users as UsersIcon } from 'lucide-react-native';
+import { Spinner, Text, XStack, YStack } from 'tamagui';
 import { BIZLINK_COLORS, BIZLINK_FONTS } from '../../../../lib/theme';
 import { CLIENT_STATUS_BADGES } from '../../../../lib/client-status';
-import { agentById, clientById, getTeamClientProgressBreakdown } from '../../../../lib/manager-data';
-import { useManagerStore } from '../../../../lib/manager-store';
+import { useTeamOverview } from '../../../../lib/use-team-overview';
+import { computeTeamClientProgress } from '../../../../lib/team-remote-mappers';
 import { BizTopBar } from '../../../../components/bizlink/BizTopBar';
 import { BizCard } from '../../../../components/bizlink/BizCard';
 import { BizSectionHeader } from '../../../../components/bizlink/BizSectionHeader';
@@ -24,17 +24,34 @@ const CHECKLIST_LABELS: Record<string, string> = {
 };
 
 /**
- * Wireframe s-detail — progress ring, checklist, pending approval banner,
- * meeting history, reassign. The "Client info protection" passcode gate
- * (ADR-007) is removed for Manager per 2026-07-17 feedback (see ADR-007
- * follow-up note in Decisions.md) — content shows automatically.
+ * Wireframe s-detail — progress ring, checklist, meeting history, reassign.
+ * Real data (B-054 Phase 1). The "Client info protection" passcode gate
+ * (ADR-007) stays removed for Manager per 2026-07-17 feedback. No pending-
+ * approval banner — Approvals is fully retired (F-205), not just unwired.
  */
 export default function ManagerClientDetailScreen() {
   const insets = useSafeAreaInsets();
   const { id } = useLocalSearchParams<{ id: string }>();
-  const { clients, meetings, approvals, decideApproval } = useManagerStore();
+  const { overview, loading, error, reload } = useTeamOverview();
 
-  const client = clients.find((c) => c.id === id) ?? clientById(id);
+  if (loading) {
+    return (
+      <YStack flex={1} justifyContent="center" alignItems="center" backgroundColor={BIZLINK_COLORS.canvas}>
+        <Spinner size="large" color={BIZLINK_COLORS.brand} />
+      </YStack>
+    );
+  }
+
+  if (error) {
+    return (
+      <YStack flex={1} justifyContent="center" alignItems="center" backgroundColor={BIZLINK_COLORS.canvas} gap="$3" paddingHorizontal="$5">
+        <Text fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} textAlign="center">{error}</Text>
+        <BizButton small label="Ulitin" variant="white" onPress={reload} />
+      </YStack>
+    );
+  }
+
+  const client = overview?.clients.find((c) => c.id === id);
   if (!client) {
     return (
       <YStack flex={1} justifyContent="center" alignItems="center" backgroundColor={BIZLINK_COLORS.canvas}>
@@ -43,11 +60,10 @@ export default function ManagerClientDetailScreen() {
     );
   }
 
-  const agent = agentById(client.agentId);
-  const { presented, total } = getTeamClientProgressBreakdown(client, meetings);
-  const progress = total;
-  const clientMeetings = meetings.filter((m) => m.clientId === client.id);
-  const pending = approvals.find((a) => a.clientId === client.id && a.type !== 'tagalong');
+  const agent = overview?.agents.find((a) => a.id === client.agentId);
+  const clientMeetings = overview?.meetings.filter((m) => m.clientId === client.id) ?? [];
+  const presented = clientMeetings.some((m) => m.agenda.includes('Product / company presentation'));
+  const progress = computeTeamClientProgress(client, clientMeetings);
 
   return (
     <YStack flex={1} backgroundColor={BIZLINK_COLORS.canvas} paddingTop={insets.top}>
@@ -74,7 +90,7 @@ export default function ManagerClientDetailScreen() {
               ) : null}
             </XStack>
             <Text fontSize={12.5} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted}>
-              Agent: <Text color={BIZLINK_COLORS.text} fontFamily={BIZLINK_FONTS.semibold}>{agent?.name}</Text>
+              Agent: <Text color={BIZLINK_COLORS.text} fontFamily={BIZLINK_FONTS.semibold}>{agent?.name ?? 'Unassigned'}</Text>
             </Text>
             {/* States plainly that the ring is a Record Meeting -> Agenda
                 outcome, not an info-completion score (B-001, corrected
@@ -111,23 +127,6 @@ export default function ManagerClientDetailScreen() {
             );
           })}
         </BizCard>
-
-        {pending ? (
-          <YStack backgroundColor={BIZLINK_COLORS.amberSoft} borderRadius={20} padding={14} marginTop="$3">
-            <XStack alignItems="center" gap="$2">
-              <Clock size={15} color={BIZLINK_COLORS.orange} strokeWidth={1.75} />
-              <Text fontSize={12} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.orange} flex={1}>
-                {pending.type === 'edit'
-                  ? `May pending edit (${pending.field}: ${pending.from} → ${pending.to}) — hinihintay ang approval mo.`
-                  : `May pending reassignment tungo kay ${agentById(pending.toAgentId!)?.name} — hinihintay ang approval mo.`}
-              </Text>
-            </XStack>
-            <XStack gap="$2.5" marginTop="$2.5">
-              <BizButton label="Reject" variant="white" small onPress={() => decideApproval(pending.id, false)} style={{ flex: 1 }} />
-              <BizButton label="Approve" small onPress={() => decideApproval(pending.id, true)} style={{ flex: 1 }} />
-            </XStack>
-          </YStack>
-        ) : null}
 
         <BizSectionHeader title="Meeting history" />
         {clientMeetings.length === 0 ? (

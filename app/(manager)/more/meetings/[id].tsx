@@ -2,25 +2,42 @@ import { ScrollView } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLocalSearchParams } from 'expo-router';
 import { Camera, Check, MapPin, Tag, User, Users as UsersIcon, Video } from 'lucide-react-native';
-import { Text, XStack, YStack } from 'tamagui';
+import { Spinner, Text, XStack, YStack } from 'tamagui';
 import { BIZLINK_COLORS, BIZLINK_FONTS, OUTCOME_BADGE_STYLES } from '../../../../lib/theme';
-import { agentById, clientById } from '../../../../lib/manager-data';
-import { useManagerStore } from '../../../../lib/manager-store';
+import { useTeamOverview } from '../../../../lib/use-team-overview';
 import { BizTopBar } from '../../../../components/bizlink/BizTopBar';
 import { BizCard } from '../../../../components/bizlink/BizCard';
 import { BizSectionHeader } from '../../../../components/bizlink/BizSectionHeader';
 import { BizChip } from '../../../../components/bizlink/BizChip';
+import { BizButton } from '../../../../components/bizlink/BizButton';
 import { StatusBadge } from '../../../../components/ui/StatusBadge';
 import { meetingBadge } from '../../../../lib/meeting-badge';
 import { MANAGER_OUTCOME_LABELS } from '../../../../types';
 
-/** Wireframe s-meetingdetail. Branches on fastPath (ADR-015) and meetingMode (ADR-012). */
+/** Wireframe s-meetingdetail. Branches on fastPath (ADR-015) and meetingMode (ADR-012). Real data (B-054 Phase 1). */
 export default function ManagerMeetingDetailScreen() {
   const insets = useSafeAreaInsets();
   const { id } = useLocalSearchParams<{ id: string }>();
-  const { meetings } = useManagerStore();
+  const { overview, loading, error, reload } = useTeamOverview();
 
-  const meeting = meetings.find((m) => m.id === id);
+  if (loading) {
+    return (
+      <YStack flex={1} justifyContent="center" alignItems="center" backgroundColor={BIZLINK_COLORS.canvas}>
+        <Spinner size="large" color={BIZLINK_COLORS.brand} />
+      </YStack>
+    );
+  }
+
+  if (error) {
+    return (
+      <YStack flex={1} justifyContent="center" alignItems="center" backgroundColor={BIZLINK_COLORS.canvas} gap="$3" paddingHorizontal="$5">
+        <Text fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} textAlign="center">{error}</Text>
+        <BizButton small label="Ulitin" variant="white" onPress={reload} />
+      </YStack>
+    );
+  }
+
+  const meeting = overview?.meetings.find((m) => m.id === id);
   if (!meeting) {
     return (
       <YStack flex={1} justifyContent="center" alignItems="center" backgroundColor={BIZLINK_COLORS.canvas}>
@@ -29,8 +46,8 @@ export default function ManagerMeetingDetailScreen() {
     );
   }
 
-  const client = clientById(meeting.clientId);
-  const agent = agentById(meeting.agentId);
+  const client = overview?.clients.find((c) => c.id === meeting.clientId);
+  const agent = overview?.agents.find((a) => a.id === meeting.agentId);
   const isOnline = meeting.meetingMode === 'online';
 
   const ModeBadge = isOnline ? (

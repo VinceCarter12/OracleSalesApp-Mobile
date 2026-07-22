@@ -2,22 +2,50 @@ import { ScrollView } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLocalSearchParams } from 'expo-router';
 import { Camera } from 'lucide-react-native';
-import { Text, View, XStack, YStack } from 'tamagui';
+import { Spinner, Text, View, XStack, YStack } from 'tamagui';
 import { BIZLINK_COLORS, BIZLINK_FONTS } from '../../../../lib/theme';
-import { execAgentById, execClientById, execMeetingById } from '../../../../lib/executive-data';
+import { useExecutiveOverview } from '../../../../lib/use-executive-overview';
+import { avatarPaletteFor } from '../../../../lib/avatar-palette';
 import { BizTopBar } from '../../../../components/bizlink/BizTopBar';
 import { BizCard } from '../../../../components/bizlink/BizCard';
 import { BizSectionHeader } from '../../../../components/bizlink/BizSectionHeader';
+import { BizButton } from '../../../../components/bizlink/BizButton';
 import { StatusBadge } from '../../../../components/ui/StatusBadge';
 import { Avatar } from '../../../../components/ui/Avatar';
 import { execOutcomeBadge } from '../../../../components/executive/exec-badges';
 
-/** Wireframe x-meetingdetail — view-only: outcome, auto-captured proof, agenda, remarks. Never gated (matches the wireframe, which has no lockbtn here). */
+/**
+ * Wireframe x-meetingdetail — view-only: outcome, auto-captured proof,
+ * agenda, remarks. Never gated (matches the wireframe, which has no lockbtn
+ * here). B-054 Phase 2: real data — a live-read row is synced by definition
+ * (see lib/team-remote-mappers.ts::mapMeetingRowToTeamMeeting()'s own note),
+ * so the "Pending sync" branch never renders here, same as Manager's
+ * equivalent meeting-detail screen. Photo images stay out of scope — the
+ * mock UI never rendered them either.
+ */
 export default function ExecutiveMeetingDetailScreen() {
   const insets = useSafeAreaInsets();
   const { id } = useLocalSearchParams<{ id: string }>();
+  const { overview, loading, error, reload } = useExecutiveOverview();
 
-  const meeting = execMeetingById(id);
+  if (loading) {
+    return (
+      <YStack flex={1} justifyContent="center" alignItems="center" backgroundColor={BIZLINK_COLORS.canvas}>
+        <Spinner size="large" color={BIZLINK_COLORS.brand} />
+      </YStack>
+    );
+  }
+
+  if (error) {
+    return (
+      <YStack flex={1} justifyContent="center" alignItems="center" backgroundColor={BIZLINK_COLORS.canvas} gap="$3" paddingHorizontal="$5">
+        <Text fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} textAlign="center">{error}</Text>
+        <BizButton small label="Ulitin" variant="white" onPress={reload} />
+      </YStack>
+    );
+  }
+
+  const meeting = overview?.meetings.find((m) => m.id === id);
   if (!meeting) {
     return (
       <YStack flex={1} justifyContent="center" alignItems="center" backgroundColor={BIZLINK_COLORS.canvas}>
@@ -26,15 +54,16 @@ export default function ExecutiveMeetingDetailScreen() {
     );
   }
 
-  const client = execClientById(meeting.clientId);
-  const agent = execAgentById(meeting.agentId);
+  const client = overview?.clients.find((c) => c.id === meeting.clientId);
+  const agent = overview?.agents.find((a) => a.id === meeting.agentId);
+  const agentColor = agent ? avatarPaletteFor(agent.id) : null;
 
   return (
     <YStack flex={1} backgroundColor={BIZLINK_COLORS.canvas} paddingTop={insets.top}>
       <BizTopBar title="Meeting Detail" />
       <ScrollView contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 24 }}>
         <BizCard flexDirection="row" alignItems="center" gap="$3">
-          <Avatar initials={agent?.initials ?? '—'} background={agent?.avatar.background ?? BIZLINK_COLORS.soft} color={agent?.avatar.color ?? BIZLINK_COLORS.muted} />
+          <Avatar initials={agent?.initials ?? '—'} background={agentColor?.background ?? BIZLINK_COLORS.soft} color={agentColor?.color ?? BIZLINK_COLORS.muted} />
           <YStack>
             <Text fontFamily={BIZLINK_FONTS.semibold} fontSize={16} color={BIZLINK_COLORS.text}>{client?.name ?? '—'}</Text>
             <Text fontSize={12.5} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted}>Agent: {agent?.name ?? '—'}</Text>
@@ -44,11 +73,7 @@ export default function ExecutiveMeetingDetailScreen() {
         <BizSectionHeader title="Outcome" />
         <XStack gap="$1.5" flexWrap="wrap">
           {execOutcomeBadge(meeting.outcome)}
-          {meeting.synced ? (
-            <StatusBadge label="Synced" background={BIZLINK_COLORS.tintA} color={BIZLINK_COLORS.brand} />
-          ) : (
-            <StatusBadge label="Pending sync" background={BIZLINK_COLORS.soft} color={BIZLINK_COLORS.navy} />
-          )}
+          <StatusBadge label="Synced" background={BIZLINK_COLORS.tintA} color={BIZLINK_COLORS.brand} />
         </XStack>
 
         <BizSectionHeader title="Auto-captured" />
@@ -80,7 +105,7 @@ export default function ExecutiveMeetingDetailScreen() {
 
         <BizSectionHeader title="Remarks" />
         <BizCard flat>
-          <Text fontSize={13.5} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.text} lineHeight={20}>{meeting.remarks}</Text>
+          <Text fontSize={13.5} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.text} lineHeight={20}>{meeting.remarks || '—'}</Text>
         </BizCard>
       </ScrollView>
     </YStack>

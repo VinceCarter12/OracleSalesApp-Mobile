@@ -49,6 +49,14 @@ export type Database = {
           status: RemoteClientStatus;
           lost_at: string | null;
           reassignable_at: string | null;
+          // Confirmed present on the live schema (Database.md's 2026-07-14
+          // `information_schema.columns` verification) — populated by the
+          // manual Inactive→Lost-Opportunity flow (web-side today; no
+          // mobile write path sets this yet, mirrors local schema's
+          // `clients.inactive_reason TEXT`, lib/db.ts). Previously missing
+          // from this stub even though `lib/sync/entity-appliers.ts` already
+          // reads it off a loosely-typed remote row during sync-down.
+          inactive_reason: string | null;
           // Real column name, confirmed via PostgREST introspection
           // (2026-07-15) — NOT `agent_id`, unlike `meetings`.
           assigned_agent_id: string;
@@ -57,12 +65,20 @@ export type Database = {
           // (column doesn't exist) until Vince applies the migration; T-005's
           // duplicate check catches that and falls back to local-only checks.
           normalized_company_name: string | null;
+          // Live since Migration 013 (2026-07-14)/021 (2026-07-21, B-052) —
+          // confirmed present via `information_schema.columns`
+          // (Database.md's migration table). Previously missing from this
+          // stub even though `lib/client-service.ts::createClient()` already
+          // writes it (that path goes through JSON.stringify + a same-`any`
+          // cast at push time, so the gap never surfaced there); a direct
+          // typed `.select()`/`.update()` call needs it declared here.
+          details_deadline_at: string | null;
           created_at: string;
           updated_at: string;
         };
         Insert: Omit<
           Database['public']['Tables']['clients']['Row'],
-          'id' | 'created_at' | 'updated_at' | 'normalized_company_name' | 'lost_at' | 'reassignable_at'
+          'id' | 'created_at' | 'updated_at' | 'normalized_company_name' | 'lost_at' | 'reassignable_at' | 'inactive_reason'
         >;
         Update: Partial<Database['public']['Tables']['clients']['Insert']>;
         Relationships: [];

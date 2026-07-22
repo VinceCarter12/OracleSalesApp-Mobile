@@ -2,22 +2,42 @@ import { ScrollView } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router, useLocalSearchParams } from 'expo-router';
 import { Handshake, Inbox } from 'lucide-react-native';
-import { Text, XStack, YStack } from 'tamagui';
+import { Spinner, Text, XStack, YStack } from 'tamagui';
 import { BIZLINK_COLORS, BIZLINK_FONTS } from '../../../lib/theme';
 import { CLIENT_STATUS_BADGES } from '../../../lib/client-status';
-import { agentById, clientsForAgent, meetingsForAgent } from '../../../lib/manager-data';
+import { useTeamOverview } from '../../../lib/use-team-overview';
+import { avatarPaletteFor } from '../../../lib/avatar-palette';
 import { BizTopBar } from '../../../components/bizlink/BizTopBar';
 import { BizSectionHeader } from '../../../components/bizlink/BizSectionHeader';
+import { BizButton } from '../../../components/bizlink/BizButton';
 import { Avatar } from '../../../components/ui/Avatar';
 import { StatusBadge } from '../../../components/ui/StatusBadge';
 import { meetingBadge } from '../../../lib/meeting-badge';
 
-/** Wireframe s-agent — shows the agent's client list. */
+/** Wireframe s-agent — shows the agent's client list. Real data (B-054 Phase 1). */
 export default function AgentDetailScreen() {
   const insets = useSafeAreaInsets();
   const { agentId } = useLocalSearchParams<{ agentId: string }>();
-  const agent = agentById(agentId);
+  const { overview, loading, error, reload } = useTeamOverview();
 
+  if (loading) {
+    return (
+      <YStack flex={1} justifyContent="center" alignItems="center" backgroundColor={BIZLINK_COLORS.canvas}>
+        <Spinner size="large" color={BIZLINK_COLORS.brand} />
+      </YStack>
+    );
+  }
+
+  if (error) {
+    return (
+      <YStack flex={1} justifyContent="center" alignItems="center" backgroundColor={BIZLINK_COLORS.canvas} gap="$3" paddingHorizontal="$5">
+        <Text fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} textAlign="center">{error}</Text>
+        <BizButton small label="Ulitin" variant="white" onPress={reload} />
+      </YStack>
+    );
+  }
+
+  const agent = overview?.agents.find((a) => a.id === agentId);
   if (!agent) {
     return (
       <YStack flex={1} justifyContent="center" alignItems="center" backgroundColor={BIZLINK_COLORS.canvas}>
@@ -26,15 +46,15 @@ export default function AgentDetailScreen() {
     );
   }
 
-  const clients = clientsForAgent(agent.id);
-  const meetings = meetingsForAgent(agent.id);
+  const clients = overview?.clients.filter((c) => c.agentId === agent.id) ?? [];
+  const meetings = overview?.meetings.filter((m) => m.agentId === agent.id) ?? [];
 
   return (
     <YStack flex={1} backgroundColor={BIZLINK_COLORS.canvas} paddingTop={insets.top}>
       <BizTopBar title={agent.name.split(' ')[0]} />
       <ScrollView contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 24 }}>
         <XStack alignItems="center" gap="$3.5" backgroundColor={BIZLINK_COLORS.card} borderRadius={24} padding={18}>
-          <Avatar initials={agent.initials} size="lg" background={BIZLINK_COLORS.tintA} color={BIZLINK_COLORS.ink} />
+          <Avatar initials={agent.initials} size="lg" background={avatarPaletteFor(agent.id).background} color={avatarPaletteFor(agent.id).color} />
           <YStack>
             <Text fontFamily={BIZLINK_FONTS.semibold} fontSize={17} color={BIZLINK_COLORS.text}>{agent.name}</Text>
             <Text fontSize={13} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted}>Sales Specialist · under your team</Text>

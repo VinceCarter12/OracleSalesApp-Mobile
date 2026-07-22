@@ -2,25 +2,21 @@ import { ScrollView } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router, useLocalSearchParams } from 'expo-router';
 import { Calendar, Eye } from 'lucide-react-native';
-import { Text, View, XStack, YStack } from 'tamagui';
+import { Spinner, Text, View, XStack, YStack } from 'tamagui';
 import { BIZLINK_COLORS, BIZLINK_FONTS } from '../../../lib/theme';
 import { CLIENT_STATUS_BADGES } from '../../../lib/client-status';
-import {
-  computeExecClientProgress,
-  execAgentById,
-  execClientById,
-  execManagerById,
-  execMeetingsForClient,
-  type ExecClientChecklist,
-} from '../../../lib/executive-data';
+import { useExecutiveOverview } from '../../../lib/use-executive-overview';
+import { computeExecClientProgress } from '../../../lib/executive-overview-service';
 import { useGate } from '../../../lib/gate-context';
 import { SecurityGate } from '../../../components/security/SecurityGate';
 import { BizTopBar } from '../../../components/bizlink/BizTopBar';
 import { BizLockButton } from '../../../components/bizlink/BizLockButton';
 import { BizCard } from '../../../components/bizlink/BizCard';
 import { BizSectionHeader } from '../../../components/bizlink/BizSectionHeader';
+import { BizButton } from '../../../components/bizlink/BizButton';
 import { StatusBadge } from '../../../components/ui/StatusBadge';
 import { execOutcomeBadge } from '../../../components/executive/exec-badges';
+import type { ExecClientChecklist } from '../../../types';
 
 const CHECKLIST_ITEMS: Array<[keyof ExecClientChecklist, string]> = [
   ['name', 'Company name'],
@@ -30,15 +26,33 @@ const CHECKLIST_ITEMS: Array<[keyof ExecClientChecklist, string]> = [
   ['channel', 'Sales channel'],
 ];
 
-/** Wireframe x-detail — gated (ADR-007), view-only client detail: progress % (B-001), checklist, meeting history. */
+/** Wireframe x-detail — gated (ADR-007), view-only client detail: progress % (B-001), checklist, meeting history. B-054 Phase 2: real data. */
 export default function ExecutiveClientDetailScreen() {
   const insets = useSafeAreaInsets();
   const { unlocked } = useGate();
   const { id } = useLocalSearchParams<{ id: string }>();
+  const { overview, loading, error, reload } = useExecutiveOverview();
 
   if (!unlocked) return <SecurityGate />;
 
-  const client = execClientById(id);
+  if (loading) {
+    return (
+      <YStack flex={1} justifyContent="center" alignItems="center" backgroundColor={BIZLINK_COLORS.canvas}>
+        <Spinner size="large" color={BIZLINK_COLORS.brand} />
+      </YStack>
+    );
+  }
+
+  if (error) {
+    return (
+      <YStack flex={1} justifyContent="center" alignItems="center" backgroundColor={BIZLINK_COLORS.canvas} gap="$3" paddingHorizontal="$5">
+        <Text fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} textAlign="center">{error}</Text>
+        <BizButton small label="Ulitin" variant="white" onPress={reload} />
+      </YStack>
+    );
+  }
+
+  const client = overview?.clients.find((c) => c.id === id);
   if (!client) {
     return (
       <YStack flex={1} justifyContent="center" alignItems="center" backgroundColor={BIZLINK_COLORS.canvas}>
@@ -47,10 +61,10 @@ export default function ExecutiveClientDetailScreen() {
     );
   }
 
-  const agent = execAgentById(client.agentId);
-  const manager = execManagerById(client.managerId);
-  const progress = computeExecClientProgress(client);
-  const meetings = execMeetingsForClient(client.id);
+  const agent = overview?.agents.find((a) => a.id === client.agentId);
+  const manager = client.managerId ? overview?.managers.find((m) => m.id === client.managerId) : undefined;
+  const meetings = overview?.meetings.filter((m) => m.clientId === client.id) ?? [];
+  const progress = computeExecClientProgress(client, meetings);
   const badge = CLIENT_STATUS_BADGES[client.status];
 
   return (

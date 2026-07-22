@@ -1,14 +1,16 @@
+import { useCallback, useEffect, useState } from 'react';
 import { Image, ScrollView } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { router } from 'expo-router';
+import { router, useFocusEffect } from 'expo-router';
 import { ImagePlus, Key, Lock } from 'lucide-react-native';
 import { Text, View, XStack, YStack } from 'tamagui';
 import { BIZLINK_COLORS, BIZLINK_FONTS } from '../../../lib/theme';
-import { managerProfile } from '../../../lib/manager-data';
 import { useManagerDashboard } from '../../../lib/useManagerDashboard';
 import { useSession } from '../../../lib/session-store';
 import { useAuth } from '../../../lib/useAuth';
 import { useProfileAvatar } from '../../../lib/use-profile-avatar';
+import { getManagerOwnNewClientsCount } from '../../../lib/manager-team-service';
+import { initialsFromName } from '../../../lib/display-name';
 import { showToast } from '../../../lib/toast';
 import { Avatar } from '../../../components/ui/Avatar';
 import { BizTopBar } from '../../../components/bizlink/BizTopBar';
@@ -47,10 +49,25 @@ const SECURITY_ITEMS: SecurityItem[] = [
 export default function ManagerAccountScreen() {
   const insets = useSafeAreaInsets();
   const { summary } = useManagerDashboard();
-  const { signOut } = useSession();
+  const { signOut, fullName, teamId, profileId } = useSession();
   const { session, signOut: signOutSupabase } = useAuth();
-  const profile = managerProfile();
   const { avatarUri, pickingAvatar, handlePickAvatar } = useProfileAvatar(session?.user.id);
+  const [newClientsCount, setNewClientsCount] = useState<number | null>(null);
+
+  const loadNewClientsCount = useCallback(async () => {
+    if (!profileId) return;
+    try {
+      setNewClientsCount(await getManagerOwnNewClientsCount(profileId));
+    } catch (err) {
+      console.error('[manager-account] new-clients count failed:', err instanceof Error ? err.message : String(err));
+    }
+  }, [profileId]);
+
+  useEffect(() => {
+    loadNewClientsCount();
+  }, [loadNewClientsCount]);
+
+  useFocusEffect(useCallback(() => { loadNewClientsCount(); }, [loadNewClientsCount]));
 
   async function handleSignOut(): Promise<void> {
     await signOutSupabase();
@@ -69,7 +86,7 @@ export default function ManagerAccountScreen() {
                 <Image source={{ uri: avatarUri }} style={{ width: 60, height: 60 }} resizeMode="cover" />
               </View>
             ) : (
-              <Avatar initials={profile.fullName.split(' ').map((part) => part[0]).join('')} size="lg" background={BIZLINK_COLORS.tintA} color={BIZLINK_COLORS.ink} />
+              <Avatar initials={initialsFromName(fullName)} size="lg" background={BIZLINK_COLORS.tintA} color={BIZLINK_COLORS.ink} />
             )}
             <View
               position="absolute"
@@ -89,8 +106,9 @@ export default function ManagerAccountScreen() {
             </View>
           </View>
           <YStack>
-            <Text fontFamily={BIZLINK_FONTS.semibold} fontSize={17} color={BIZLINK_COLORS.text}>{profile.fullName}</Text>
-            <Text fontSize={13} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted}>{profile.title} · {profile.team}</Text>
+            <Text fontFamily={BIZLINK_FONTS.semibold} fontSize={17} color={BIZLINK_COLORS.text}>{fullName ?? '—'}</Text>
+            {/* ADR-017: a single `sales_manager` role — track shown by team_id, not a separate title. */}
+            <Text fontSize={13} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted}>Sales Manager · {teamId ?? '—'}</Text>
           </YStack>
         </BizCard>
 
@@ -98,7 +116,7 @@ export default function ManagerAccountScreen() {
         <XStack gap={10}>
           <StatBox value={summary?.teamMeetings ?? 0} label="Team meetings" />
           <StatBox value={summary?.teamProspects ?? 0} label="Prospects" />
-          <StatBox value={7} label="New clients" />
+          <StatBox value={newClientsCount ?? 0} label="New clients" />
         </XStack>
 
         <BizSectionHeader title="Security" />
