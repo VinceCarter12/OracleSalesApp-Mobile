@@ -7,16 +7,17 @@ import { useExecutiveOverview } from '../../../lib/use-executive-overview';
 import { avatarPaletteFor } from '../../../lib/avatar-palette';
 import { useGate } from '../../../lib/gate-context';
 import { SecurityGate } from '../../../components/security/SecurityGate';
-import { BizLockButton } from '../../../components/bizlink/BizLockButton';
 import { BizButton } from '../../../components/bizlink/BizButton';
 import { Avatar } from '../../../components/ui/Avatar';
 import { StatusBadge } from '../../../components/ui/StatusBadge';
 
 /**
- * Wireframe x-teams — ALL managers company-wide, Sales + RSR tracks
- * together (ADR-014). Gated (ADR-007) — the Manager-only 2026-07-17
- * amendment does NOT extend to Executive; Executive keeps the passcode gate.
- * B-054 Phase 2: real data via lib/use-executive-overview.ts.
+ * Wireframe x-teams — ALL managers company-wide (ADR-014). Gated (ADR-007) —
+ * the Manager-only 2026-07-17 amendment does NOT extend to Executive;
+ * Executive keeps the passcode gate. B-054 Phase 2: real data via
+ * lib/use-executive-overview.ts. 2026-07-23: the Sales-vs-RSR team-level
+ * "track" concept (ADR-017) is retired — teams are mixed, no longer shown
+ * as separate tracks.
  */
 export default function ExecutiveTeamsScreen() {
   const insets = useSafeAreaInsets();
@@ -29,12 +30,10 @@ export default function ExecutiveTeamsScreen() {
     <YStack flex={1} backgroundColor={BIZLINK_COLORS.canvas} paddingTop={insets.top}>
       <XStack alignItems="center" paddingHorizontal="$4" paddingTop="$2.5" paddingBottom="$1.5">
         <Text fontFamily={BIZLINK_FONTS.semibold} fontSize={21} color={BIZLINK_COLORS.text}>Teams</Text>
-        <XStack marginLeft="auto"><BizLockButton /></XStack>
       </XStack>
       <ScrollView contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 24 }}>
         <Text fontSize={13} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} marginBottom="$3" lineHeight={19}>
-          Lahat ng managers sa buong kumpanya — Sales at RSR (ADR-014) — kasama ang laki ng kanya-kanyang team.
-          Executive lang ang nakakakita ng dalawang tracks nang magkasama.
+          Lahat ng managers sa buong kumpanya (ADR-014) — kasama ang laki ng kanya-kanyang team.
         </Text>
 
         {loading ? (
@@ -71,11 +70,7 @@ export default function ExecutiveTeamsScreen() {
                 <YStack flex={1} gap="$1">
                   <XStack alignItems="center" gap="$1.5" flexWrap="wrap">
                     <Text fontFamily={BIZLINK_FONTS.semibold} fontSize={14} color={BIZLINK_COLORS.text}>{manager.name}</Text>
-                    {manager.track === 'rsr' ? (
-                      <StatusBadge label="RSR Manager" background={BIZLINK_COLORS.tintA} color={BIZLINK_COLORS.ink} />
-                    ) : (
-                      <StatusBadge label="Sales Manager" background={BIZLINK_COLORS.soft} color={BIZLINK_COLORS.navy} />
-                    )}
+                    <StatusBadge label="Manager" background={BIZLINK_COLORS.soft} color={BIZLINK_COLORS.navy} />
                   </XStack>
                   <XStack gap="$2.5">
                     <Text fontSize={10.5} fontFamily={BIZLINK_FONTS.semibold} color={BIZLINK_COLORS.muted}>
@@ -84,11 +79,9 @@ export default function ExecutiveTeamsScreen() {
                     <Text fontSize={10.5} fontFamily={BIZLINK_FONTS.semibold} color={BIZLINK_COLORS.muted}>
                       <Text color={BIZLINK_COLORS.brand}>{manager.meetings}</Text> meetings
                     </Text>
-                    {manager.track === 'rsr' ? null : (
-                      <Text fontSize={10.5} fontFamily={BIZLINK_FONTS.semibold} color={BIZLINK_COLORS.muted}>
-                        <Text color={BIZLINK_COLORS.brand}>{manager.clients}</Text> clients
-                      </Text>
-                    )}
+                    <Text fontSize={10.5} fontFamily={BIZLINK_FONTS.semibold} color={BIZLINK_COLORS.muted}>
+                      <Text color={BIZLINK_COLORS.brand}>{manager.clients}</Text> clients
+                    </Text>
                   </XStack>
                 </YStack>
                 <Text color={BIZLINK_COLORS.muted} fontSize={16}>›</Text>

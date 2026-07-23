@@ -15,8 +15,8 @@ import { BizQuickAction } from '../../components/bizlink/BizQuickAction';
 import { BizButton } from '../../components/bizlink/BizButton';
 
 /**
- * Wireframe x-home — company-wide metrics across BOTH tracks (Sales + RSR),
- * view-only. No SyncStatusChip/sheet here — Executive is read-only across
+ * Wireframe x-home — company-wide metrics across all teams (no Sales/RSR
+ * team-level segregation as of 2026-07-23), view-only. No SyncStatusChip/sheet here — Executive is read-only across
  * every screen (no create/edit/approve action, no local outbox), so an
  * outbox-style sync chip has nothing real to report — see wireframe's own
  * code comment on `#x-home`. A passive "Data as of ..." freshness line

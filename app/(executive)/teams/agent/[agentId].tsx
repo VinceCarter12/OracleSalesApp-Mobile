@@ -10,7 +10,6 @@ import { avatarPaletteFor } from '../../../../lib/avatar-palette';
 import { useGate } from '../../../../lib/gate-context';
 import { SecurityGate } from '../../../../components/security/SecurityGate';
 import { BizTopBar } from '../../../../components/bizlink/BizTopBar';
-import { BizLockButton } from '../../../../components/bizlink/BizLockButton';
 import { BizSectionHeader } from '../../../../components/bizlink/BizSectionHeader';
 import { BizButton } from '../../../../components/bizlink/BizButton';
 import { Avatar } from '../../../../components/ui/Avatar';
@@ -56,13 +55,15 @@ export default function ExecutiveAgentDetailScreen() {
   const clients = overview?.clients.filter((c) => c.agentId === agent.id) ?? [];
   const meetings = overview?.meetings.filter((m) => m.agentId === agent.id) ?? [];
   const agentColor = avatarPaletteFor(agent.id);
-  // Real role, never hardcoded — RSR agents surface under an RSR-track
-  // manager (ADR-017), same track derivation as Manager's screens.
-  const roleLabel = manager?.track === 'rsr' ? 'RSR' : 'Sales Specialist';
+  // 2026-07-23: derived from the agent's OWN `role`, never the manager's
+  // team — the team-level Sales-vs-RSR "track" (ADR-017) is retired, and
+  // deriving an agent's role from its manager was always slightly wrong
+  // (now definitely wrong since teams mix roles).
+  const roleLabel = agent.role === 'rsr' ? 'RSR' : 'Sales Specialist';
 
   return (
     <YStack flex={1} backgroundColor={BIZLINK_COLORS.canvas} paddingTop={insets.top}>
-      <BizTopBar title={agent.name.split(' ')[0]} right={<BizLockButton />} />
+      <BizTopBar title={agent.name.split(' ')[0]} />
       <ScrollView contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 24 }}>
         <XStack alignItems="center" gap="$3.5" backgroundColor={BIZLINK_COLORS.card} borderRadius={24} padding={18}>
           <Avatar initials={agent.initials} size="lg" background={agentColor.background} color={agentColor.color} />

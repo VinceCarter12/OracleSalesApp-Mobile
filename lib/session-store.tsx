@@ -1,11 +1,10 @@
 import { createContext, useContext, useMemo, useState, type ReactNode } from 'react';
-import { setManagerTrack } from './manager-data';
 import type { UserRole } from '../types';
 
 type SessionStore = {
   isSignedIn: boolean;
   role: UserRole | null;
-  /** The signed-in user's `profiles.team_id` — needed by the Manager dashboard to query real team-wide data (2026-07-16). Previously discarded after `setManagerTrack()`. */
+  /** The signed-in user's `profiles.team_id` — needed by the Manager dashboard to query real team-wide data (2026-07-16). No longer feeds a team-level "track" (retired 2026-07-23, ADR-017 addendum). */
   teamId: string | null;
   /**
    * The signed-in user's `profiles.id` — NOT the same value as
@@ -47,10 +46,6 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       profileId,
       fullName,
       signIn: (nextRole: UserRole, nextTeamId: string | null, nextProfileId: string, nextFullName: string | null) => {
-        // Select the manager mock dataset before any (manager) screen mounts —
-        // track is keyed off team_id, not role (ADR-017; there is only one
-        // sales_manager role, no separate rsr_manager).
-        setManagerTrack(nextTeamId);
         setRole(nextRole);
         setTeamId(nextTeamId);
         setProfileId(nextProfileId);
