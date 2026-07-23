@@ -1,5 +1,4 @@
 import { COLORS } from './theme';
-import { isRsrTeam } from '../types';
 import type { TeamAgent, TeamClient, TeamMeeting } from '../types';
 
 /**
@@ -11,24 +10,13 @@ import type { TeamAgent, TeamClient, TeamMeeting } from '../types';
  * exists, and tag-along accept/decline now reads real data
  * (`lib/tag-along-invitee-service.ts`, B-053).
  *
- * Track-aware (ADR-017, 2026-07-14): there is one `sales_manager` role, not a
- * separate `rsr_manager` — which track a manager sees is determined by their
- * `team_id` (RSR_TEAM_IDS), not by role. The active track is set once at
- * sign-in via setManagerTrack(); all getters below read the matching
- * dataset, so screens never branch on role or team_id themselves.
+ * 2026-07-23: the team-level Sales-vs-RSR "track" concept (ADR-017,
+ * 2026-07-14) is retired — teams are no longer segregated; every team now
+ * mixes a manager + sales_specialist + rsr agent together. This file is down
+ * to a single generic mock dataset (formerly the "sales" track's), kept only
+ * until real manager aggregate/team tables exist. RSR remains a real,
+ * distinct *agent* role (ADR-013) — unaffected by this retirement.
  */
-
-export type ManagerTrack = 'sales' | 'rsr';
-
-let activeTrack: ManagerTrack = 'sales';
-
-export function setManagerTrack(teamId: string | null): void {
-  activeTrack = isRsrTeam(teamId) ? 'rsr' : 'sales';
-}
-
-export function getManagerTrack(): ManagerTrack {
-  return activeTrack;
-}
 
 export interface ManagerProfile {
   id: string;
@@ -38,13 +26,16 @@ export interface ManagerProfile {
   team: string;
 }
 
-const MANAGER_PROFILES: Record<ManagerTrack, ManagerProfile> = {
-  sales: { id: 'mgr-sales', firstName: 'Erika', fullName: 'Erika Bautista', title: 'Sales Manager', team: 'North Luzon Team' },
-  rsr: { id: 'mgr-rsr', firstName: 'Rommel', fullName: 'Rommel Aquino', title: 'RSR Manager', team: 'RSR Team' },
+const MANAGER_PROFILE: ManagerProfile = {
+  id: 'mgr-1',
+  firstName: 'Erika',
+  fullName: 'Erika Bautista',
+  title: 'Manager',
+  team: 'North Luzon Team',
 };
 
 export function managerProfile(): ManagerProfile {
-  return MANAGER_PROFILES[activeTrack];
+  return MANAGER_PROFILE;
 }
 
 export const AGENT_COLORS: Record<string, { background: string; color: string }> = {
@@ -52,13 +43,7 @@ export const AGENT_COLORS: Record<string, { background: string; color: string }>
   a2: { background: COLORS.blueSoft, color: COLORS.blue },
   a3: { background: COLORS.amberSoft, color: COLORS.orange },
   a4: { background: COLORS.purpleSoft, color: COLORS.purple },
-  r1: { background: COLORS.greenTint, color: COLORS.ledgeGreen },
-  r2: { background: COLORS.blueSoft, color: COLORS.blue },
-  r3: { background: COLORS.amberSoft, color: COLORS.orange },
-  r4: { background: COLORS.purpleSoft, color: COLORS.purple },
-  r5: { background: COLORS.greenTint, color: COLORS.ledgeGreen },
-  'mgr-sales': { background: COLORS.purpleSoft, color: COLORS.purple },
-  'mgr-rsr': { background: COLORS.purpleSoft, color: COLORS.purple },
+  'mgr-1': { background: COLORS.purpleSoft, color: COLORS.purple },
 };
 
 const SALES_AGENTS: TeamAgent[] = [
@@ -163,113 +148,14 @@ const SALES_MEETINGS: TeamMeeting[] = [
   },
 ];
 
-// ─── RSR track dataset (ADR-013/ADR-017) ───────────────────────────────────────
-// Same shapes, dealer/motorshop-flavored: RSR agents are field-based and carry
-// the 12-visits/day quota (F-012) — reflected in denser meeting volume.
-
-const RSR_AGENTS: TeamAgent[] = [
-  { id: 'r1', name: 'Dario Mendoza', initials: 'DM', meetingsThisMonth: 46, activeClients: 31, successRate: 68 },
-  { id: 'r2', name: 'Liza Navarro', initials: 'LN', meetingsThisMonth: 52, activeClients: 35, successRate: 77 },
-  { id: 'r3', name: 'Cesar Ilagan', initials: 'CI', meetingsThisMonth: 38, activeClients: 27, successRate: 61 },
-  { id: 'r4', name: 'Bong Torres', initials: 'BT', meetingsThisMonth: 44, activeClients: 30, successRate: 70 },
-  { id: 'r5', name: 'Nina Salazar', initials: 'NS', meetingsThisMonth: 49, activeClients: 33, successRate: 74 },
-];
-
-const RSR_CLIENTS: TeamClient[] = [
-  {
-    id: 'rc1', name: 'RPM Motorshop', agentId: 'r1', status: 'prospect', channel: 'Dealer',
-    checklist: { name: true, contact: true, number: true, address: false, channel: false }, deadline: 'Aug 5 (29 days)',
-  },
-  {
-    id: 'rc2', name: 'SpeedParts Trading (Cavite)', agentId: 'r2', status: 'prospect', channel: '—',
-    checklist: { name: true, contact: false, number: false, address: false, channel: false }, deadline: '4 days left', deadlineWarn: true,
-  },
-  {
-    id: 'rc3', name: 'MotoHub Alabang', agentId: 'r3', status: 'new', channel: 'Dealer',
-    checklist: { name: true, contact: true, number: true, address: true, channel: true }, deadline: '—',
-  },
-  {
-    id: 'rc4', name: 'TurboWorks Garage', agentId: 'r2', status: 'existing', channel: 'End-User',
-    checklist: { name: true, contact: true, number: true, address: true, channel: true }, deadline: '—',
-  },
-  {
-    id: 'rc5', name: 'Lakay Auto Supply', agentId: 'r4', status: 'existing', channel: 'Distributor',
-    checklist: { name: true, contact: true, number: true, address: true, channel: true }, deadline: '—',
-  },
-  {
-    id: 'rc6', name: 'Ride-On Motors (Laguna)', agentId: 'r5', status: 'new', channel: 'Dealer',
-    checklist: { name: true, contact: true, number: true, address: true, channel: true }, deadline: '—',
-  },
-];
-
-const RSR_MEETINGS: TeamMeeting[] = [
-  {
-    // ADR-015 fast path — existing dealer, photo-only start/end.
-    id: 'rm105', clientId: 'rc4', agentId: 'r2', date: 'Jul 10', time: '9:20 AM', location: 'Client Office',
-    contact: 'A. Buenaventura', position: 'Owner', custType: 'Existing', agenda: ['Relationship building'],
-    remarks: '', outcome: null, meetingMode: 'in_person', gps: '14.2456° N, 121.1245° E', tagAlong: false,
-    synced: true, fastPath: true, startTime: '9:20 AM', endTime: '9:45 AM',
-  },
-  {
-    id: 'rm104', clientId: 'rc1', agentId: 'r1', date: 'Jul 9', time: '2:40 PM', location: 'Client Office',
-    contact: 'E. Ramos', position: 'Owner', custType: 'Prospect', agenda: ['Product / company presentation'],
-    remarks: 'Interesado sa lubricants line, hiningan ng price list.', outcome: 'follow', meetingMode: 'in_person',
-    gps: '14.4098° N, 120.9821° E', tagAlong: true, tagAlongManagerName: 'Rommel Aquino', tagAlongStatus: 'pending', synced: true,
-  },
-  {
-    id: 'rm103', clientId: 'rc3', agentId: 'r3', date: 'Jul 8', time: '11:05 AM', location: 'Client Office',
-    contact: 'V. Ocampo', position: 'Purchasing', custType: 'New', agenda: ['Price negotiation / quotation'],
-    remarks: 'Hihintayin ang quotation approval sa main branch.', outcome: 'follow', meetingMode: 'in_person',
-    gps: '14.4225° N, 121.0412° E', tagAlong: false, synced: false,
-  },
-  {
-    id: 'rm102', clientId: 'rc5', agentId: 'r4', date: 'Jul 7', time: '4:15 PM', location: 'Client Office',
-    contact: 'T. Lakandula', position: 'Owner', custType: 'Existing', agenda: ['Collection', 'Relationship building'],
-    remarks: 'Na-settle ang balanse, tuloy ang monthly order.', outcome: 'success', meetingMode: 'in_person',
-    gps: '16.4023° N, 120.5960° E', tagAlong: false, synced: true,
-  },
-  {
-    // ADR-012 online meeting — GPS = agent's own location.
-    id: 'rm101', clientId: 'rc2', agentId: 'r2', date: 'Jul 5', time: '10:30 AM', location: 'Online (video call)',
-    contact: '—', position: '—', custType: 'Prospect', agenda: ['New business opportunity'],
-    remarks: 'Unang usapan via video call; site visit ang susunod.', outcome: 'nodec', meetingMode: 'online',
-    gps: '14.3294° N, 120.9367° E', tagAlong: false, synced: true,
-  },
-];
-
-// ─── Track-selected accessors ──────────────────────────────────────────────────
-
-interface ManagerDataset {
-  agents: TeamAgent[];
-  clients: TeamClient[];
-  meetings: TeamMeeting[];
-}
-
-const DATASETS: Record<ManagerTrack, ManagerDataset> = {
-  sales: {
-    agents: SALES_AGENTS,
-    clients: SALES_CLIENTS,
-    meetings: SALES_MEETINGS,
-  },
-  rsr: {
-    agents: RSR_AGENTS,
-    clients: RSR_CLIENTS,
-    meetings: RSR_MEETINGS,
-  },
-};
-
-function dataset(): ManagerDataset {
-  return DATASETS[activeTrack];
-}
-
 export function getManagerAgents(): TeamAgent[] {
-  return dataset().agents;
+  return SALES_AGENTS;
 }
 export function getManagerClients(): TeamClient[] {
-  return dataset().clients;
+  return SALES_CLIENTS;
 }
 export function getManagerMeetings(): TeamMeeting[] {
-  return dataset().meetings;
+  return SALES_MEETINGS;
 }
 
 /**
@@ -289,7 +175,7 @@ export interface TeamClientProgressBreakdown {
 
 export function getTeamClientProgressBreakdown(
   client: TeamClient,
-  meetings: TeamMeeting[] = dataset().meetings
+  meetings: TeamMeeting[] = SALES_MEETINGS
 ): TeamClientProgressBreakdown {
   const presented = meetings.some(
     (m) => m.clientId === client.id && m.agenda.includes('Product / company presentation')
@@ -297,16 +183,16 @@ export function getTeamClientProgressBreakdown(
   return { presented, total: presented ? 100 : 0 };
 }
 
-export function computeTeamClientProgress(client: TeamClient, meetings: TeamMeeting[] = dataset().meetings): number {
+export function computeTeamClientProgress(client: TeamClient, meetings: TeamMeeting[] = SALES_MEETINGS): number {
   return getTeamClientProgressBreakdown(client, meetings).total;
 }
 
 export function meetingsForClient(clientId: string): TeamMeeting[] {
-  return dataset().meetings.filter((m) => m.clientId === clientId);
+  return SALES_MEETINGS.filter((m) => m.clientId === clientId);
 }
 export function meetingsForAgent(agentId: string): TeamMeeting[] {
-  return dataset().meetings.filter((m) => m.agentId === agentId);
+  return SALES_MEETINGS.filter((m) => m.agentId === agentId);
 }
 export function clientsForAgent(agentId: string): TeamClient[] {
-  return dataset().clients.filter((c) => c.agentId === agentId);
+  return SALES_CLIENTS.filter((c) => c.agentId === agentId);
 }

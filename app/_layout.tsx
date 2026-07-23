@@ -25,8 +25,8 @@ function RootNavigator() {
   // `profiles.id` (see lib/session-store.tsx). `teamId` (ADR-030) powers the
   // team-roster sync-down pull for the Tag-Along companion picker.
   useSync(isSignedIn ? profileId : null, isSignedIn ? teamId : null);
-  // ADR-017 (2026-07-14): one sales_manager role covers both tracks — which
-  // team (Sales vs RSR) they manage is set via team_id, not a separate role.
+  // ADR-017 (2026-07-14, retired 2026-07-23): manager gating is role-only —
+  // team_id no longer implies a Sales-vs-RSR track, teams can mix roles.
   const isManager = role === 'sales_manager';
   const isExecutive = role === 'executive';
   // F-007 first draft (2026-07-25): Collection & Delivery role groups.
