@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 import * as SecureStore from 'expo-secure-store';
+import { Platform } from 'react-native';
 import type { Database } from '../types/database';
 
 const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL!;
@@ -17,7 +18,8 @@ const ExpoSecureStoreAdapter = {
 
 export const supabase = createClient<Database>(supabaseUrl, supabaseAnonKey, {
   auth: {
-    storage: ExpoSecureStoreAdapter,
+    // SecureStore is native-only; on web, supabase-js falls back to localStorage.
+    ...(Platform.OS !== 'web' && { storage: ExpoSecureStoreAdapter }),
     autoRefreshToken: true,
     persistSession: true,
     detectSessionInUrl: false,

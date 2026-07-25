@@ -29,6 +29,9 @@ function RootNavigator() {
   // team (Sales vs RSR) they manage is set via team_id, not a separate role.
   const isManager = role === 'sales_manager';
   const isExecutive = role === 'executive';
+  // F-007 first draft (2026-07-25): Collection & Delivery role groups.
+  const isCollector = role === 'collector';
+  const isDelivery = role === 'delivery';
 
   // Stack.Protected declares every group up front and toggles access via
   // `guard` — expo-router handles the redirect itself when a guard flips.
@@ -47,7 +50,13 @@ function RootNavigator() {
       <Stack.Protected guard={isSignedIn && isExecutive}>
         <Stack.Screen name="(executive)" />
       </Stack.Protected>
-      <Stack.Protected guard={isSignedIn && !isManager && !isExecutive}>
+      <Stack.Protected guard={isSignedIn && isCollector}>
+        <Stack.Screen name="(collection)" />
+      </Stack.Protected>
+      <Stack.Protected guard={isSignedIn && isDelivery}>
+        <Stack.Screen name="(delivery)" />
+      </Stack.Protected>
+      <Stack.Protected guard={isSignedIn && !isManager && !isExecutive && !isCollector && !isDelivery}>
         <Stack.Screen name="(tabs)" />
       </Stack.Protected>
     </Stack>
