@@ -128,7 +128,11 @@ export type UserRole =
   | 'executive'
   | 'admin'
   | 'superadmin'
-  | 'collector';
+  | 'collector'
+  // F-007 first draft (2026-07-25): driver role for the Delivery module.
+  // NOT in the web DB role enum yet (Database.md lists only `collector`) —
+  // mobile-side placeholder like `executive` until the web enum adds it.
+  | 'delivery';
 
 // Fixed Supabase team IDs (mirrors web repo's lib/teams.ts) — never renumber.
 // A sales_manager's `team_id` determines which track's manager UI they see.
