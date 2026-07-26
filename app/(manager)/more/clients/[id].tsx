@@ -67,7 +67,7 @@ export default function ManagerClientDetailScreen() {
 
   return (
     <YStack flex={1} backgroundColor={BIZLINK_COLORS.canvas} paddingTop={insets.top}>
-      <BizTopBar title="Client" />
+      <BizTopBar title="Client" fallbackHref="/(manager)/more/clients" />
       <ScrollView contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 24 }}>
         <BizCard flexDirection="row" alignItems="flex-start" gap="$3.5">
           <ProgressRing percent={progress} />
@@ -80,7 +80,7 @@ export default function ManagerClientDetailScreen() {
                 small
                 icon={<Repeat size={14} color={BIZLINK_COLORS.text} strokeWidth={1.75} />}
                 style={{ paddingHorizontal: 14 }}
-                onPress={() => router.push(`/(manager)/more/clients/reassign?clientId=${client.id}`)}
+                onPress={() => router.push(`/(manager)/more/clients/reassign?clientId=${encodeURIComponent(client.id)}`)}
               />
             </XStack>
             <XStack gap="$1.5">

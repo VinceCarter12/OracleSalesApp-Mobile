@@ -182,7 +182,12 @@ export default function MeetingsScreen() {
         />
       </YStack>
 
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: 16 }}>
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        style={{ flexGrow: 0 }}
+        contentContainerStyle={{ paddingHorizontal: 16 }}
+      >
         <XStack gap="$2" marginBottom="$2.5">
           <BizChip label="All" selected={filter === 'all'} onPress={() => setFilter('all')} />
           {MEETING_OUTCOMES.map((outcome) => (
@@ -205,7 +210,7 @@ export default function MeetingsScreen() {
           data={filtered}
           keyExtractor={(item) => item.id}
           style={{ flex: 1 }}
-          contentContainerStyle={{ paddingHorizontal: 16, paddingTop: 12 }}
+          contentContainerStyle={{ paddingHorizontal: 16, paddingTop: 8 }}
           renderItem={({ item }) => <MeetingRow meeting={item} hasTagAlong={tagAlongMeetingIds.has(item.id)} />}
           refreshControl={<RefreshControl refreshing={loading} onRefresh={refresh} />}
           ListEmptyComponent={

@@ -10,7 +10,6 @@ import { computeExecClientProgress } from '../../../lib/executive-overview-servi
 import { useGate } from '../../../lib/gate-context';
 import { SecurityGate } from '../../../components/security/SecurityGate';
 import { BizTopBar } from '../../../components/bizlink/BizTopBar';
-import { BizLockButton } from '../../../components/bizlink/BizLockButton';
 import { BizCard } from '../../../components/bizlink/BizCard';
 import { BizSectionHeader } from '../../../components/bizlink/BizSectionHeader';
 import { BizButton } from '../../../components/bizlink/BizButton';
@@ -69,7 +68,7 @@ export default function ExecutiveClientDetailScreen() {
 
   return (
     <YStack flex={1} backgroundColor={BIZLINK_COLORS.canvas} paddingTop={insets.top}>
-      <BizTopBar title="Client" right={<BizLockButton />} />
+      <BizTopBar title="Client" />
       <ScrollView contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 24 }}>
         <BizCard flexDirection="row" alignItems="center" gap="$3.5">
           <View

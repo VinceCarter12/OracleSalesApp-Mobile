@@ -1,4 +1,5 @@
 import { ReactNode } from 'react';
+import type { Href } from 'expo-router';
 import { Hourglass } from 'lucide-react-native';
 import { Text, YStack } from 'tamagui';
 import { BIZLINK_COLORS, BIZLINK_FONTS } from '../../lib/theme';
@@ -11,7 +12,7 @@ interface BizPlaceholderNoticeProps {
   heading?: string;
   badgeLabel?: string;
   /** See `BizTopBar`'s own `fallbackHref` doc — needed for screens reachable by a direct cross-tab push. */
-  fallbackHref?: string;
+  fallbackHref?: Href;
 }
 
 /** T-014 Phase 2 (ADR-024): BizLink "feature not final" empty-state shell. Replaces `PlaceholderNotice` within `app/(tabs)`. */

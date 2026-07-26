@@ -74,7 +74,7 @@ export default function ReassignClientScreen() {
         fromAgentProfileId: client.agentId,
         toAgentProfileId: selectedAgentId,
       });
-      router.back();
+      router.replace(`/(manager)/more/clients/${encodeURIComponent(client.id)}`);
     } catch (err) {
       if (err instanceof ReassignConflictError) {
         setSubmitError('Nailipat na ang client na ito sa ibang agent — i-refresh at subukan ulit.');
@@ -115,7 +115,7 @@ export default function ReassignClientScreen() {
 
   return (
     <YStack flex={1} backgroundColor={BIZLINK_COLORS.canvas} paddingTop={insets.top}>
-      <BizTopBar title="Reassign Client" />
+      <BizTopBar title="Reassign Client" fallbackHref={`/(manager)/more/clients/${encodeURIComponent(clientId)}`} />
       <ScrollView contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 24 }}>
         <YStack backgroundColor={BIZLINK_COLORS.card} borderRadius={20} padding={14} marginBottom="$3.5">
           <Text fontSize={12.5} fontFamily={BIZLINK_FONTS.semibold} color={BIZLINK_COLORS.text}>{client.name}</Text>

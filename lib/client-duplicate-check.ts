@@ -40,15 +40,17 @@ export async function checkLocalDuplicate(
 
   const localMatch = await db.getFirstAsync<{ id: string }>(
     city
-      ? 'SELECT id FROM clients WHERE normalized_name = ? AND city = ? AND id != ? LIMIT 1'
+      ? 'SELECT id FROM clients WHERE normalized_name = ? AND LOWER(TRIM(city)) = LOWER(TRIM(?)) AND id != ? LIMIT 1'
       : 'SELECT id FROM clients WHERE normalized_name = ? AND id != ? LIMIT 1',
     city ? [normalized, city, excludeId] : [normalized, excludeId]
   );
   if (localMatch) return 'duplicate';
 
   const snapshotMatch = await db.getFirstAsync<{ client_id: string }>(
-    'SELECT client_id FROM company_names_snapshot WHERE normalized_name = ? AND client_id != ? LIMIT 1',
-    [normalized, excludeId]
+    city
+      ? 'SELECT client_id FROM company_names_snapshot WHERE normalized_name = ? AND LOWER(TRIM(city)) = LOWER(TRIM(?)) AND client_id != ? LIMIT 1'
+      : 'SELECT client_id FROM company_names_snapshot WHERE normalized_name = ? AND client_id != ? LIMIT 1',
+    city ? [normalized, city, excludeId] : [normalized, excludeId]
   );
   return snapshotMatch ? 'duplicate' : 'clear';
 }

@@ -14,6 +14,7 @@ import { createMeeting } from '../../../lib/meeting-service';
 import { getTeamRoster, inviteeKindForRole } from '../../../lib/team-roster';
 import { MAX_COMPANIONS_PER_REQUEST } from '../../../lib/tag-along-service';
 import { useClientFlowRoutes } from '../../../lib/use-role-routes';
+import { isInfoComplete } from '../../../lib/client-progress';
 import { showToast } from '../../../lib/toast';
 import { BizTopBar } from '../../../components/bizlink/BizTopBar';
 import { BizField } from '../../../components/bizlink/BizField';
@@ -27,7 +28,8 @@ import { AutoCapturedPanel } from '../../../components/meetings/AutoCapturedPane
 import { MeetingWrapUpSection } from '../../../components/meetings/MeetingWrapUpSection';
 import { LostOpportunityDialog } from '../../../components/meetings/LostOpportunityDialog';
 import { PhotoLightbox } from '../../../components/meetings/PhotoLightbox';
-import { type MeetingMode, type MeetingOutcome, type TeamRosterEntry } from '../../../types';
+import { ClientInfoCompletionNotice } from '../../../components/meetings/ClientInfoCompletionNotice';
+import { type Client, type MeetingMode, type MeetingOutcome, type TeamRosterEntry } from '../../../types';
 
 const LOCATIONS = ['Client Office', 'Others'] as const;
 
@@ -38,7 +40,7 @@ export default function RecordMeetingScreen() {
   const { profileId, role } = useSession();
   const routes = useClientFlowRoutes();
 
-  const [clientName, setClientName] = useState<string | null>(null);
+  const [client, setClient] = useState<Client | null>(null);
   const [roster, setRoster] = useState<TeamRosterEntry[]>([]);
   const [selectedCompanions, setSelectedCompanions] = useState<TeamRosterEntry[]>([]);
 
@@ -65,7 +67,7 @@ export default function RecordMeetingScreen() {
     // (not-yet-synced) client only exists here.
     getClientById(clientId).then((client) => {
       if (!client) return;
-      setClientName(client.company_name);
+      setClient(client);
       // ADR-030 Pass 2.5: prefill from the client's own contact info, kept
       // fully editable — the actual meeting contact can differ from the
       // client record's default.
@@ -175,7 +177,7 @@ export default function RecordMeetingScreen() {
       // sets the real Storage URL once it's actually uploaded. Storage path
       // convention keys by the Auth uid (matches Storage RLS' `auth.uid()`
       // check) — deliberately session.user.id, not profileId.
-      await createMeeting({
+      const meetingId = await createMeeting({
         client_id: resolvedClientId,
         agent_id: profileId,
         gps_lat: location.lat,
@@ -203,7 +205,7 @@ export default function RecordMeetingScreen() {
         companionsPreAccepted: role === 'sales_manager',
       });
       const connectivity = await checkConnectivity();
-      router.replace(routes.celebrate(connectivity === 'online'));
+      router.replace(routes.celebrate(connectivity === 'online', meetingId));
     } catch (err) {
       // PostgrestError isn't an Error instance — log the raw object (code/
       // details/hint) so on-device debugging isn't limited to err.message.
@@ -219,7 +221,10 @@ export default function RecordMeetingScreen() {
     <YStack flex={1} backgroundColor={BIZLINK_COLORS.canvas} paddingTop={insets.top}>
       <BizTopBar title="Record Meeting" />
       <ScrollView contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 32 }}>
-        <SelectedClientCard clientName={clientName} />
+        <SelectedClientCard clientName={client?.company_name ?? null} />
+        {client && !isInfoComplete(client) ? (
+          <ClientInfoCompletionNotice onCompleteInfo={() => router.push(routes.completeInfo(client.id))} />
+        ) : null}
 
         <CompanionPicker roster={roster} selected={selectedCompanions} onToggle={toggleCompanion} />
 

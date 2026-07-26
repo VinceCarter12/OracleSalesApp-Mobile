@@ -1,7 +1,6 @@
 import { ReactNode } from 'react';
 import { ScrollView } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Lock } from 'lucide-react-native';
 import { Text, XStack, YStack } from 'tamagui';
 import { COLORS } from '../../lib/theme';
 import { TopBar } from '../ui/TopBar';
@@ -83,7 +82,6 @@ export function AccountScreen({
         {sessionPolicyText ? (
           <Card flat marginTop="$4">
             <XStack alignItems="center" gap="$2">
-              <Lock size={13} color={COLORS.eel} />
               <Text fontSize={12.5} fontWeight="800" color={COLORS.eel}>Session policy</Text>
             </XStack>
             <Text fontSize={13} fontWeight="600" color={COLORS.hare} marginTop="$1" lineHeight={18}>

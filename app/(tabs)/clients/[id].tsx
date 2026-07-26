@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { Pressable, ScrollView } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
-import { Camera, Check, Pencil } from 'lucide-react-native';
+import { Camera, Check, ClipboardList, Pencil } from 'lucide-react-native';
 import { Spinner, Text, View, XStack, YStack } from 'tamagui';
 import { getClientById } from '../../../lib/client-service';
 import { useSession } from '../../../lib/session-store';
@@ -16,11 +16,10 @@ import {
 } from '../../../lib/tag-along-service';
 import { OUTCOME_BADGE_STYLES, BIZLINK_COLORS, BIZLINK_FONTS } from '../../../lib/theme';
 import { CLIENT_STATUS_BADGES, getClientStatus, WAITING_MANAGER_APPROVAL_BADGE } from '../../../lib/client-status';
-import { getClientProgressBreakdown, getInfoChecklist } from '../../../lib/client-progress';
+import { getClientProgressBreakdown, getInfoChecklist, isInfoComplete } from '../../../lib/client-progress';
 import { useMeetings } from '../../../lib/useMeetings';
 import { useClientFlowRoutes } from '../../../lib/use-role-routes';
 import { BizTopBar } from '../../../components/bizlink/BizTopBar';
-import { BizLockButton } from '../../../components/bizlink/BizLockButton';
 import { BizCard } from '../../../components/bizlink/BizCard';
 import { BizSectionHeader } from '../../../components/bizlink/BizSectionHeader';
 import { BizButton } from '../../../components/bizlink/BizButton';
@@ -111,7 +110,7 @@ export default function ClientDetailScreen() {
 
   return (
     <YStack flex={1} backgroundColor={BIZLINK_COLORS.canvas} paddingTop={insets.top}>
-      <BizTopBar title="Client" right={<BizLockButton />} />
+      <BizTopBar title="Client" fallbackHref={routes.clientList()} />
       <ScrollView contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 24 }}>
         <BizCard flexDirection="row" alignItems="center" gap="$3.5">
           <ProgressRing percent={progress} />
@@ -222,9 +221,11 @@ export default function ClientDetailScreen() {
         <XStack gap="$2.5" marginTop="$3.5">
           <YStack flex={1}>
             <BizButton
-              label="Edit info"
+              label={isInfoComplete(client) ? 'Edit info' : 'Complete info'}
               variant="white"
-              icon={<Pencil size={15} color={BIZLINK_COLORS.text} strokeWidth={1.75} />}
+              icon={isInfoComplete(client)
+                ? <Pencil size={15} color={BIZLINK_COLORS.text} strokeWidth={1.75} />
+                : <ClipboardList size={15} color={BIZLINK_COLORS.text} strokeWidth={1.75} />}
               onPress={() => router.push(routes.completeInfo(client.id))}
             />
           </YStack>

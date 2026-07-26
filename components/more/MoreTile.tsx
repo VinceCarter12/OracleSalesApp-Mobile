@@ -1,6 +1,5 @@
 import { useState } from 'react';
 import { Pressable } from 'react-native';
-import { Lock } from 'lucide-react-native';
 import { Text, View, YStack } from 'tamagui';
 import { COLORS } from '../../lib/theme';
 
@@ -32,11 +31,6 @@ export function MoreTile({ icon, title, subtitle, locked, onPress }: MoreTilePro
         position: 'relative',
       }}
     >
-      {locked ? (
-        <View position="absolute" top={12} right={12}>
-          <Lock size={13} color={COLORS.hare} />
-        </View>
-      ) : null}
       <View
         width={40}
         height={40}

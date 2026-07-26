@@ -1,5 +1,6 @@
 import { Pressable } from 'react-native';
 import { router } from 'expo-router';
+import type { Href } from 'expo-router';
 import { ArrowLeft } from 'lucide-react-native';
 import { Text, XStack } from 'tamagui';
 import { useBizlinkColors, BIZLINK_FONTS } from '../../lib/theme';
@@ -21,7 +22,7 @@ interface BizTopBarProps {
    * logical parent (the common case) — `router.back()` alone is correct
    * there, since it already lands on the same place `fallbackHref` would.
    */
-  fallbackHref?: string;
+  fallbackHref?: Href;
 }
 
 /**
@@ -34,7 +35,7 @@ export function BizTopBar({ title, right, fallbackHref }: BizTopBarProps) {
   const BIZLINK_COLORS = useBizlinkColors();
   function handleBack(): void {
     if (fallbackHref) {
-      router.navigate(fallbackHref as never);
+      router.navigate(fallbackHref);
     } else {
       router.back();
     }

@@ -98,7 +98,7 @@ export default function CreateClientScreen() {
 
   return (
     <YStack flex={1} backgroundColor={BIZLINK_COLORS.canvas} paddingTop={insets.top}>
-      <BizTopBar title="New Client" />
+      <BizTopBar title="New Client" fallbackHref="/(tabs)/clients" />
       <ScrollView contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 24 }}>
         <BizCard flat marginBottom="$4">
           <XStack gap="$2" alignItems="center">

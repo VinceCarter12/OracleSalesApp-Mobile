@@ -20,7 +20,7 @@ import { BizButton } from '../../../components/bizlink/BizButton';
  * "you're offline, this is genuinely waiting."
  */
 export default function MeetingCelebrateScreen() {
-  const { online } = useLocalSearchParams<{ online?: string }>();
+  const { online, meetingId } = useLocalSearchParams<{ online?: string; meetingId?: string }>();
   const isOnline = online === 'true';
   const routes = useClientFlowRoutes();
 
@@ -86,7 +86,7 @@ export default function MeetingCelebrateScreen() {
             if (router.canDismiss()) {
               router.dismissAll();
             }
-            router.replace(routes.home());
+            router.replace(meetingId ? routes.meetingDetail(meetingId) : routes.meetingsHome());
           }}
         />
       </YStack>

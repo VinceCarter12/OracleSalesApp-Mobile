@@ -93,18 +93,19 @@ export async function syncDown(agentId: string, teamId?: string | null): Promise
   }
 
   // No owner info in the snapshot (privacy decision, T-005) — just enough to
-  // detect a name collision offline.
+  // detect a name+city collision offline. City is required here because a
+  // same company name in another city is a valid separate client.
   const { data: companyNames, error: namesError } = await withTimeout(
-    Promise.resolve(supabase.from('clients').select('id, company_name')),
+    Promise.resolve(supabase.from('clients').select('id, company_name, city')),
     SYNC_TIMEOUT_MS,
     'sync-down company names'
   );
   if (namesError) throw new Error(namesError.message);
   for (const row of companyNames ?? []) {
-    const { id, company_name: companyName } = row as { id: string; company_name: string };
+    const { id, company_name: companyName, city } = row as { id: string; company_name: string; city: string | null };
     await db.runAsync(
-      'INSERT OR REPLACE INTO company_names_snapshot (client_id, company_name, normalized_name, synced_at) VALUES (?, ?, ?, ?)',
-      [id, companyName, normalizeCompanyName(companyName), now]
+      'INSERT OR REPLACE INTO company_names_snapshot (client_id, company_name, normalized_name, city, synced_at) VALUES (?, ?, ?, ?, ?)',
+      [id, companyName, normalizeCompanyName(companyName), city, now]
     );
   }
 

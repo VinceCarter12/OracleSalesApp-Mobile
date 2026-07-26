@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Alert, Image, ScrollView } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
-import { ImagePlus, Key, Lock } from 'lucide-react-native';
+import { ImagePlus, Key } from 'lucide-react-native';
 import { Text, View, XStack, YStack } from 'tamagui';
 import { useSession } from '../../../lib/session-store';
 import { useAuth } from '../../../lib/useAuth';
@@ -60,7 +60,7 @@ export default function AgentAccountScreen() {
     },
     {
       key: 'client-info-protection',
-      icon: <Lock size={16} color={BIZLINK_COLORS.text} strokeWidth={1.75} />,
+      icon: null,
       label: 'Client info protection',
       sublabel: 'Passcode required to view',
     },
@@ -158,7 +158,6 @@ export default function AgentAccountScreen() {
 
         <BizCard flat marginTop="$4">
           <XStack alignItems="center" gap="$2">
-            <Lock size={13} color={BIZLINK_COLORS.text} strokeWidth={1.75} />
             <Text fontSize={12.5} fontFamily={BIZLINK_FONTS.semibold} color={BIZLINK_COLORS.text}>Session policy</Text>
           </XStack>
           <Text fontSize={13} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} marginTop="$1" lineHeight={18}>
