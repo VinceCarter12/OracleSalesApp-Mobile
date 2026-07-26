@@ -20,6 +20,12 @@ export const CUSTOMER_TYPES = [
 
 // Meeting agendas per Wireframe a-record. "Product / company presentation"
 // is the tick that drives the presentation progress-% (B-001).
+//
+// The legacy literal was 'Closed deal'; changed 2026-07-26 to 'Close deal'
+// to match the wireframe's canonical string (Batch 0 decision item 4).
+// `lib/policies/agenda.ts::getCanonicalAgenda()` normalizes any legacy
+// 'Closed deal' value found in old stored/queued data at read time — it is
+// never rewritten in place.
 export const MEETING_AGENDAS = [
   'New business opportunity',
   'Product / company presentation',
@@ -29,7 +35,7 @@ export const MEETING_AGENDAS = [
   'Technical support',
   'Complaint resolution',
   'Relationship building',
-  'Closed deal',
+  'Close deal',
 ] as const;
 
 export const PRESENTATION_AGENDA: (typeof MEETING_AGENDAS)[number] =

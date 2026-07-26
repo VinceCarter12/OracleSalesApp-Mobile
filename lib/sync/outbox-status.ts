@@ -18,6 +18,13 @@ const JITTER_RATIO = 0.2;
 // deliberately a separate axis from `kind` below. `kind` decides whether/how
 // the sync engine retries a row; `failureClass` decides what message the
 // agent/admin sees (lib/sync-history.ts). Never let one drive the other.
+//
+// 429 (rate-limited) responses currently classify as 'server' below — there
+// is no 'rate_limited' member. Adding one requires a paired SQLite migration
+// (lib/db.ts's `failure_class` CHECK constraint would reject an unknown
+// value at runtime; SQLite can't ALTER a CHECK, so it's a table rebuild)
+// landing in the same change as this union's widening. Deferred to Batch 3
+// per ADR-036 — see lib/contracts/rate-limit.ts.
 export type FailureClass = 'validation' | 'network' | 'authentication' | 'conflict' | 'server' | 'unknown';
 
 export interface ClassifiedError {

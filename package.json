@@ -39,7 +39,8 @@
     "babel-preset-expo": "^57.0.1",
     "eslint": "^9.0.0",
     "eslint-config-expo": "~57.0.0",
-    "typescript": "~6.0.3"
+    "typescript": "~6.0.3",
+    "vitest": "^4.1.10"
   },
   "scripts": {
     "start": "expo start",
@@ -51,7 +52,8 @@
     "build:preview:android": "eas build --profile preview --platform android",
     "build:prod:android": "eas build --profile production --platform android",
     "build:prod:apk": "eas build --profile production-apk --platform android",
-    "web:status": "node scripts/sync-web-status.mjs"
+    "web:status": "node scripts/sync-web-status.mjs",
+    "test": "vitest run"
   },
   "private": true
 }
