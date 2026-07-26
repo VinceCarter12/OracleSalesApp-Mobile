@@ -12,7 +12,7 @@ export const DATABASE_NAME = 'oracle-sales-app.db';
 
 // Bump this and add a new `case` below whenever the schema changes — never
 // edit an already-shipped case, since devices may have already run it.
-const LATEST_SCHEMA_VERSION = 11;
+const LATEST_SCHEMA_VERSION = 12;
 
 /**
  * Runs once per app launch via `SQLiteProvider`'s `onInit` (see app/_layout.tsx).
@@ -386,7 +386,20 @@ export async function migrateDbIfNeeded(db: SQLiteDatabase): Promise<void> {
     currentVersion = 11;
   }
 
-  // Next schema change: `if (currentVersion === 11) { ...; currentVersion = 12; }`
+  // T-005 city-aware duplicate checks: the snapshot previously stored only
+  // company name, which made every same-name company look like a duplicate
+  // even when it belonged to a different city.
+  if (currentVersion === 11) {
+    await db.execAsync(`ALTER TABLE company_names_snapshot ADD COLUMN city TEXT;`);
+    // Preserve city data for snapshot rows that correspond to local clients;
+    // rows belonging to other agents receive their city on the next sync-down.
+    await db.execAsync(`
+      UPDATE company_names_snapshot
+      SET city = (SELECT city FROM clients WHERE clients.id = company_names_snapshot.client_id)
+      WHERE city IS NULL;
+    `);
+    currentVersion = 12;
+  }
 
   await db.execAsync(`PRAGMA user_version = ${currentVersion}`);
 }

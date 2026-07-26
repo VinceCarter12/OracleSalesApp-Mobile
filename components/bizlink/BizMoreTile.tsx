@@ -1,5 +1,4 @@
 import { Pressable } from 'react-native';
-import { Circle } from 'lucide-react-native';
 import { Text, View, YStack } from 'tamagui';
 import { BIZLINK_COLORS, BIZLINK_FONTS } from '../../lib/theme';
 
@@ -25,11 +24,6 @@ export function BizMoreTile({ icon, title, subtitle, locked, onPress }: BizMoreT
         minHeight: 44,
       }}
     >
-      {locked ? (
-        <View position="absolute" top={14} right={14}>
-          <Circle size={13} color={BIZLINK_COLORS.muted} strokeWidth={1.75} />
-        </View>
-      ) : null}
       <View
         width={42}
         height={42}

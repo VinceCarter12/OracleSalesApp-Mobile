@@ -11,6 +11,8 @@ import { saveDraft, getDraftForClient, deleteDraft, type MeetingDraft } from '..
 import { getTeamRoster, inviteeKindForRole } from '../../../lib/team-roster';
 import { MAX_COMPANIONS_PER_REQUEST } from '../../../lib/tag-along-service';
 import { useElapsedTimer } from '../../../lib/use-elapsed-timer';
+import { isInfoComplete } from '../../../lib/client-progress';
+import { useClientFlowRoutes } from '../../../lib/use-role-routes';
 import { captureGps } from '../../../lib/gps';
 import { checkConnectivity } from '../../../lib/sync/connectivity';
 import { showToast } from '../../../lib/toast';
@@ -22,6 +24,7 @@ import { VisitStartPanel } from '../../../components/meetings/VisitStartPanel';
 import { VisitInProgressPanel } from '../../../components/meetings/VisitInProgressPanel';
 import { type CapturedPhoto } from '../../../components/meetings/PhotoCapture';
 import { DraftResumePrompt } from '../../../components/meetings/DraftResumePrompt';
+import { ClientInfoCompletionNotice } from '../../../components/meetings/ClientInfoCompletionNotice';
 import type { Client, MeetingMode, TeamRosterEntry } from '../../../types';
 
 interface StartCapture {
@@ -49,6 +52,7 @@ export default function RecordVisitScreen() {
   const { clientId } = useLocalSearchParams<{ clientId: string }>();
   const { session } = useAuth();
   const { profileId, role } = useSession();
+  const routes = useClientFlowRoutes();
 
   const [client, setClient] = useState<Client | null>(null);
   const [loading, setLoading] = useState(true);
@@ -189,7 +193,7 @@ export default function RecordVisitScreen() {
       // sets the real Storage URL once it's actually uploaded. Storage path
       // convention keys by the Auth uid (matches Storage RLS' `auth.uid()`
       // check) — deliberately session.user.id, not profileId.
-      await createMeeting({
+      const meetingId = await createMeeting({
         client_id: clientId ?? null,
         agent_id: profileId,
         gps_lat: start.gpsLat,
@@ -226,7 +230,7 @@ export default function RecordVisitScreen() {
         );
       }
       const connectivity = await checkConnectivity();
-      router.replace(`/(tabs)/meetings/celebrate?online=${connectivity === 'online'}`);
+      router.replace(`/(tabs)/meetings/celebrate?online=${connectivity === 'online'}&meetingId=${encodeURIComponent(meetingId)}`);
     } catch (err) {
       console.error('[RecordVisit] Save Error:', JSON.stringify(err, null, 2));
       const message = err instanceof Error ? err.message : (err as { message?: string })?.message ?? 'Failed to save the meeting.';
@@ -258,6 +262,9 @@ export default function RecordVisitScreen() {
       <BizTopBar title={`Meeting — ${client.company_name}`} />
       <ScrollView contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 32 }}>
         <ClientInfoCard client={client} />
+        {!isInfoComplete(client) ? (
+          <ClientInfoCompletionNotice onCompleteInfo={() => router.push(routes.completeInfo(client.id))} />
+        ) : null}
 
         {pendingDraft ? (
           <DraftResumePrompt

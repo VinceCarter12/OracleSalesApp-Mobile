@@ -26,7 +26,9 @@ export interface ClientFlowRoutes {
   completeInfo: (clientId: string) => Href;
   recordMeeting: (clientId: string) => Href;
   meetingDetail: (id: string) => Href;
-  celebrate: (online: boolean) => Href;
+  celebrate: (online: boolean, meetingId?: string) => Href;
+  meetingsHome: () => Href;
+  clientList: () => Href;
   home: () => Href;
 }
 
@@ -50,7 +52,9 @@ export function useClientFlowRoutes(): ClientFlowRoutes {
     completeInfo: (clientId: string) => `${clientsBase}/complete?clientId=${clientId}` as Href,
     recordMeeting: (clientId: string) => `${meetingsBase}/record?clientId=${clientId}` as Href,
     meetingDetail: (id: string) => (isManager ? `${meetingsBase}/meeting/${id}` : `${meetingsBase}/${id}`) as Href,
-    celebrate: (online: boolean) => `${meetingsBase}/celebrate?online=${online}` as Href,
+    celebrate: (online: boolean, meetingId?: string) => `${meetingsBase}/celebrate?online=${online}${meetingId ? `&meetingId=${encodeURIComponent(meetingId)}` : ''}` as Href,
+    meetingsHome: () => (isManager ? '/(manager)/more/meetings' : '/(tabs)/meetings') as Href,
+    clientList: () => clientsBase as Href,
     home: () => homeBase as Href,
   };
 }

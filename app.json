@@ -1,10 +1,10 @@
 {
   "expo": {
-    "name": "Oracle Sales App",
+    "name": "Sales App",
     "slug": "OracleSalesApp",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/icon.png",
+    "icon": "./assets/oracle-logo.png",
     "userInterfaceStyle": "light",
     "scheme": "oracle-sales",
     "ios": {
@@ -20,7 +20,7 @@
       "package": "com.oracle.salesapp",
       "softwareKeyboardLayoutMode": "pan",
       "adaptiveIcon": {
-        "foregroundImage": "./assets/icon.png",
+        "foregroundImage": "./assets/oracle-logo.png",
         "backgroundColor": "#003087"
       },
       "permissions": [
@@ -33,7 +33,7 @@
       ]
     },
     "web": {
-      "favicon": "./assets/icon.png",
+      "favicon": "./assets/oracle-logo.png",
       "bundler": "metro"
     },
     "plugins": [

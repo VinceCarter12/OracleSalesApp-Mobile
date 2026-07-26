@@ -11,7 +11,6 @@ import { avatarPaletteFor } from '../../../lib/avatar-palette';
 import { useGate } from '../../../lib/gate-context';
 import { SecurityGate } from '../../../components/security/SecurityGate';
 import { BizChip } from '../../../components/bizlink/BizChip';
-import { BizLockButton } from '../../../components/bizlink/BizLockButton';
 import { BizButton } from '../../../components/bizlink/BizButton';
 import { Avatar } from '../../../components/ui/Avatar';
 import { StatusBadge } from '../../../components/ui/StatusBadge';
@@ -50,7 +49,6 @@ export default function ExecutiveClientsScreen() {
     <YStack flex={1} backgroundColor={BIZLINK_COLORS.canvas} paddingTop={insets.top}>
       <XStack alignItems="center" paddingHorizontal="$4" paddingTop="$2.5" paddingBottom="$1.5">
         <Text fontFamily={BIZLINK_FONTS.semibold} fontSize={21} color={BIZLINK_COLORS.text}>Clients</Text>
-        <XStack marginLeft="auto"><BizLockButton /></XStack>
       </XStack>
       <YStack paddingHorizontal="$4" gap="$2.5">
         <XStack alignItems="center" backgroundColor={BIZLINK_COLORS.card} borderRadius={16} height={52} paddingHorizontal={14} gap="$2">
