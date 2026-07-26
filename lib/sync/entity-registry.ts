@@ -126,6 +126,11 @@ export async function isBlockedByDependency(
 }
 
 export interface EnqueueOutboxRowInput {
+  // Serves as the device-op-id for business-entity outbox rows (see
+  // lib/contracts/versions.ts for the cross-reference). NOT the same field
+  // as the sync_audit audit lane's separately-named
+  // `AuditRowInput.deviceOpId` (lib/sync/audit-log.ts) — the two lanes have
+  // distinct device-op-id fields, do not treat them as interchangeable.
   outboxId: string;
   recordId: string;
   tableName: EntityTableName;

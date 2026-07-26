@@ -35,3 +35,14 @@ export const WAITING_MANAGER_APPROVAL_BADGE = {
   background: 'amberSoft' as const,
   color: 'orange' as const,
 };
+
+/** True once a client's resolved status (via getClientStatus) reaches the photo-only fast path — 'new' or 'existing' (ADR-015). */
+export function isFastPathEligible(client: Pick<Client, 'status'>): boolean {
+  const status = getClientStatus(client);
+  return status === 'new' || status === 'existing';
+}
+
+/** True only for 'inactive' — mirrors ADR-006's server-only-lifecycle-automation rule: no other status is ever set by the server alone. */
+export function isServerManagedStatus(status: ClientStatus): boolean {
+  return status === 'inactive';
+}
