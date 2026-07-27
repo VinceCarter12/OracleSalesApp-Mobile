@@ -211,7 +211,24 @@ export type Database = {
       };
     };
     Views: Record<string, never>;
-    Functions: Record<string, never>;
+    // Batch 2 (2026-07-26): both RPCs are SECURITY DEFINER, live on Supabase.
+    // is_company_name_available: Migration 014 (2026-07-16). get_company_directory:
+    // Migration 030 (2026-07-26) — see Migration-030-Report.md.
+    Functions: {
+      is_company_name_available: {
+        Args: { p_name: string; p_city: string | null };
+        Returns: boolean;
+      };
+      get_company_directory: {
+        Args: Record<string, never>;
+        Returns: {
+          id: string;
+          company_name: string;
+          normalized_company_name: string;
+          city: string | null;
+        }[];
+      };
+    };
     Enums: Record<string, never>;
   };
 };

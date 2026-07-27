@@ -95,8 +95,19 @@ export async function syncDown(agentId: string, teamId?: string | null): Promise
   // No owner info in the snapshot (privacy decision, T-005) — just enough to
   // detect a name+city collision offline. City is required here because a
   // same company name in another city is a valid separate client.
+  //
+  // Batch 2 (2026-07-26): switched from a direct `clients` table read to the
+  // `get_company_directory()` RPC. The new RLS policies scope `clients`
+  // SELECT to the agent's own rows (or a manager's team), so a raw
+  // cross-agent select here would silently return only the caller's own
+  // clients post-Migration-031 — degrading this from a real cross-agent
+  // duplicate check to a no-op. The RPC is SECURITY DEFINER and
+  // deliberately exposes only company-identity columns (id, company_name,
+  // normalized_company_name, city), never full client rows, so this stays
+  // strictly narrower than the old broad-read access it replaces. See
+  // Migration-030-Report.md.
   const { data: companyNames, error: namesError } = await withTimeout(
-    Promise.resolve(supabase.from('clients').select('id, company_name, city')),
+    Promise.resolve(supabase.rpc('get_company_directory')),
     SYNC_TIMEOUT_MS,
     'sync-down company names'
   );
