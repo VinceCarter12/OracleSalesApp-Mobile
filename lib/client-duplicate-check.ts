@@ -56,27 +56,37 @@ export async function checkLocalDuplicate(
 }
 
 /**
- * Queries the (not-yet-applied) generated `normalized_company_name` column —
- * correct once Migration-014-Report.md lands. Until then Postgres rejects
- * the unknown column and this degrades to 'unknown', which callers treat as
- * "can't confirm, fall back to the local-only result".
+ * Batch 2 (2026-07-26): switched from a direct `clients` table select to the
+ * `is_company_name_available()` RPC (Migration 014, already SECURITY
+ * DEFINER — confirmed live, no redefine needed). The new RLS policies scope
+ * `clients` SELECT to the agent's own rows (or a manager's team), so the old
+ * direct `.eq('normalized_company_name', ...)` query would now only ever
+ * see the caller's own clients post-Migration-031 — silently turning this
+ * into a check against yourself instead of a real cross-agent duplicate
+ * check. The RPC does its own server-side normalization (`p_name` is the
+ * raw company name, not pre-normalized) and exposes nothing but a boolean.
+ *
+ * Known gap carried over unchanged: `excludeClientId` is accepted for API
+ * symmetry with `checkLocalDuplicate` but the RPC has no matching parameter,
+ * so it isn't applied here — same as before this change, since every
+ * current call site (`client-service.ts::createClient()`,
+ * `app/(tabs)/clients/create.tsx`) only ever calls this without
+ * `excludeClientId` (create-only flow, not edit). If an edit flow starts
+ * passing one, the RPC needs a `p_exclude_id` parameter added first.
  */
 async function liveDuplicateCheck(
-  normalized: string,
+  companyName: string,
   city: string | null,
-  excludeClientId?: string
+  _excludeClientId?: string
 ): Promise<DuplicateCheckResult> {
   try {
-    let query = supabase.from('clients').select('id').eq('normalized_company_name', normalized);
-    if (city) query = query.eq('city', city);
     const { data, error } = await withTimeout(
-      Promise.resolve(query.limit(5)),
+      Promise.resolve(supabase.rpc('is_company_name_available', { p_name: companyName, p_city: city })),
       LIVE_CHECK_TIMEOUT_MS,
       'client duplicate live check'
     );
     if (error) throw error;
-    const matches = (data ?? []).filter((row) => row.id !== excludeClientId);
-    return matches.length > 0 ? 'duplicate' : 'available';
+    return data === false ? 'duplicate' : 'available';
   } catch {
     return 'unknown';
   }
@@ -91,9 +101,7 @@ async function liveDuplicateCheck(
  *
  * NOT used for the Create Client screen's live typing/button-gate anymore
  * (B-020) — the live tail can take up to `LIVE_CHECK_TIMEOUT_MS` (8s), which
- * made the button feel stuck on every keystroke, especially since the live
- * query's target column doesn't exist on Supabase yet (Migration 014 not
- * applied) and always degrades to 'unknown' the slow way. The UI now
+ * made the button feel stuck on every keystroke. The UI now
  * activates on `checkLocalDuplicate` alone; this full check still runs here
  * as the actual write-time gate, so a live duplicate is still caught before
  * anything is created — it just no longer blocks the button from being
@@ -110,5 +118,5 @@ export async function checkCompanyNameDuplicate(
   const local = await checkLocalDuplicate(companyName, city, excludeClientId);
   if (local === 'duplicate') return 'duplicate';
 
-  return liveDuplicateCheck(normalized, city, excludeClientId);
+  return liveDuplicateCheck(companyName, city, excludeClientId);
 }
