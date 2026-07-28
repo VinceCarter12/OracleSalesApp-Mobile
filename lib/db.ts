@@ -12,7 +12,7 @@ export const DATABASE_NAME = 'oracle-sales-app.db';
 
 // Bump this and add a new `case` below whenever the schema changes — never
 // edit an already-shipped case, since devices may have already run it.
-const LATEST_SCHEMA_VERSION = 12;
+const LATEST_SCHEMA_VERSION = 13;
 
 /**
  * Runs once per app launch via `SQLiteProvider`'s `onInit` (see app/_layout.tsx).
@@ -399,6 +399,87 @@ export async function migrateDbIfNeeded(db: SQLiteDatabase): Promise<void> {
       WHERE city IS NULL;
     `);
     currentVersion = 12;
+  }
+
+  // F-007 (2026-07-28): local mirrors for the Collection & Delivery lists (web
+  // migrations 043/044/045/046). Read path first (Phase 1) — synced-down by
+  // lib/sync/entity-appliers.ts. Columns mirror the live Supabase shape incl.
+  // 045's denormalized client_name/area and 046's claim columns; booleans are
+  // stored 0/1. Field roles pull the WHOLE day's list (RLS-scoped), so there's
+  // no per-agent column here.
+  if (currentVersion === 12) {
+    await db.execAsync(`
+      CREATE TABLE collection_visits (
+        id TEXT PRIMARY KEY NOT NULL,
+        client_id TEXT,
+        client_name TEXT,
+        area TEXT,
+        status TEXT NOT NULL DEFAULT 'pending',
+        scheduled_for TEXT,
+        amount_due REAL,
+        collector_id TEXT,
+        amount_collected REAL,
+        payment_method TEXT,
+        payment_photo_url TEXT,
+        delivery_receipt_photo_url TEXT,
+        gps_lat REAL,
+        gps_lng REAL,
+        remarks TEXT,
+        rescheduled_to TEXT,
+        visited_at TEXT,
+        claimed_by TEXT,
+        claimed_at TEXT,
+        claimed_by_name TEXT,
+        created_at TEXT,
+        updated_at TEXT,
+        sync_status TEXT NOT NULL DEFAULT 'synced',
+        sync_error TEXT,
+        local_updated_at TEXT NOT NULL
+      );
+      CREATE INDEX idx_collection_visits_status ON collection_visits (status);
+      CREATE INDEX idx_collection_visits_scheduled_for ON collection_visits (scheduled_for);
+      CREATE INDEX idx_collection_visits_sync_status ON collection_visits (sync_status);
+
+      CREATE TABLE purchase_orders (
+        id TEXT PRIMARY KEY NOT NULL,
+        po_number TEXT,
+        client_id TEXT,
+        client_name TEXT,
+        area TEXT,
+        status TEXT NOT NULL DEFAULT 'pending',
+        scheduled_for TEXT,
+        cod INTEGER NOT NULL DEFAULT 0,
+        cod_due REAL,
+        driver_id TEXT,
+        truck_plate TEXT,
+        sequence_no INTEGER,
+        receiver_name TEXT,
+        receiver_signature_url TEXT,
+        time_in TEXT,
+        time_out TEXT,
+        proof_url TEXT,
+        backload_photo_url TEXT,
+        gps_lat REAL,
+        gps_lng REAL,
+        remarks TEXT,
+        cod_amount REAL,
+        cod_method TEXT,
+        cod_photo_url TEXT,
+        cod_remitted INTEGER NOT NULL DEFAULT 0,
+        claimed_by TEXT,
+        claimed_at TEXT,
+        claimed_by_name TEXT,
+        created_at TEXT,
+        updated_at TEXT,
+        sync_status TEXT NOT NULL DEFAULT 'synced',
+        sync_error TEXT,
+        local_updated_at TEXT NOT NULL
+      );
+      CREATE INDEX idx_purchase_orders_status ON purchase_orders (status);
+      CREATE INDEX idx_purchase_orders_scheduled_for ON purchase_orders (scheduled_for);
+      CREATE INDEX idx_purchase_orders_sync_status ON purchase_orders (sync_status);
+    `);
+    currentVersion = 13;
   }
 
   await db.execAsync(`PRAGMA user_version = ${currentVersion}`);

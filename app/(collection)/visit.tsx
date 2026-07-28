@@ -20,11 +20,11 @@ import { BizSectionHeader } from '../../components/bizlink/BizSectionHeader';
 import { BizButton } from '../../components/bizlink/BizButton';
 import { PhotoSlot } from '../../components/collection-delivery/PhotoSlot';
 import {
-  COLLECTION_STORES,
   markStoreCollected,
   rescheduleStore,
   type PaymentMethod,
 } from '../../lib/collection-delivery-data';
+import { useCollectionStore } from '../../lib/use-collection-delivery';
 
 // GPS captured at payment-photo time (mock coords for now; wired to lib/gps.ts
 // when the flow goes real — the fix is written to the business row at capture).
@@ -91,10 +91,10 @@ export default function CollectPaymentScreen() {
   const { id } = useLocalSearchParams<{ id?: string }>();
 
   const storeId = String(id ?? '');
-  // Read-only lookup for display; the collect/reschedule mutations go through
-  // markStoreCollected/rescheduleStore (by id) so this render-scoped value is
-  // never mutated (react-hooks/immutability).
-  const store = COLLECTION_STORES.find((s) => s.id === storeId);
+  // F-007 Phase 1: real record from the local mirror for display. The collect/
+  // reschedule WRITE is Phase 2 (still the mock mutators below — they no-op on a
+  // real id, so nothing persists yet; see the banner).
+  const { store, loading } = useCollectionStore(storeId);
 
   const [payMode, setPayMode] = useState<PayMode>('cash');
   const [payPhotoUri, setPayPhotoUri] = useState<string | null>(null);
@@ -132,13 +132,13 @@ export default function CollectPaymentScreen() {
     );
   }
 
-  if (!store) {
+  if (loading || !store) {
     return (
       <YStack flex={1} backgroundColor={BIZLINK_COLORS.canvas} paddingTop={insets.top}>
         <BizTopBar title="Collect Payment" />
         <YStack flex={1} alignItems="center" justifyContent="center" paddingHorizontal="$6">
           <Text fontSize={13} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} textAlign="center">
-            Hindi mahanap ang store na ito.
+            {loading ? 'Naglo-load…' : 'Hindi mahanap ang store na ito.'}
           </Text>
         </YStack>
       </YStack>
@@ -149,6 +149,13 @@ export default function CollectPaymentScreen() {
     <YStack flex={1} backgroundColor={BIZLINK_COLORS.canvas} paddingTop={insets.top}>
       <BizTopBar title="Collect Payment" />
       <ScrollView contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 40 }}>
+        {/* Phase 1: the list reads live now, but the collect WRITE isn't wired yet. */}
+        <XStack backgroundColor={BIZLINK_COLORS.amberSoft} borderRadius={16} paddingHorizontal={14} paddingVertical={10} marginTop={6}>
+          <Text fontSize={11.5} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.orange} lineHeight={16}>
+            Phase 1 (read-only): live na ang listahan, pero hindi pa nase-save ang pag-collect — Phase 2 iyon.
+          </Text>
+        </XStack>
+
         {/* Store header */}
         <XStack
           alignItems="center"

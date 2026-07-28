@@ -15,7 +15,7 @@
 | --- | --- |
 | Screens / flows | ✅ Built (dashboard-first, no bottom nav) |
 | Data model aligned to `043`/`044` | ✅ Done (mock, but correct shapes) |
-| Phase 1 — READ from live DB | ✅ **Unblocked** 2026-07-28 (web migration 045) — not yet wired |
+| Phase 1 — READ from live DB | ✅ **Built** 2026-07-28 — lists + dashboards read the live tables (sync entity registry + local SQLite mirror + appliers). Compiles clean; on-device test pending |
 | Phase 2 — WRITE / photos / GPS | ⬜ Not started |
 | Claiming / "On the way" | ✅ Schema exists (web migration 046) — mobile not yet wired |
 
@@ -46,8 +46,10 @@ Phase 1 can start. Integration checklist in **`WEB_FIXES_NEEDED_FOR_SYNC.md`**.
 
 ## What mobile still owes (Phase 2, after read works)
 
-- Add `collection_visits` + `purchase_orders` to the sync entity registry + local
-  SQLite tables + appliers (`clients` dependency for the outbox push).
+- ~~Add `collection_visits` + `purchase_orders` to the sync entity registry +
+  local SQLite tables + appliers~~ — **done in Phase 1 (read)**. Phase 2 adds the
+  outbox WRITE path (the field roles only UPDATE rows; no `clients` dependency
+  needed since the name is denormalized).
 - Generalise `pending_uploads` to carry the 6 new photo kinds (payment, delivery
   receipt, proof, backload, cod, receiver signature).
 - Wire real GPS (`captureGps()`) onto the row at photo-capture time (a `MOCK_GPS`

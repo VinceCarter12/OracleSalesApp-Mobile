@@ -17,7 +17,7 @@ const SYNC_TIMEOUT_MS = 15000;
 // are a config addition, not a type-union edit) — `.from()` needs a literal
 // key from Database['public']['Tables'], so this single-level cast is the
 // dispatch boundary, same pattern as lib/mappers.ts/lib/remote-client-mapping.ts.
-type RemoteTableName = 'clients' | 'meetings' | 'tag_along_requests';
+type RemoteTableName = 'clients' | 'meetings' | 'tag_along_requests' | 'collection_visits' | 'purchase_orders';
 
 // Remote column is `assigned_agent_id` on `clients` — confirmed via
 // PostgREST introspection (2026-07-15); `meetings.agent_id` is correct
@@ -28,6 +28,11 @@ const AGENT_SCOPED_COLUMN: Record<EntityTableName, string> = {
   clients: 'assigned_agent_id',
   meetings: 'agent_id',
   tag_along_requests: 'requester_id',
+  // collection_visits/purchase_orders always supply their own `applyScope`
+  // (whole-day pull, RLS-scoped by role), so these are unused — present only
+  // to keep the Record exhaustive, same as tag_along_requests.
+  collection_visits: 'collector_id',
+  purchase_orders: 'driver_id',
 };
 
 async function pullEntity(db: SQLiteDatabase, agentId: string, tableName: EntityTableName): Promise<void> {
@@ -90,6 +95,21 @@ export async function syncDown(agentId: string, teamId?: string | null): Promise
     await pullEntity(db, agentId, 'tag_along_requests');
   } catch (err) {
     console.error('[sync-down] tag_along_requests pull failed:', err);
+  }
+
+  // F-007 (web 043-046): pull the day's Collection & Delivery lists. Best-effort
+  // and role-gated by RLS — a collector gets all collection_visits and zero
+  // purchase_orders (and vice versa); every other role gets zero of both, no
+  // error. Guarded so an empty/failed pull never aborts the rest of syncDown.
+  try {
+    await pullEntity(db, agentId, 'collection_visits');
+  } catch (err) {
+    console.error('[sync-down] collection_visits pull failed:', err);
+  }
+  try {
+    await pullEntity(db, agentId, 'purchase_orders');
+  } catch (err) {
+    console.error('[sync-down] purchase_orders pull failed:', err);
   }
 
   // No owner info in the snapshot (privacy decision, T-005) — just enough to

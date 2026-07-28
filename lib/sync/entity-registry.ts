@@ -1,4 +1,10 @@
-import { upsertSyncedClient, upsertSyncedMeeting, upsertSyncedTagAlongRequest } from './entity-appliers';
+import {
+  upsertSyncedClient,
+  upsertSyncedCollectionVisit,
+  upsertSyncedMeeting,
+  upsertSyncedPurchaseOrder,
+  upsertSyncedTagAlongRequest,
+} from './entity-appliers';
 import type { SQLiteDatabase } from 'expo-sqlite';
 
 // T-014 (ADR-022 #9): single source of truth for "what tables sync" —
@@ -6,7 +12,12 @@ import type { SQLiteDatabase } from 'expo-sqlite';
 // per-table `if/else` branches in sync-down.ts. Adding a future entity
 // (Tasks, etc.) is one more entry here, not a multi-file hardcoded change.
 
-export type EntityTableName = 'clients' | 'meetings' | 'tag_along_requests';
+export type EntityTableName =
+  | 'clients'
+  | 'meetings'
+  | 'tag_along_requests'
+  | 'collection_visits'
+  | 'purchase_orders';
 
 /**
  * Structural constraint for `SyncEntityConfig.applyScope` (ADR-030): matches
@@ -87,6 +98,25 @@ export const ENTITY_REGISTRY: Record<EntityTableName, SyncEntityConfig> = {
         extractForeignKey: (payload) => (payload.related_meeting_id as string | null | undefined) ?? null,
       },
     ],
+  },
+  // F-007 (web 043-046): the admin publishes the day's list; field roles read
+  // the WHOLE list (RLS scopes by role) and update rows they claim/work — they
+  // never INSERT, and client_name/area/claimed_by_name are denormalized, so
+  // there's no `clients` dependency. `applyScope` returns the query unchanged
+  // to defeat pullEntity's default per-agent `.eq()` scope (whole-day pull).
+  collection_visits: {
+    remoteTable: 'collection_visits',
+    priority: 40,
+    onConflict: 'id',
+    applyRemoteRow: upsertSyncedCollectionVisit,
+    applyScope: (query) => query,
+  },
+  purchase_orders: {
+    remoteTable: 'purchase_orders',
+    priority: 50,
+    onConflict: 'id',
+    applyRemoteRow: upsertSyncedPurchaseOrder,
+    applyScope: (query) => query,
   },
 };
 

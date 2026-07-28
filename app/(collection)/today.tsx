@@ -1,4 +1,4 @@
-import { useCallback, useReducer } from 'react';
+import { useCallback } from 'react';
 import { Pressable, ScrollView } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router, useFocusEffect } from 'expo-router';
@@ -9,12 +9,12 @@ import { Avatar } from '../../components/ui/Avatar';
 import { StatusBadge } from '../../components/ui/StatusBadge';
 import { BizTopBar } from '../../components/bizlink/BizTopBar';
 import {
-  COLLECTION_STORES,
   formatClockTime,
   formatPeso,
   getCollectionSummary,
   type CollectionStore,
 } from '../../lib/collection-delivery-data';
+import { useCollectionStores } from '../../lib/use-collection-delivery';
 
 /**
  * F-007 first draft (2026-07-25): Today's List — wireframe `c-today`, read-only
@@ -79,11 +79,10 @@ function StoreRow({ store, onPress }: { store: CollectionStore; onPress?: () => 
 export default function CollectionTodayScreen() {
   const BIZLINK_COLORS = useBizlinkColors();
   const insets = useSafeAreaInsets();
-  // Mock data mutates in place (markStoreCollected/rescheduleStore); re-render
-  // on focus so the list reflects a just-completed visit.
-  const [, refresh] = useReducer((x: number) => x + 1, 0);
-  useFocusEffect(useCallback(() => refresh(), []));
-  const summary = getCollectionSummary();
+  // F-007 Phase 1: real data from the local mirror; re-read on focus.
+  const { stores, refresh } = useCollectionStores();
+  useFocusEffect(useCallback(() => { refresh(); }, [refresh]));
+  const summary = getCollectionSummary(stores);
 
   return (
     <YStack flex={1} backgroundColor={BIZLINK_COLORS.canvas} paddingTop={insets.top}>
@@ -100,7 +99,7 @@ export default function CollectionTodayScreen() {
             Nagde-decrement habang nabibisita — ang natapos ay naka-cross-out sa ibaba.
           </Text>
         </YStack>
-        {COLLECTION_STORES.map((store) => (
+        {stores.map((store) => (
           <StoreRow
             key={store.id}
             store={store}

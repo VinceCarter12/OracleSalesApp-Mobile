@@ -12,12 +12,12 @@ import { BizButton } from '../../components/bizlink/BizButton';
 import { PhotoSlot } from '../../components/collection-delivery/PhotoSlot';
 import { SignaturePad } from '../../components/collection-delivery/SignaturePad';
 import {
-  DELIVERY_POS,
   formatPeso,
   markPoDelivered,
   markPoFailed,
   type CodMethod,
 } from '../../lib/collection-delivery-data';
+import { useDeliveryPo } from '../../lib/use-collection-delivery';
 
 /**
  * F-007 Deliver PO — wireframe `d-deliver`, aligned to web's authoritative
@@ -80,9 +80,9 @@ export default function DeliverPoScreen() {
   const { id } = useLocalSearchParams<{ id?: string }>();
 
   const poId = String(id ?? '');
-  // Read-only lookup for display; outcomes go through the by-id data-lib
-  // mutators (react-hooks/immutability).
-  const po = DELIVERY_POS.find((p) => p.id === poId);
+  // F-007 Phase 1: real record from the local mirror for display. The outcome
+  // WRITE is Phase 2 (mock mutators below no-op on a real id; see the banner).
+  const { po, loading } = useDeliveryPo(poId);
 
   const [plate, setPlate] = useState('');
   const [proofUri, setProofUri] = useState<string | null>(null);
@@ -127,13 +127,13 @@ export default function DeliverPoScreen() {
     router.back();
   }
 
-  if (!po) {
+  if (loading || !po) {
     return (
       <YStack flex={1} backgroundColor={BIZLINK_COLORS.canvas} paddingTop={insets.top}>
         <BizTopBar title="Deliver PO" />
         <YStack flex={1} alignItems="center" justifyContent="center" paddingHorizontal="$6">
           <Text fontSize={13} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} textAlign="center">
-            Hindi mahanap ang PO na ito.
+            {loading ? 'Naglo-load…' : 'Hindi mahanap ang PO na ito.'}
           </Text>
         </YStack>
       </YStack>
@@ -144,6 +144,13 @@ export default function DeliverPoScreen() {
     <YStack flex={1} backgroundColor={BIZLINK_COLORS.canvas} paddingTop={insets.top}>
       <BizTopBar title="Deliver PO" />
       <ScrollView contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 40 }} scrollEnabled={scrollEnabled}>
+        {/* Phase 1: the list reads live now, but the deliver WRITE isn't wired yet. */}
+        <XStack backgroundColor={BIZLINK_COLORS.amberSoft} borderRadius={16} paddingHorizontal={14} paddingVertical={10} marginTop={6}>
+          <Text fontSize={11.5} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.orange} lineHeight={16}>
+            Phase 1 (read-only): live na ang listahan, pero hindi pa nase-save ang deliver/backload — Phase 2 iyon.
+          </Text>
+        </XStack>
+
         {/* PO header */}
         <YStack backgroundColor={BIZLINK_COLORS.card} borderRadius={24} padding={16} marginTop={6}>
           <XStack alignItems="center" gap="$2" marginBottom={6} flexWrap="wrap">
