@@ -12,6 +12,8 @@ import {
   COMPANION_REQUEST_STATUS_LABELS,
   type ClientCompanionRequest,
 } from '../../../lib/tag-along-service';
+import { getPoConfirmationForMeeting, type PoConfirmationRecord } from '../../../lib/po-confirmation-service';
+import { PO_CONFIRMATION_STATUS_LABELS, PO_CONFIRMATION_BADGE_TONES } from '../../../lib/policies/po-confirmation-status-policy';
 import { OUTCOME_BADGE_STYLES, useBizlinkColors, BIZLINK_ON_INK, BIZLINK_FONTS } from '../../../lib/theme';
 import { BizTopBar } from '../../../components/bizlink/BizTopBar';
 import { BizCard } from '../../../components/bizlink/BizCard';
@@ -38,6 +40,7 @@ export default function MeetingDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const [meeting, setMeeting] = useState<Meeting | null>(null);
   const [companionRequests, setCompanionRequests] = useState<ClientCompanionRequest[]>([]);
+  const [poConfirmation, setPoConfirmation] = useState<PoConfirmationRecord | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -61,6 +64,11 @@ export default function MeetingDetailScreen() {
     getMeetingCompanionRequests(id)
       .then(setCompanionRequests)
       .catch((err) => console.error('[MeetingDetail] companion requests load failed:', err instanceof Error ? err.message : String(err)));
+    // ADR-044/046 point 7: best-effort PO confirmation status — absent
+    // entirely for a meeting with no 'Close deal' agenda.
+    getPoConfirmationForMeeting(id)
+      .then(setPoConfirmation)
+      .catch((err) => console.error('[MeetingDetail] PO confirmation load failed:', err instanceof Error ? err.message : String(err)));
   }, [db, id]);
 
   if (loading) {
@@ -107,6 +115,19 @@ export default function MeetingDetailScreen() {
             {meeting.sync_status ? <SyncBadge status={meeting.sync_status as OutboxStatus} /> : null}
           </XStack>
         </BizCard>
+
+        {poConfirmation ? (
+          <YStack backgroundColor={BIZLINK_COLORS[PO_CONFIRMATION_BADGE_TONES[poConfirmation.displayStatus].background]} borderRadius={20} padding={14} marginTop="$3">
+            <Text fontSize={12.5} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS[PO_CONFIRMATION_BADGE_TONES[poConfirmation.displayStatus].color]} lineHeight={17}>
+              PO evidence — {PO_CONFIRMATION_STATUS_LABELS[poConfirmation.displayStatus]}
+            </Text>
+            {poConfirmation.decisionNote ? (
+              <Text fontSize={12} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} marginTop={4} lineHeight={16}>
+                {poConfirmation.decisionNote}
+              </Text>
+            ) : null}
+          </YStack>
+        ) : null}
 
         {companionRequests.length > 0 ? (
           <YStack backgroundColor={BIZLINK_COLORS.tintA} borderRadius={20} padding={14} marginTop="$3">

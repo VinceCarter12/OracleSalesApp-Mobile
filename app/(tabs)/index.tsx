@@ -18,7 +18,7 @@ import { Text, View, XStack, YStack } from 'tamagui';
 import { useBizlinkColors, BIZLINK_FONTS } from '../../lib/theme';
 import { useClients } from '../../lib/useClients';
 import { useMeetings } from '../../lib/useMeetings';
-import { getClientStatus, CLIENT_STATUS_BADGES, WAITING_MANAGER_APPROVAL_BADGE } from '../../lib/client-status';
+import { getClientStatus, SALES_CLIENT_STATUS_BADGES, WAITING_MANAGER_APPROVAL_BADGE } from '../../lib/client-status';
 import { getClientIdsWithPendingManagerTagAlong } from '../../lib/tag-along-service';
 import { countCreatedSince } from '../../lib/team-remote-mappers';
 import { Avatar } from '../../components/ui/Avatar';
@@ -78,7 +78,7 @@ function RsrQuotaWidget({ meetings }: { meetings: Meeting[] }) {
 
 function ClientPreviewRow({ client, waitingManagerApproval }: { client: Client; waitingManagerApproval: boolean }) {
   const BIZLINK_COLORS = useBizlinkColors();
-  const badge = CLIENT_STATUS_BADGES[getClientStatus(client)];
+  const badge = SALES_CLIENT_STATUS_BADGES[getClientStatus(client)];
   return (
     <Pressable onPress={() => router.push(`/(tabs)/clients/${client.id}`)}>
       <XStack
@@ -223,7 +223,10 @@ export default function AgentHomeScreen() {
               tone="white"
               value={nonProspects.length}
               label="Clients ko"
-              caption="new + existing"
+              // ADR-042: `nonProspects` is everything !== 'prospect', which
+              // now also includes 'in_progress' — caption updated so it
+              // stays accurate rather than silently going stale.
+              caption="in progress + new + existing"
               onPress={() => router.push('/(tabs)/clients')}
             />
           </YStack>

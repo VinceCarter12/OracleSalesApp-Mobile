@@ -5,7 +5,7 @@ import { Text, View, XStack, YStack } from 'tamagui';
 import { BIZLINK_COLORS, BIZLINK_FONTS } from '../../../lib/theme';
 import { useMeetings } from '../../../lib/useMeetings';
 import { useClients } from '../../../lib/useClients';
-import { CLIENT_STATUS_BADGES, getClientStatus } from '../../../lib/client-status';
+import { SALES_CLIENT_STATUS_BADGES, getClientStatus } from '../../../lib/client-status';
 import { BizTopBar } from '../../../components/bizlink/BizTopBar';
 import { BizStatCard } from '../../../components/bizlink/BizStatCard';
 import { BizSectionHeader } from '../../../components/bizlink/BizSectionHeader';
@@ -67,7 +67,7 @@ function WeeklyMeetingsChart({ meetings }: { meetings: Meeting[] }) {
 }
 
 function MyClientRow({ client }: { client: Client }) {
-  const badge = CLIENT_STATUS_BADGES[getClientStatus(client)];
+  const badge = SALES_CLIENT_STATUS_BADGES[getClientStatus(client)];
   return (
     <Pressable onPress={() => router.push(`/(tabs)/clients/${client.id}`)}>
       <XStack

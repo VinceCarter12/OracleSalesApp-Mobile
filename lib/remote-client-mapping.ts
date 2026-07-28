@@ -31,7 +31,19 @@ export function fromRemoteSalesChannel(channel: RemoteSalesChannel | null): Sale
   return channel ? SALES_CHANNEL_FROM_REMOTE[channel] : 'Distributor';
 }
 
-/** Mobile's 'inactive' is the only local status value with a direct remote-`status` counterpart; the rest live in `customer_type`. */
+/**
+ * Mobile's 'inactive' is the only local status value with a direct remote-
+ * `status` counterpart; the rest live in `customer_type`.
+ *
+ * ADR-042 (2026-07-27): this must NEVER emit `'in_progress'` — that stage
+ * transition is 100% server-authoritative (via
+ * `advance_prospect_to_in_progress()`/`advance_in_progress_to_new()`
+ * triggers on `meetings`), never mobile-driven. The only live call site
+ * (`lib/client-service.ts::createClient()`) always passes the literal
+ * `'prospect'`, so this never actually sees an `'in_progress'` input today —
+ * the explicit fallback-to-'prospect' below is what keeps it safe even if a
+ * future caller ever passed one through.
+ */
 export function toRemoteCustomerType(status: ClientStatus | null | undefined): RemoteCustomerType {
   return status === 'new' || status === 'existing' ? status : 'prospect';
 }

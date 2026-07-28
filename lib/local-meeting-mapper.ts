@@ -1,4 +1,4 @@
-import type { Meeting, MeetingMode, MeetingOutcome } from '../types';
+import type { Meeting, MeetingMode, MeetingOutcome, MeetingValidityStatus } from '../types';
 
 // Local SQLite mirrors mobile's own domain field names (agendas, meeting_mode,
 // selfie_url, logged_at) — the remote column-name/value translation only
@@ -28,6 +28,11 @@ export interface LocalMeetingRow {
   location_name: string | null;
   remarks: string | null;
   sync_status: string;
+  // ADR-046 (SQLite v15): NOT NULL DEFAULT 'valid' on the table, but every
+  // row read through here predates that migration until it actually runs on
+  // the device — optional so a stale `SELECT m.*` result during the exact
+  // migration transaction can never crash the mapper.
+  validity_status?: string;
 }
 
 export function rowToMeeting(row: LocalMeetingRow): Meeting {
@@ -54,5 +59,6 @@ export function rowToMeeting(row: LocalMeetingRow): Meeting {
     location_name: row.location_name,
     remarks: row.remarks,
     sync_status: row.sync_status,
+    validity_status: (row.validity_status as MeetingValidityStatus | undefined) ?? 'valid',
   };
 }

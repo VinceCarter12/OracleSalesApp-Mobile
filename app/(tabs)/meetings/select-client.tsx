@@ -5,40 +5,77 @@ import { router, useFocusEffect } from 'expo-router';
 import { Spinner, Text, XStack, YStack } from 'tamagui';
 import { BIZLINK_COLORS, BIZLINK_FONTS } from '../../../lib/theme';
 import { useClients } from '../../../lib/useClients';
-import { CLIENT_STATUS_BADGES, getClientStatus } from '../../../lib/client-status';
+import { SALES_CLIENT_STATUS_BADGES, getClientStatus, isFastPathEligible } from '../../../lib/client-status';
 import { BizTopBar } from '../../../components/bizlink/BizTopBar';
 import { StatusBadge } from '../../../components/ui/StatusBadge';
 import { BizChip } from '../../../components/bizlink/BizChip';
 import type { Client, ClientStatus } from '../../../types';
 
 // Record-picker status filter (Wireframe-Sales-BizLink.html #a-record,
-// aRecordPickerFilter/aRenderRecordPicker) — defaults to 'existing' per the
-// wireframe. Pure UI filter/hint over the already-loaded client list; routing
-// logic (openRecordFlow) is untouched.
+// aRecordPickerFilter/aRenderRecordPicker). Pure UI filter/hint over the
+// already-loaded client list.
+//
+// ADR-042 follow-up (2026-07-28, verified against the wireframe directly):
+// `openRecordFlow`/`ClientRow`'s hint below route via `isFastPathEligible`
+// (new/existing whitelist), matching `Wireframe-Sales-BizLink.html:1590`
+// exactly — an in_progress client reached via the 'all' filter now
+// correctly gets the full form instead of being misrouted to the fast path.
+// The filter chip list and default now also match the wireframe's own
+// `aRecordPickerFilter` initial value (`var aRecordPickerFilter='all'`,
+// line 1549) and its `statuses` array (line 1574: `[['all','All'],
+// ['prospect','Prospect'],['in_progress','In Progress'],['new','New'],
+// ['existing','Existing']]`) — 'existing' was both the wrong default and
+// missing the 'in_progress' chip before this fix.
 type RecordPickerFilter = ClientStatus | 'all';
 const RECORD_PICKER_FILTERS: Array<{ value: RecordPickerFilter; label: string }> = [
-  { value: 'existing', label: 'Existing' },
-  { value: 'prospect', label: 'Prospect' },
-  { value: 'new', label: 'New' },
   { value: 'all', label: 'All' },
+  { value: 'prospect', label: 'Prospect' },
+  { value: 'in_progress', label: 'In Progress' },
+  { value: 'new', label: 'New' },
+  { value: 'existing', label: 'Existing' },
 ];
 
+// Wireframe-Sales-BizLink.html:1581 —
+// `var hint = c.status==='prospect' ? 'Qualify Opportunity' :
+// (c.status==='in_progress' ? 'Advance Deal' : (c.status==='new' ?
+// 'New Customer Visit' : 'Existing Customer Visit'));` — four distinct
+// per-status strings, not a binary fast-path/full-form label.
+function recordPickerHint(status: ClientStatus): string {
+  switch (status) {
+    case 'prospect':
+      return 'Qualify Opportunity';
+    case 'in_progress':
+      return 'Advance Deal';
+    case 'new':
+      return 'New Customer Visit';
+    case 'existing':
+    default:
+      return 'Existing Customer Visit';
+  }
+}
+
 /**
- * Record Meeting entry point (ADR-015, revised 2026-07-21). The branch
- * happens HERE, at client selection — customer type is derived from the
- * record, never asked:
- *   new / existing → photo-only fast path (record-visit)
- *   prospect       → full form (record)
+ * Record Meeting entry point (ADR-015, revised 2026-07-21; ADR-042 fix
+ * 2026-07-28). The branch happens HERE, at client selection — customer type
+ * is derived from the record, never asked:
+ *   new / existing         → photo-only fast path (record-visit)
+ *   prospect / in_progress → full form (record)
  * A 'new' client already has its info completed (ADR-027's auto-promotion
  * requires it) — there's nothing left to re-ask, so it gets the same fast
- * path as 'existing'. Only 'prospect' (info not yet complete) still needs
- * the full form. Meeting-first (quick-create inline on the record form) was
- * removed 2026-07-15 — a brand-new company is created via Create Client
+ * path as 'existing'. Meeting-first (quick-create inline on the record form)
+ * was removed 2026-07-15 — a brand-new company is created via Create Client
  * first, then shows up here under Prospect.
+ *
+ * Matches `Wireframe-Sales-BizLink.html:1592`'s
+ * `if(c.status!=='prospect' && c.status!=='in_progress'){ aOpenRecordVisit(id);
+ * return; }` — the wireframe whitelists fast-path eligibility to
+ * new/existing rather than blacklisting just 'prospect', so a future fifth
+ * stage doesn't silently fall into the fast path. `isFastPathEligible`
+ * (lib/client-status.ts) already encodes that same new/existing whitelist —
+ * reused here instead of re-deriving the condition.
  */
 function openRecordFlow(client: Client): void {
-  const status = getClientStatus(client);
-  if (status !== 'prospect') {
+  if (isFastPathEligible(client)) {
     router.push(`/(tabs)/meetings/record-visit?clientId=${client.id}`);
   } else {
     router.push(`/(tabs)/meetings/record?clientId=${client.id}`);
@@ -47,10 +84,8 @@ function openRecordFlow(client: Client): void {
 
 function ClientRow({ client }: { client: Client }) {
   const status = getClientStatus(client);
-  const badge = CLIENT_STATUS_BADGES[status];
-  // "Log Visit lang" (new/existing = photo-only fast path) vs "Full form"
-  // (prospect only) — mirrors openRecordFlow's own branch, display-only.
-  const hint = status !== 'prospect' ? 'Log Visit lang' : 'Full form';
+  const badge = SALES_CLIENT_STATUS_BADGES[status];
+  const hint = recordPickerHint(status);
   return (
     <Pressable onPress={() => openRecordFlow(client)}>
       <XStack
@@ -74,7 +109,9 @@ function ClientRow({ client }: { client: Client }) {
 export default function SelectClientScreen() {
   const insets = useSafeAreaInsets();
   const { clients, loading, refresh } = useClients();
-  const [statusFilter, setStatusFilter] = useState<RecordPickerFilter>('existing');
+  // Wireframe-Sales-BizLink.html:1549 — `var aRecordSelectedClientId = null,
+  // aRecordPickerFilter = 'all';` — default filter is 'all', not 'existing'.
+  const [statusFilter, setStatusFilter] = useState<RecordPickerFilter>('all');
 
   // Without this, a client created via Create Client (or completed via
   // Complete Info) never shows up here until a manual pull-to-refresh or app

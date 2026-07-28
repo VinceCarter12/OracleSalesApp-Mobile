@@ -8,6 +8,8 @@ import { isLikelyOnline } from './sync/connectivity';
 import { toRemoteLocationType, toRemoteMeetingType, toRemoteOutcome } from './remote-meeting-mapping';
 import { insertMeetingCompanionRequests, type CompanionSelection } from './tag-along-service';
 import { insertAcceptedMeetingCompanions } from './tag-along-manager-service';
+import { computeMeetingValidityStatusOnCreate } from './policies/tag-along-validity-policy';
+import { captureAndSubmitPoEvidence } from './po-confirmation-service';
 import type { MeetingMode, MeetingOutcome } from '../types';
 
 export { buildMeetingPhotoStoragePath, uploadMeetingPhoto, enqueueMeetingPhotoUrlUpdate, MEETING_PHOTO_BUCKET, PHOTO_UPLOAD_TIMEOUT_MS } from './meeting-photo-service';
@@ -94,6 +96,8 @@ export interface NewMeetingRecord {
    * approve a manager's own request. Omit/false for the normal agent path.
    */
   companionsPreAccepted?: boolean;
+  /** ADR-044/046 point 7 (Batch 3, Slice 5): PO evidence for an In Progress client's 'Close deal' agenda. `cycleId` is `Client.cycle_id` (required NOT NULL by `po_confirmation_requests`); `userId` is the Auth uid, same split as `photoToQueue.userId`. Omitted when not applicable. */
+  poEvidence?: { localPhotoUri: string; cycleId: string; userId: string } | null;
 }
 
 /**
@@ -158,14 +162,23 @@ export async function createMeeting(record: NewMeetingRecord): Promise<string> {
 
   const createdOnline = await isLikelyOnline();
 
+  // ADR-046 (correction addendum): decided once, up front, from the same
+  // companion selection used below to insert the tag_along_requests rows —
+  // never recomputed later on-device (lifecycle/quota gating stays
+  // server-reconciled, see lib/tag-along-validity-service.ts).
+  const validityStatus = computeMeetingValidityStatusOnCreate(
+    record.companions ?? [],
+    record.companionsPreAccepted ?? false
+  );
+
   await db.withTransactionAsync(async () => {
     await db.runAsync(
       `INSERT INTO meetings
         (id, client_id, agent_id, gps_lat, gps_lng, selfie_url, agendas, outcome, meeting_mode,
          start_photo_url, start_captured_at, end_photo_url, end_captured_at, end_gps_lat, end_gps_lng,
          logged_at, created_at, contact_person, contact_position, location_type, location_name, remarks,
-         sync_status, local_updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?)`,
+         validity_status, sync_status, local_updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?)`,
       [
         id,
         record.client_id,
@@ -189,6 +202,7 @@ export async function createMeeting(record: NewMeetingRecord): Promise<string> {
         record.locationType ?? null,
         record.locationName ?? null,
         record.remarks ?? null,
+        validityStatus,
         now,
       ]
     );
@@ -239,6 +253,20 @@ export async function createMeeting(record: NewMeetingRecord): Promise<string> {
     } catch (err) {
       console.error('[meeting-service] failed to queue photo upload:', err instanceof Error ? err.message : String(err));
     }
+  }
+
+  // ADR-044 decision 5: PO capture is offline-safe, submission is a
+  // best-effort ONLINE-ONLY attempt, same pattern as photo-queue/runSync
+  // above. Never throws — see po-confirmation-service.ts.
+  if (record.poEvidence && record.client_id) {
+    await captureAndSubmitPoEvidence(db, {
+      clientId: record.client_id,
+      meetingId: id,
+      requesterId: record.agent_id,
+      cycleId: record.poEvidence.cycleId,
+      localPhotoUri: record.poEvidence.localPhotoUri,
+      userId: record.poEvidence.userId,
+    });
   }
 
   // Prospect→new auto-promotion (ADR-027) is deliberately NOT checked here —

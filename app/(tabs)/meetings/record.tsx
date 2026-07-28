@@ -11,7 +11,7 @@ import { captureGps } from '../../../lib/gps';
 import { checkConnectivity } from '../../../lib/sync/connectivity';
 import { BIZLINK_COLORS, BIZLINK_FONTS } from '../../../lib/theme';
 import { createMeeting } from '../../../lib/meeting-service';
-import { getTeamRoster, inviteeKindForRole } from '../../../lib/team-roster';
+import { getCompanionRosterForViewer, getTeamRoster, inviteeKindForRole } from '../../../lib/team-roster';
 import { MAX_COMPANIONS_PER_REQUEST } from '../../../lib/tag-along-service';
 import { useClientFlowRoutes } from '../../../lib/use-role-routes';
 import { isInfoComplete } from '../../../lib/client-progress';
@@ -29,7 +29,9 @@ import { MeetingWrapUpSection } from '../../../components/meetings/MeetingWrapUp
 import { LostOpportunityDialog } from '../../../components/meetings/LostOpportunityDialog';
 import { PhotoLightbox } from '../../../components/meetings/PhotoLightbox';
 import { ClientInfoCompletionNotice } from '../../../components/meetings/ClientInfoCompletionNotice';
-import { type Client, type MeetingMode, type MeetingOutcome, type TeamRosterEntry } from '../../../types';
+import { PoEvidenceCard } from '../../../components/meetings/PoEvidenceCard';
+import { isCloseDealPoEligible } from '../../../lib/policies/po-confirmation-status-policy';
+import { CLOSE_DEAL_AGENDA, type Client, type MeetingMode, type MeetingOutcome, type TeamRosterEntry } from '../../../types';
 
 const LOCATIONS = ['Client Office', 'Others'] as const;
 
@@ -58,6 +60,12 @@ export default function RecordMeetingScreen() {
   const [remarks, setRemarks] = useState('');
   const [outcome, setOutcome] = useState<MeetingOutcome | null>(null);
   const [lostDialogOpen, setLostDialogOpen] = useState(false);
+
+  // ADR-044/046 point 7: PO evidence for an In Progress client's 'Close
+  // deal' agenda — capture-only here (camera, no gallery); the actual
+  // capture/submit split happens in createMeeting() (lib/meeting-service.ts).
+  const [poPhotoUri, setPoPhotoUri] = useState<string | null>(null);
+  const [capturingPoPhoto, setCapturingPoPhoto] = useState(false);
 
   const [saving, setSaving] = useState(false);
 
@@ -128,9 +136,35 @@ export default function RecordMeetingScreen() {
   }
 
   function toggleAgenda(agenda: string) {
-    setSelectedAgendas((prev) =>
-      prev.includes(agenda) ? prev.filter((a) => a !== agenda) : [...prev, agenda]
-    );
+    setSelectedAgendas((prev) => {
+      const next = prev.includes(agenda) ? prev.filter((a) => a !== agenda) : [...prev, agenda];
+      // Wireframe `aTogglePoEvidence()`: deselecting 'Close deal' clears any
+      // already-attached PO photo, same as the demo's `aPoEvidenceConfirmed=false`.
+      if (agenda === CLOSE_DEAL_AGENDA && !next.includes(CLOSE_DEAL_AGENDA)) setPoPhotoUri(null);
+      return next;
+    });
+  }
+
+  async function capturePoPhoto() {
+    setCapturingPoPhoto(true);
+    try {
+      const { status } = await ImagePicker.requestCameraPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert('Permission denied', 'Camera permission is required for PO evidence capture.');
+        return;
+      }
+      const result = await ImagePicker.launchCameraAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        quality: 0.7,
+        allowsEditing: false,
+      });
+      if (!result.canceled && result.assets.length > 0) {
+        setPoPhotoUri(result.assets[0].uri);
+        showToast('PO evidence attached. Manager approval is still required.');
+      }
+    } finally {
+      setCapturingPoPhoto(false);
+    }
   }
 
   function selectOutcome(next: MeetingOutcome) {
@@ -152,6 +186,16 @@ export default function RecordMeetingScreen() {
     }
     if (!outcome) {
       Alert.alert('Outcome Required', 'Please select a meeting outcome.');
+      return;
+    }
+    if (poPhotoUri && client?.status === 'in_progress' && !client.cycle_id) {
+      // ADR-044: po_confirmation_requests.cycle_id is NOT NULL — without a
+      // synced-down cycle_id the request can't be submitted at all. Block
+      // rather than silently drop the captured evidence.
+      Alert.alert(
+        'Sync Required',
+        'This client’s current cycle hasn’t synced to this device yet. Sync online, then try again before saving with PO evidence.'
+      );
       return;
     }
     if (!session || !profileId) {
@@ -203,6 +247,13 @@ export default function RecordMeetingScreen() {
         // Role-based (not route-based) so this stays correct regardless of
         // which route group renders this shared screen.
         companionsPreAccepted: role === 'sales_manager',
+        // ADR-046 point 2 / Wireframe-Sales-BizLink.html:2152 (`poRequestPending`):
+        // a Successful outcome is required alongside 'in_progress' + Close deal —
+        // see lib/policies/po-confirmation-status-policy.ts::isCloseDealPoEligible.
+        poEvidence:
+          poPhotoUri && client?.cycle_id && isCloseDealPoEligible(client?.status, outcome, selectedAgendas)
+            ? { localPhotoUri: poPhotoUri, cycleId: client.cycle_id, userId: session.user.id }
+            : null,
       });
       const connectivity = await checkConnectivity();
       router.replace(routes.celebrate(connectivity === 'online', meetingId));
@@ -226,7 +277,11 @@ export default function RecordMeetingScreen() {
           <ClientInfoCompletionNotice onCompleteInfo={() => router.push(routes.completeInfo(client.id))} />
         ) : null}
 
-        <CompanionPicker roster={roster} selected={selectedCompanions} onToggle={toggleCompanion} />
+        <CompanionPicker
+          roster={getCompanionRosterForViewer(roster, role)}
+          selected={selectedCompanions}
+          onToggle={toggleCompanion}
+        />
 
         <MeetingModeToggle mode={mode} onChange={setMode} />
 
@@ -283,6 +338,25 @@ export default function RecordMeetingScreen() {
           onRemarksChange={setRemarks}
           outcome={outcome}
           onSelectOutcome={selectOutcome}
+          afterAgenda={
+            <PoEvidenceCard
+              // Wireframe-Sales-BizLink.html:701's `aTogglePoEvidence(this)` gates
+              // the card's visibility purely on the Close-deal tile's own
+              // selection state (agenda tiles render ABOVE Outcome in both the
+              // wireframe and MeetingWrapUpSection's layout) — outcome is only
+              // read later, in the `poRequestPending` calc at line 2152, which
+              // gates the actual PO *submission*, not this card's visibility.
+              // Gating `visible` on outcome too would show/hide this card based
+              // on a field the agent hasn't reached yet in the scroll order,
+              // which is a real UX regression, not just a cosmetic deviation —
+              // see isCloseDealPoEligible's use in the poEvidence trigger below
+              // for where the outcome check actually belongs.
+              visible={client?.status === 'in_progress' && selectedAgendas.includes(CLOSE_DEAL_AGENDA)}
+              photoUri={poPhotoUri}
+              capturing={capturingPoPhoto}
+              onCapture={capturePoPhoto}
+            />
+          }
         />
 
         <YStack marginTop="$5">

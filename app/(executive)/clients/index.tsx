@@ -16,9 +16,11 @@ import { Avatar } from '../../../components/ui/Avatar';
 import { StatusBadge } from '../../../components/ui/StatusBadge';
 import type { ClientStatus, ExecAgent, ExecManager } from '../../../types';
 
-type StatusFilter = Extract<ClientStatus, 'prospect' | 'new' | 'existing'> | 'all';
+type StatusFilter = Extract<ClientStatus, 'prospect' | 'in_progress' | 'new' | 'existing'> | 'all';
 
-const STATUS_FILTERS: StatusFilter[] = ['all', 'prospect', 'new', 'existing'];
+// Order mirrors Wireframe-Executive-BizLink.html's xRenderClients() `statuses` array
+// (all, prospect, in_progress, new, existing) — ADR-046 point 6.
+const STATUS_FILTERS: StatusFilter[] = ['all', 'prospect', 'in_progress', 'new', 'existing'];
 
 /** Wireframe x-clients — gated (ADR-007), view-only: ALL clients company-wide, filter by manager + status. B-054 Phase 2: real data. */
 export default function ExecutiveClientsScreen() {

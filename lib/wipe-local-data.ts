@@ -30,6 +30,16 @@ const TABLES_TO_WIPE = [
   'tag_along_requests',
   'company_names_snapshot',
   'team_roster_snapshot',
+  // ADR-045 (Batch 3, SQLite v14): `client_cycles_snapshot` is owner-scoped
+  // (leaking it across an account switch would show the next agent another
+  // agent's cycle/claim history); the other three are global reference data
+  // (agenda catalog/policy versions/stage rules), but are wiped too for the
+  // same reason `company_names_snapshot` already is — trivially and cheaply
+  // wholesale-repopulated by the next sync-down regardless of account.
+  'client_cycles_snapshot',
+  'agenda_catalog_snapshot',
+  'agenda_policy_versions_snapshot',
+  'agenda_stage_rules_snapshot',
 ] as const;
 
 async function countUnsyncedOutboxRows(): Promise<number> {

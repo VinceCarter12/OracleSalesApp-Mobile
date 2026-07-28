@@ -1,5 +1,6 @@
 import { getDb } from './db';
 import type { TeamRosterEntry } from '../types';
+export { inviteeKindForRole, getCompanionRosterForViewer } from './policies/companion-roster-policy';
 
 // ADR-030: reads the local `team_roster_snapshot` mirror (populated by
 // lib/sync-down.ts::pullTeamRoster via Migration 019's team-scoped profiles
@@ -44,7 +45,3 @@ export async function getTeamRoster(): Promise<TeamRosterEntry[]> {
   return rows.map(rowToEntry);
 }
 
-/** `invitee_kind` derivation shared by the picker UI and its save path (ADR-030 decision 2). */
-export function inviteeKindForRole(role: TeamRosterEntry['role']): 'manager' | 'teammate' {
-  return role === 'sales_manager' ? 'manager' : 'teammate';
-}

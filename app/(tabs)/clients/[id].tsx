@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { Pressable, ScrollView } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
-import { Camera, Check, ClipboardList, Pencil } from 'lucide-react-native';
+import { Check, ClipboardList, Handshake, Pencil } from 'lucide-react-native';
 import { Spinner, Text, View, XStack, YStack } from 'tamagui';
 import { getClientById } from '../../../lib/client-service';
 import { useSession } from '../../../lib/session-store';
@@ -15,7 +15,7 @@ import {
   type ClientCompanionRequest,
 } from '../../../lib/tag-along-service';
 import { OUTCOME_BADGE_STYLES, BIZLINK_COLORS, BIZLINK_FONTS } from '../../../lib/theme';
-import { CLIENT_STATUS_BADGES, getClientStatus, WAITING_MANAGER_APPROVAL_BADGE } from '../../../lib/client-status';
+import { SALES_CLIENT_STATUS_BADGES, getClientStatus, WAITING_MANAGER_APPROVAL_BADGE } from '../../../lib/client-status';
 import { getClientProgressBreakdown, getInfoChecklist, isInfoComplete } from '../../../lib/client-progress';
 import { useMeetings } from '../../../lib/useMeetings';
 import { useClientFlowRoutes } from '../../../lib/use-role-routes';
@@ -103,7 +103,7 @@ export default function ClientDetailScreen() {
   }
 
   const status = getClientStatus(client);
-  const badge = CLIENT_STATUS_BADGES[status];
+  const badge = SALES_CLIENT_STATUS_BADGES[status];
   const checklist = getInfoChecklist(client);
   const { presented, total } = getClientProgressBreakdown(client, meetings);
   const progress = total;
@@ -213,11 +213,21 @@ export default function ClientDetailScreen() {
           ))}
         </BizCard>
 
-        {/* Two primary actions side-by-side (Wireframe a-detail, ~line 521-524).
-            Record Meeting is hidden here once status !== 'prospect' (revised
-            2026-07-21 — 'new' now shares 'existing's fast path, ADR-015) —
-            those clients log visits solely through My Meetings (2026-07-15
-            wireframe note), so there is only one entry point instead of two. */}
+        {/* Two primary actions side-by-side (Wireframe a-detail, line 602-606).
+            `a-qualifyBtn`'s gate, verified directly against the wireframe
+            source (Wireframe-Sales-BizLink.html:1837):
+            `qualifyBtn.style.display = c.status==='prospect' &&
+            !aClientInfoComplete(c) ? 'flex' : 'none';` — prospect-only, AND
+            only while info is still incomplete; label "Qualify Opportunity"
+            with a handshake icon (line 604: `<button ... id="a-qualifyBtn"
+            onclick="aStartRecordFor(currentAClientId)"><i data-lucide=
+            "handshake"></i> Qualify Opportunity</button>`).
+            No other action button appears for 'in_progress' in this section
+            of the wireframe — the only other conditional button here is
+            `a-officePinBtn` (prospect office-pin flow, unrelated), so
+            'in_progress' clients correctly show only the Edit/Complete Info
+            button, matching ADR-046 point 2 (In Progress meetings start
+            solely from My Meetings -> Select Client, not from Client Detail). */}
         <XStack gap="$2.5" marginTop="$3.5">
           <YStack flex={1}>
             <BizButton
@@ -229,11 +239,11 @@ export default function ClientDetailScreen() {
               onPress={() => router.push(routes.completeInfo(client.id))}
             />
           </YStack>
-          {status === 'prospect' ? (
+          {status === 'prospect' && !isInfoComplete(client) ? (
             <YStack flex={1}>
               <BizButton
-                label="Record meeting"
-                icon={<Camera size={15} color={BIZLINK_COLORS.card} strokeWidth={1.75} />}
+                label="Qualify Opportunity"
+                icon={<Handshake size={15} color={BIZLINK_COLORS.card} strokeWidth={1.75} />}
                 onPress={() => router.push(routes.recordMeeting(client.id))}
               />
             </YStack>

@@ -2,30 +2,40 @@ import { useCallback, useState } from 'react';
 import { ScrollView } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect } from 'expo-router';
-import { AlertTriangle, Bell, CircleAlert, RefreshCw, Users } from 'lucide-react-native';
+import { AlertTriangle, Bell, CircleAlert, FileCheck2, RefreshCw, Users } from 'lucide-react-native';
 import { Spinner, Text, XStack, YStack } from 'tamagui';
 import { BIZLINK_COLORS, BIZLINK_FONTS } from '../../../lib/theme';
 import { getOutboxCounts, type OutboxCounts } from '../../../lib/sync-engine';
 import { getRecentCompanionTagsForInvitee, type RecentManagerTag } from '../../../lib/tag-along-invitee-service';
+import { getMyPoConfirmationStatuses, type PoConfirmationRecord } from '../../../lib/po-confirmation-service';
+import { PO_CONFIRMATION_STATUS_LABELS, PO_CONFIRMATION_BADGE_TONES } from '../../../lib/policies/po-confirmation-status-policy';
+import { getClientById } from '../../../lib/client-service';
 import { useSession } from '../../../lib/session-store';
 import { BizTopBar } from '../../../components/bizlink/BizTopBar';
 
 /**
- * Wireframe `id="a-notifications"` (`aRenderNotifications()`, ~line 1036)
+ * Wireframe `id="a-notifications"` (`aRenderNotifications()`, ~line 1159)
  * mocks a richer feed (deadline reminders, tag-along updates, approvals) —
  * most of that still has no real client-side data source (deadline
  * countdown is T-018, approvals no longer exist at all per F-205). Tag-along
  * updates DO now have a real source (F-205 / B-053) — a manager tagging this
  * agent directly into their own meeting (`insertAcceptedMeetingCompanions()`)
- * — so this screen is scoped to what's genuinely derivable: real
- * sync-outbox counts (`getOutboxCounts()`, same source as the Home screen's
- * sync chip) plus this agent's own recent manager tag-alongs.
+ * — as does PO confirmation status (ADR-046 point 7, Batch 3 Slice 5) via
+ * `getMyPoConfirmationStatuses()` — so this screen is scoped to what's
+ * genuinely derivable: real sync-outbox counts (`getOutboxCounts()`, same
+ * source as the Home screen's sync chip), this agent's own recent manager
+ * tag-alongs, and this agent's own PO confirmation request statuses. Every
+ * item here follows the wireframe's card shape 1:1 (icon + title + body,
+ * `aRenderNotifications()` lines 1181-1184) — no tap target/action, since
+ * the wireframe only wires Accept/Decline actions to `n.companionRequestId`
+ * (F-015/ADR-030), never to a PO confirmation row.
  */
 export default function NotificationsScreen() {
   const insets = useSafeAreaInsets();
   const { profileId } = useSession();
   const [counts, setCounts] = useState<OutboxCounts | null>(null);
   const [managerTags, setManagerTags] = useState<RecentManagerTag[]>([]);
+  const [poConfirmations, setPoConfirmations] = useState<Array<{ record: PoConfirmationRecord; clientName: string | null }>>([]);
   const [loading, setLoading] = useState(true);
 
   const load = useCallback(() => {
@@ -33,10 +43,18 @@ export default function NotificationsScreen() {
     Promise.all([
       getOutboxCounts(),
       profileId ? getRecentCompanionTagsForInvitee(profileId) : Promise.resolve([]),
+      profileId ? getMyPoConfirmationStatuses(profileId) : Promise.resolve([]),
     ])
-      .then(([outboxCounts, tags]) => {
+      .then(async ([outboxCounts, tags, poRecords]) => {
         setCounts(outboxCounts);
         setManagerTags(tags);
+        const withClientNames = await Promise.all(
+          poRecords.map(async (record) => ({
+            record,
+            clientName: (await getClientById(record.clientId))?.company_name ?? null,
+          }))
+        );
+        setPoConfirmations(withClientNames);
       })
       .finally(() => setLoading(false));
   }, [profileId]);
@@ -73,6 +91,14 @@ export default function NotificationsScreen() {
       icon: <Users size={16} color={BIZLINK_COLORS.brand} strokeWidth={1.75} />,
       title: `${managerName} tinag ka sa isang meeting`,
       body: tag.clientName ? `${tag.clientName} — ${new Date(tag.createdAt).toLocaleDateString()}` : new Date(tag.createdAt).toLocaleDateString(),
+    });
+  }
+  for (const { record, clientName } of poConfirmations) {
+    const tone = PO_CONFIRMATION_BADGE_TONES[record.displayStatus];
+    items.push({
+      icon: <FileCheck2 size={16} color={BIZLINK_COLORS[tone.color]} strokeWidth={1.75} />,
+      title: clientName ? `PO evidence — ${clientName}` : 'PO evidence update',
+      body: `${PO_CONFIRMATION_STATUS_LABELS[record.displayStatus]} — ${new Date(record.updatedAt).toLocaleDateString()}`,
     });
   }
 

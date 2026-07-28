@@ -198,21 +198,25 @@ export async function pushSingleRow(row: OutboxRow, target: PushTarget): Promise
     row.operation === 'update'
       ? updateOne(assertUpdatableTable(remoteTable, row), payload, row.record_id)
       : upsertOne(remoteTable, payload, target.onConflict);
-  const { error } = await withTimeout(
+  const { error, status } = await withTimeout(
     Promise.resolve(call),
     SYNC_TIMEOUT_MS,
     `outbox ${row.operation} ${row.table_name}/${row.record_id}`
   );
-  if (error) throw error;
+  // ADR-036: carries the HTTP status onto the thrown error so
+  // lib/sync/outbox-status.ts::classifySyncError() can reliably detect a 429
+  // (rate-limited) response by status code rather than guessing from message
+  // text, which PostgREST/Kong doesn't consistently shape for 429s.
+  if (error) throw { ...error, status };
 }
 
 export async function pushChunk(rows: OutboxRow[], target: PushTarget): Promise<void> {
   const remoteTable = target.remoteTable as RemoteTableName;
   const payloads = rows.map((row) => JSON.parse(row.payload) as AnyRemoteInsertPayload);
-  const { error } = await withTimeout(
+  const { error, status } = await withTimeout(
     Promise.resolve(upsertMany(remoteTable, payloads, target.onConflict)),
     SYNC_TIMEOUT_MS,
     `outbox batch upsert ${target.remoteTable} (${rows.length} rows)`
   );
-  if (error) throw error;
+  if (error) throw { ...error, status };
 }

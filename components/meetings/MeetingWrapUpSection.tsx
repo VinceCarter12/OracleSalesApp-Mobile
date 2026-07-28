@@ -12,6 +12,8 @@ interface MeetingWrapUpSectionProps {
   onRemarksChange: (value: string) => void;
   outcome: MeetingOutcome | null;
   onSelectOutcome: (outcome: MeetingOutcome) => void;
+  /** ADR-044/046 point 7: the PoEvidenceCard slots in right after the agenda tiles, before Remarks — matching Wireframe-Sales-BizLink.html's `#a-poEvidence` placement exactly. */
+  afterAgenda?: React.ReactNode;
 }
 
 /**
@@ -25,6 +27,7 @@ export function MeetingWrapUpSection({
   onRemarksChange,
   outcome,
   onSelectOutcome,
+  afterAgenda,
 }: MeetingWrapUpSectionProps) {
   return (
     <>
@@ -42,6 +45,7 @@ export function MeetingWrapUpSection({
           />
         ))}
       </XStack>
+      {afterAgenda}
 
       <BizSectionHeader title="Remarks" />
       <TextInput

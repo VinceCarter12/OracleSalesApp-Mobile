@@ -24,14 +24,40 @@ describe('getQuotaTarget', () => {
 });
 
 describe('countValidMeetingsForQuota', () => {
+  const day = '2026-07-26T12:00:00.000Z';
+
   it('counts only same-day, in-person meetings across a mixed array', () => {
-    const day = '2026-07-26T12:00:00.000Z';
-    const meetings: Pick<Meeting, 'meeting_mode' | 'logged_at'>[] = [
-      { meeting_mode: 'in_person', logged_at: '2026-07-26T01:00:00.000Z' },
-      { meeting_mode: 'online', logged_at: '2026-07-26T02:00:00.000Z' },
-      { meeting_mode: 'in_person', logged_at: '2026-07-25T01:00:00.000Z' },
-      { meeting_mode: undefined, logged_at: '2026-07-26T03:00:00.000Z' },
+    const meetings: Pick<Meeting, 'meeting_mode' | 'logged_at' | 'validity_status'>[] = [
+      { meeting_mode: 'in_person', logged_at: '2026-07-26T01:00:00.000Z', validity_status: 'valid' },
+      { meeting_mode: 'online', logged_at: '2026-07-26T02:00:00.000Z', validity_status: 'valid' },
+      { meeting_mode: 'in_person', logged_at: '2026-07-25T01:00:00.000Z', validity_status: 'valid' },
+      { meeting_mode: undefined, logged_at: '2026-07-26T03:00:00.000Z', validity_status: 'valid' },
     ];
     expect(countValidMeetingsForQuota(meetings, day)).toBe(2);
+  });
+
+  // ADR-046 correction addendum: only a pending MANAGER tag-along excludes a
+  // meeting from quota — this is that exclusion at the quota-policy layer
+  // (lib/policies/tag-along-validity-policy.test.ts covers the earlier
+  // creation-time decision of which kind sets 'pending_confirmation').
+  it('excludes a same-day in-person meeting still gated by a pending MANAGER tag-along', () => {
+    const meetings: Pick<Meeting, 'meeting_mode' | 'logged_at' | 'validity_status'>[] = [
+      { meeting_mode: 'in_person', logged_at: '2026-07-26T01:00:00.000Z', validity_status: 'pending_confirmation' },
+    ];
+    expect(countValidMeetingsForQuota(meetings, day)).toBe(0);
+  });
+
+  it('does NOT exclude a meeting whose only companion was a teammate (never sets pending_confirmation)', () => {
+    const meetings: Pick<Meeting, 'meeting_mode' | 'logged_at' | 'validity_status'>[] = [
+      { meeting_mode: 'in_person', logged_at: '2026-07-26T01:00:00.000Z', validity_status: 'valid' },
+    ];
+    expect(countValidMeetingsForQuota(meetings, day)).toBe(1);
+  });
+
+  it('treats a missing validity_status (pre-migration row) as valid, matching the column default', () => {
+    const meetings: Pick<Meeting, 'meeting_mode' | 'logged_at' | 'validity_status'>[] = [
+      { meeting_mode: 'in_person', logged_at: '2026-07-26T01:00:00.000Z', validity_status: undefined },
+    ];
+    expect(countValidMeetingsForQuota(meetings, day)).toBe(1);
   });
 });
