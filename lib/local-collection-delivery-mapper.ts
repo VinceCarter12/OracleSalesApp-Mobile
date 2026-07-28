@@ -106,6 +106,7 @@ export function rowToStore(row: LocalCollectionVisitRow): CollectionStore {
     // so we don't yet distinguish "mine vs someone else's".
     onTheWay: pending && !!row.claimed_by,
     claimedBy: row.claimed_by_name ?? undefined,
+    claimedById: row.claimed_by ?? undefined,
   };
 }
 
@@ -133,5 +134,6 @@ export function rowToPo(row: LocalPurchaseOrderRow): DeliveryPo {
     codRemitted: row.cod_remitted === 1,
     onTheWay: pending && !!row.claimed_by,
     claimedBy: row.claimed_by_name ?? undefined,
+    claimedById: row.claimed_by ?? undefined,
   };
 }

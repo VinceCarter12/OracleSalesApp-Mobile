@@ -83,7 +83,7 @@ export function useCollectionStore(id: string | undefined) {
   }, [fetch]);
   useEffect(() => subscribeSyncComplete(fetch), [fetch]);
 
-  return { store, loading };
+  return { store, loading, refresh: fetch };
 }
 
 /** Single purchase order by id — for the Deliver PO screen's display. */
@@ -111,5 +111,5 @@ export function useDeliveryPo(id: string | undefined) {
   }, [fetch]);
   useEffect(() => subscribeSyncComplete(fetch), [fetch]);
 
-  return { po, loading };
+  return { po, loading, refresh: fetch };
 }

@@ -69,6 +69,8 @@ export interface CollectionStore {
    */
   onTheWay?: boolean;
   claimedBy?: string;
+  /** Raw `claimed_by` profile id — compare to your own to tell mine vs someone else's. */
+  claimedById?: string;
 }
 
 export const COLLECTION_STORES: CollectionStore[] = [
@@ -123,6 +125,8 @@ export interface DeliveryPo {
    */
   onTheWay?: boolean;
   claimedBy?: string;
+  /** Raw `claimed_by` profile id — compare to your own to tell mine vs someone else's. */
+  claimedById?: string;
 }
 
 export const DELIVERY_POS: DeliveryPo[] = [
