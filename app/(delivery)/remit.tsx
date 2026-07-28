@@ -7,6 +7,7 @@ import { useBizlinkColors, BIZLINK_FONTS, BIZLINK_ON_INK, COLORS } from '../../l
 import { StatusBadge } from '../../components/ui/StatusBadge';
 import { BizButton } from '../../components/bizlink/BizButton';
 import { BizSectionHeader } from '../../components/bizlink/BizSectionHeader';
+import { BizTopBar } from '../../components/bizlink/BizTopBar';
 import { PhotoSlot } from '../../components/collection-delivery/PhotoSlot';
 import { SignaturePad } from '../../components/collection-delivery/SignaturePad';
 import { ReceiverPicker } from '../../components/collection-delivery/ReceiverPicker';
@@ -50,12 +51,8 @@ export default function DeliveryRemitScreen() {
 
   return (
     <YStack flex={1} backgroundColor={BIZLINK_COLORS.canvas} paddingTop={insets.top}>
-      <XStack alignItems="center" paddingHorizontal="$4" paddingTop="$3" paddingBottom="$2">
-        <Text fontSize={21} fontFamily={BIZLINK_FONTS.semibold} letterSpacing={-0.4} color={BIZLINK_COLORS.text}>
-          Remit COD Collections
-        </Text>
-      </XStack>
-      <ScrollView contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 96 }} scrollEnabled={scrollEnabled}>
+      <BizTopBar title="Remit COD Collections" />
+      <ScrollView contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 40 }} scrollEnabled={scrollEnabled}>
         <YStack backgroundColor={BIZLINK_COLORS.ink} borderRadius={24} padding={18} marginTop={6} alignItems="center">
           <Text fontSize={12} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_ON_INK.textMuted}>
             Hawak mong COD ngayon
@@ -64,9 +61,9 @@ export default function DeliveryRemitScreen() {
             {formatPeso(summary.codOnHand)}
           </Text>
           <XStack gap="$2" marginTop={12} flexWrap="wrap" justifyContent="center">
-            <StatusBadge label={`Cash ${formatPeso(totalBy('Cash'))}`} background={COLORS.purpleSoft} color={COLORS.purple} />
-            <StatusBadge label={`Check ${formatPeso(totalBy('Check'))}`} background={COLORS.blueSoft} color={COLORS.blue} />
-            <StatusBadge label={`GCash ${formatPeso(totalBy('GCash'))}`} background={COLORS.blueSoft} color={COLORS.blue} />
+            <StatusBadge label={`Cash ${formatPeso(totalBy('cash'))}`} background={COLORS.purpleSoft} color={COLORS.purple} />
+            <StatusBadge label={`Check ${formatPeso(totalBy('check'))}`} background={COLORS.blueSoft} color={COLORS.blue} />
+            <StatusBadge label={`GCash ${formatPeso(totalBy('gcash'))}`} background={COLORS.blueSoft} color={COLORS.blue} />
           </XStack>
         </YStack>
 

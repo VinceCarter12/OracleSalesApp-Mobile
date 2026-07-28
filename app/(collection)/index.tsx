@@ -1,8 +1,8 @@
-import { useState } from 'react';
+import { useCallback, useReducer, useState } from 'react';
 import { Pressable, ScrollView } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { router } from 'expo-router';
-import { Bell, ClipboardList, Ellipsis, HandCoins, Hourglass, Vault } from 'lucide-react-native';
+import { router, useFocusEffect } from 'expo-router';
+import { Bell, ClipboardList, History, Hourglass, User, Vault } from 'lucide-react-native';
 import { Text, View, XStack, YStack } from 'tamagui';
 import { useBizlinkColors, BIZLINK_FONTS, BIZLINK_ON_INK, COLORS } from '../../lib/theme';
 import { useSession } from '../../lib/session-store';
@@ -72,8 +72,11 @@ function StoreBadge({ store }: { store: CollectionStore }) {
   if (store.status === 'collected') {
     return <StatusBadge label="Collected" background={COLORS.greenSoft} color={COLORS.ledgeGreen} />;
   }
-  if (store.status === 'resched') {
+  if (store.status === 'rescheduled') {
     return <StatusBadge label={`Moved to ${store.reschedTo}`} background={COLORS.amberSoft} color={COLORS.orange} />;
+  }
+  if (store.onTheWay) {
+    return <StatusBadge label="On the way" background={COLORS.amberSoft} color={COLORS.orange} />;
   }
   return <StatusBadge label="Pending" background={COLORS.blueSoft} color={COLORS.blue} />;
 }
@@ -111,10 +114,18 @@ export default function CollectionDashboardScreen() {
   const [syncSheetOpen, setSyncSheetOpen] = useState(false);
   // B-023: remount the chip on sheet-close, same as the other dashboards.
   const [syncChipKey, setSyncChipKey] = useState(0);
+  // Mock data mutates in place after a collect (markStoreCollected); re-render
+  // on focus so the stats/route reflect it when returning to the dashboard.
+  const [, refresh] = useReducer((x: number) => x + 1, 0);
+  useFocusEffect(useCallback(() => refresh(), []));
 
   const summary = getCollectionSummary();
-  const routePreview = COLLECTION_STORES.filter((s) => s.status === 'pending').slice(0, 3);
+  const pendingStores = COLLECTION_STORES.filter((s) => s.status === 'pending');
+  const routePreview = pendingStores.slice(0, 3);
   const greetingName = firstName(fullName) || 'Collector';
+
+  const openVisit = (storeId: string) =>
+    router.push({ pathname: '/(collection)/visit', params: { id: storeId } });
 
   return (
     <YStack flex={1} backgroundColor={BIZLINK_COLORS.canvas} paddingTop={insets.top}>
@@ -126,14 +137,14 @@ export default function CollectionDashboardScreen() {
           </Text>
           <StatusBadge label="Collection Officer" background={COLORS.greenTint} color={COLORS.ledgeGreen} />
         </YStack>
-        <Pressable onPress={() => router.push('/(collection)/more')} style={{ marginLeft: 'auto' }} hitSlop={6}>
+        <Pressable onPress={() => setSyncSheetOpen(true)} style={{ marginLeft: 'auto' }} hitSlop={6}>
           <YStack width={44} height={44} borderRadius={22} backgroundColor={BIZLINK_COLORS.card} alignItems="center" justifyContent="center">
             <Bell size={17} color={BIZLINK_COLORS.text} strokeWidth={1.75} />
           </YStack>
         </Pressable>
       </XStack>
 
-      <ScrollView contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 96 }}>
+      <ScrollView contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 40 }}>
         <XStack gap={10} marginTop={6}>
           <YStack flex={1}>
             <BizStatCard
@@ -161,7 +172,43 @@ export default function CollectionDashboardScreen() {
           onPress={() => router.push('/(collection)/remit')}
         />
 
-        <SyncStatusChip key={syncChipKey} onPress={() => setSyncSheetOpen(true)} />
+        {/* Wireframe c-home: Actions are the dashboard's main focus, surfaced
+            directly under the hero (before the route list, not buried). */}
+        <BizSectionHeader title="Actions" />
+        <XStack gap="$2.5" flexWrap="wrap">
+          <BizQuickAction
+            icon={<ClipboardList size={20} color={BIZLINK_COLORS.ink} strokeWidth={1.75} />}
+            label="Today's List"
+            badgeCount={summary.pendingCount}
+            onPress={() => router.push('/(collection)/today')}
+          />
+          <BizQuickAction
+            icon={<Vault size={20} color={BIZLINK_COLORS.ink} strokeWidth={1.75} />}
+            label="Remit"
+            onPress={() => router.push('/(collection)/remit')}
+          />
+          <BizQuickAction
+            icon={<History size={20} color={BIZLINK_COLORS.ink} strokeWidth={1.75} />}
+            label="History"
+            onPress={() => router.push('/(collection)/history')}
+          />
+          <BizQuickAction
+            icon={<User size={20} color={BIZLINK_COLORS.ink} strokeWidth={1.75} />}
+            label="Account"
+            onPress={() => router.push('/(collection)/account')}
+          />
+        </XStack>
+
+        <BizSectionHeader title="Today's route" actionLabel="Tingnan lahat" onAction={() => router.push('/(collection)/today')} />
+        {routePreview.length === 0 ? (
+          <Text fontSize={13} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} paddingVertical="$3">
+            Tapos na ang lahat ng visits ngayong araw!
+          </Text>
+        ) : (
+          routePreview.map((store) => (
+            <RoutePreviewRow key={store.id} store={store} onPress={() => openVisit(store.id)} />
+          ))
+        )}
 
         {summary.pendingCount > 0 ? (
           <BizDashboardAlert
@@ -173,41 +220,9 @@ export default function CollectionDashboardScreen() {
           />
         ) : null}
 
-        <BizSectionHeader title="Today's route" actionLabel="Tingnan lahat" onAction={() => router.push('/(collection)/today')} />
-        {routePreview.length === 0 ? (
-          <Text fontSize={13} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} paddingVertical="$3">
-            Tapos na ang lahat ng visits ngayong araw!
-          </Text>
-        ) : (
-          routePreview.map((store) => (
-            <RoutePreviewRow key={store.id} store={store} onPress={() => router.push('/(collection)/today')} />
-          ))
-        )}
-
-        <BizSectionHeader title="Quick Actions" />
-        <XStack gap="$2.5" flexWrap="wrap">
-          <BizQuickAction
-            icon={<ClipboardList size={20} color={BIZLINK_COLORS.ink} strokeWidth={1.75} />}
-            label="Today's List"
-            badgeCount={summary.pendingCount}
-            onPress={() => router.push('/(collection)/today')}
-          />
-          <BizQuickAction
-            icon={<HandCoins size={20} color={BIZLINK_COLORS.ink} strokeWidth={1.75} />}
-            label="Collect"
-            onPress={() => router.push('/(collection)/today')}
-          />
-          <BizQuickAction
-            icon={<Vault size={20} color={BIZLINK_COLORS.ink} strokeWidth={1.75} />}
-            label="Remit"
-            onPress={() => router.push('/(collection)/remit')}
-          />
-          <BizQuickAction
-            icon={<Ellipsis size={20} color={BIZLINK_COLORS.ink} strokeWidth={1.75} />}
-            label="More"
-            onPress={() => router.push('/(collection)/more')}
-          />
-        </XStack>
+        {/* Wireframe c-home: Sync status lives at the bottom of the dashboard. */}
+        <BizSectionHeader title="Sync" />
+        <SyncStatusChip key={syncChipKey} onPress={() => setSyncSheetOpen(true)} />
       </ScrollView>
 
       <SyncCenterSheet
