@@ -3,6 +3,7 @@ import { fromRemoteSalesChannel, fromRemoteStatus } from '../remote-client-mappi
 import { fromRemoteLocationType, fromRemoteMeetingType, fromRemoteOutcome } from '../remote-meeting-mapping';
 import { uuidv4 } from '../uuid';
 import { enqueueSyncAuditRow } from './audit-log';
+import { reconcileMeetingValidityAfterManagerTagAlong } from '../tag-along-validity-service';
 import type { SQLiteDatabase } from 'expo-sqlite';
 import type {
   RemoteClientStatus,
@@ -99,8 +100,8 @@ export async function upsertSyncedClient(
       (id, company_name, normalized_name, contact_person, position, contact_number, address_line1,
        address_line2, landmark, province, city, customer_type, sales_channel, status,
        agent_id, details_deadline_at, details_completed_at, inactive_reason,
-       created_at, updated_at, sync_status, local_updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'synced', ?)
+       created_at, updated_at, cycle_id, in_progress_at, sync_status, local_updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'synced', ?)
      ON CONFLICT(id) DO UPDATE SET
        company_name = excluded.company_name, normalized_name = excluded.normalized_name,
        contact_person = excluded.contact_person, position = excluded.position,
@@ -110,7 +111,8 @@ export async function upsertSyncedClient(
        sales_channel = excluded.sales_channel, status = excluded.status, agent_id = excluded.agent_id,
        details_deadline_at = excluded.details_deadline_at, details_completed_at = excluded.details_completed_at,
        inactive_reason = excluded.inactive_reason, created_at = excluded.created_at,
-       updated_at = excluded.updated_at, sync_status = 'synced', sync_error = NULL, local_updated_at = excluded.local_updated_at
+       updated_at = excluded.updated_at, cycle_id = excluded.cycle_id, in_progress_at = excluded.in_progress_at,
+       sync_status = 'synced', sync_error = NULL, local_updated_at = excluded.local_updated_at
      WHERE clients.sync_status = 'synced'`,
     [
       row.id as string,
@@ -136,6 +138,11 @@ export async function upsertSyncedClient(
       (row.inactive_reason as string) ?? null,
       row.created_at as string,
       row.updated_at as string,
+      // ADR-045 (Migration 035/038): read-only, server-authoritative — never
+      // written by mobile itself. `current_cycle_id` is the remote column
+      // name; local column is shortened to `cycle_id` (lib/db.ts v14).
+      (row.current_cycle_id as string) ?? null,
+      (row.in_progress_at as string) ?? null,
       now,
     ]
   );
@@ -178,8 +185,8 @@ export async function upsertSyncedMeeting(
       (id, client_id, agent_id, gps_lat, gps_lng, selfie_url, agendas, outcome,
        meeting_mode, start_photo_url, start_captured_at, end_photo_url, end_captured_at,
        end_gps_lat, end_gps_lng, logged_at, created_at, contact_person, contact_position,
-       location_type, location_name, remarks, sync_status, local_updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'synced', ?)
+       location_type, location_name, remarks, cycle_id, agenda_ids, sync_status, local_updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'synced', ?)
      ON CONFLICT(id) DO UPDATE SET
        client_id = excluded.client_id, agent_id = excluded.agent_id, gps_lat = excluded.gps_lat,
        gps_lng = excluded.gps_lng, selfie_url = excluded.selfie_url, agendas = excluded.agendas,
@@ -190,7 +197,7 @@ export async function upsertSyncedMeeting(
        logged_at = excluded.logged_at, created_at = excluded.created_at,
        contact_person = excluded.contact_person, contact_position = excluded.contact_position,
        location_type = excluded.location_type, location_name = excluded.location_name,
-       remarks = excluded.remarks,
+       remarks = excluded.remarks, cycle_id = excluded.cycle_id, agenda_ids = excluded.agenda_ids,
        sync_status = 'synced', sync_error = NULL, local_updated_at = excluded.local_updated_at
      WHERE meetings.sync_status = 'synced'`,
     [
@@ -216,6 +223,11 @@ export async function upsertSyncedMeeting(
       fromRemoteLocationType(row.location_type as string | null | undefined),
       (row.location_name as string) ?? null,
       (row.remarks as string) ?? null,
+      // ADR-045 (Migration 038 Part B): read-only, server-authoritative
+      // (stamped by the `stamp_meeting_cycle` trigger) — mobile never sets
+      // either of these itself at meeting-creation time.
+      (row.cycle_id as string) ?? null,
+      JSON.stringify(row.agenda_ids ?? []),
       now,
     ]
   );
@@ -265,4 +277,15 @@ export async function upsertSyncedTagAlongRequest(
       now,
     ]
   );
+
+  // ADR-046 (correction addendum): only a meeting-context MANAGER tag-along
+  // ever gates a meeting's validity_status — a teammate-kind or
+  // client_creation-context row never has a linked meeting to reconcile.
+  if (
+    row.context === 'meeting' &&
+    row.invitee_kind === 'manager' &&
+    typeof row.related_meeting_id === 'string'
+  ) {
+    await reconcileMeetingValidityAfterManagerTagAlong(db, row.related_meeting_id);
+  }
 }

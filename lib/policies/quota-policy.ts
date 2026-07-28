@@ -23,10 +23,22 @@ export function getQuotaTarget(role: UserRole, config: QuotaPolicyConfig | null)
   return config.dailyTarget;
 }
 
-/** Delegates the per-meeting check to isValidMeetingForQuota and counts how many pass. */
+/**
+ * Delegates the per-meeting day/mode check to isValidMeetingForQuota, then
+ * additionally excludes any meeting still gated by a pending MANAGER
+ * tag-along (ADR-046 correction addendum: `validity_status ===
+ * 'pending_confirmation'`, set at creation by
+ * lib/meeting-service.ts::createMeeting, cleared on sync-down by
+ * lib/tag-along-validity-service.ts). A pending TEAMMATE tag-along, or no
+ * tag-along at all, never sets that status — those meetings count normally.
+ * Missing `validity_status` (a stale local row read before SQLite v15 ran)
+ * defaults to counted-as-valid, same as the column's own SQL DEFAULT.
+ */
 export function countValidMeetingsForQuota(
-  meetings: readonly Pick<Meeting, 'meeting_mode' | 'logged_at'>[],
+  meetings: readonly Pick<Meeting, 'meeting_mode' | 'logged_at' | 'validity_status'>[],
   onDayIso: string
 ): number {
-  return meetings.filter((meeting) => isValidMeetingForQuota(meeting, onDayIso)).length;
+  return meetings.filter(
+    (meeting) => isValidMeetingForQuota(meeting, onDayIso) && meeting.validity_status !== 'pending_confirmation'
+  ).length;
 }

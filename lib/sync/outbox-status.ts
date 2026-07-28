@@ -19,13 +19,17 @@ const JITTER_RATIO = 0.2;
 // the sync engine retries a row; `failureClass` decides what message the
 // agent/admin sees (lib/sync-history.ts). Never let one drive the other.
 //
-// 429 (rate-limited) responses currently classify as 'server' below — there
-// is no 'rate_limited' member. Adding one requires a paired SQLite migration
-// (lib/db.ts's `failure_class` CHECK constraint would reject an unknown
-// value at runtime; SQLite can't ALTER a CHECK, so it's a table rebuild)
-// landing in the same change as this union's widening. Deferred to Batch 3
-// per ADR-036 — see lib/contracts/rate-limit.ts.
-export type FailureClass = 'validation' | 'network' | 'authentication' | 'conflict' | 'server' | 'unknown';
+// 'rate_limited' added per ADR-036 (Batch 3): paired with the SQLite v13
+// migration in lib/db.ts that widens the `failure_class` CHECK constraint on
+// `outbox`/`pending_uploads` in the SAME change — see lib/contracts/rate-limit.ts.
+export type FailureClass =
+  | 'validation'
+  | 'network'
+  | 'authentication'
+  | 'conflict'
+  | 'server'
+  | 'rate_limited'
+  | 'unknown';
 
 export interface ClassifiedError {
   kind: 'conflict' | 'transient' | 'permanent';
@@ -48,40 +52,61 @@ const DATA_EXCEPTION_CODE_PREFIXES = ['23', '22'];
 const SERVER_ERROR_PATTERN = /5\d\d/;
 const NETWORK_ERROR_PATTERN = /timed out|network|fetch failed|ECONNRESET|ETIMEDOUT/i;
 
+// ADR-036: PostgREST/Kong's HTTP 429 ("Too Many Requests"). remote-upsert.ts
+// attaches the response `status` onto the thrown error (see its
+// `{ ...error, status }` at the pushSingleRow/pushChunk call sites) so this
+// is a reliable status-code check, not a fragile message-text match — 429
+// error bodies from Supabase's gateway don't consistently carry any
+// particular text or Postgres error code.
+export const RATE_LIMIT_STATUS_CODE = 429;
+
+function extractStatus(err: unknown): number | undefined {
+  if (typeof err === 'object' && err !== null && typeof (err as { status?: unknown }).status === 'number') {
+    return (err as { status: number }).status;
+  }
+  return undefined;
+}
+
 /**
  * ADR-026 P2 item 5: computes `failureClass`, a diagnostic classification
  * evaluated in a fixed priority order (5xx before the general network
  * pattern, since both are "server-side" symptoms but classify differently).
  * This is purely additive — it never changes `kind`/retry behavior below.
  */
-function classifyFailureClass(code: string | undefined, message: string): FailureClass {
+function classifyFailureClass(code: string | undefined, message: string, status: number | undefined): FailureClass {
   if (code === UNIQUE_VIOLATION_CODE) return 'conflict';
   if (code === RLS_PERMISSION_DENIED_CODE) return 'authentication';
   if (JWT_ERROR_PATTERN.test(message)) return 'authentication';
   if (code !== undefined && DATA_EXCEPTION_CODE_PREFIXES.some((prefix) => code.startsWith(prefix))) {
     return 'validation';
   }
+  if (status === RATE_LIMIT_STATUS_CODE) return 'rate_limited';
   if (SERVER_ERROR_PATTERN.test(message)) return 'server';
   if (NETWORK_ERROR_PATTERN.test(message)) return 'network';
   return 'unknown';
 }
 
-/** 23505 (Postgres unique violation) is a real duplicate, never auto-retried; timeouts/network/5xx retry with backoff; anything else fails immediately (bad payload, RLS denial, etc). */
+/** 23505 (Postgres unique violation) is a real duplicate, never auto-retried; timeouts/network/5xx/429 retry with backoff; anything else fails immediately (bad payload, RLS denial, etc). */
 export function classifySyncError(err: unknown): ClassifiedError {
   const message = extractMessage(err);
   const code =
     typeof err === 'object' && err !== null && 'code' in err
       ? String((err as { code?: unknown }).code)
       : undefined;
+  const status = extractStatus(err);
 
-  const failureClass = classifyFailureClass(code, message);
+  const failureClass = classifyFailureClass(code, message, status);
 
   if (code === UNIQUE_VIOLATION_CODE) return { kind: 'conflict', failureClass, code, message };
 
   // `kind`'s retry-decision logic is UNCHANGED from before failureClass
-  // existed — deliberately kept as its own regex so this axis never drifts
-  // from `classifyFailureClass()`'s more granular breakdown above.
-  const isTransient = /timed out|network|fetch failed|ECONNRESET|ETIMEDOUT|5\d\d/i.test(message);
+  // existed — deliberately kept as its own regex (plus the 429 status check)
+  // so this axis never drifts from `classifyFailureClass()`'s more granular
+  // breakdown above. ADR-036 3(b): rate-limited reuses the SAME exponential
+  // backoff as 'server' (capped 15s, ADR-022) — no Retry-After-aware backoff
+  // yet, that's a separate, not-yet-approved change.
+  const isTransient =
+    status === RATE_LIMIT_STATUS_CODE || /timed out|network|fetch failed|ECONNRESET|ETIMEDOUT|5\d\d/i.test(message);
   return { kind: isTransient ? 'transient' : 'permanent', failureClass, code, message };
 }
 

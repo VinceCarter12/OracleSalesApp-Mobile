@@ -18,6 +18,10 @@ export interface LocalClientRow {
   updated_at: string;
   details_deadline_at: string | null;
   sync_status: string;
+  // Optional: `SELECT *` already returns this column (lib/db.ts v14), but a
+  // pre-v14 in-memory row shape (or a caller building a partial row by hand)
+  // may omit it — never assume present.
+  cycle_id?: string | null;
 }
 
 export function rowToClient(row: LocalClientRow): Client {
@@ -36,5 +40,6 @@ export function rowToClient(row: LocalClientRow): Client {
     updated_at: row.updated_at,
     details_deadline_at: row.details_deadline_at,
     sync_status: row.sync_status,
+    cycle_id: row.cycle_id ?? null,
   };
 }

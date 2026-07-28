@@ -7,7 +7,7 @@ import { Spinner, Text, XStack, YStack } from 'tamagui';
 import { useBizlinkColors, BIZLINK_FONTS, BIZLINK_ON_INK } from '../../../lib/theme';
 import { useClients } from '../../../lib/useClients';
 import { useMeetings } from '../../../lib/useMeetings';
-import { CLIENT_STATUS_BADGES, getClientStatus, WAITING_MANAGER_APPROVAL_BADGE } from '../../../lib/client-status';
+import { SALES_CLIENT_STATUS_BADGES, getClientStatus, WAITING_MANAGER_APPROVAL_BADGE } from '../../../lib/client-status';
 import { getClientDeadlineInfo } from '../../../lib/client-deadline';
 import { getClientProgress } from '../../../lib/client-progress';
 import { getClientIdsWithPendingManagerTagAlong } from '../../../lib/tag-along-service';
@@ -50,10 +50,18 @@ function ClientRow({ client, meetings, waitingManagerApproval }: { client: Clien
   const BIZLINK_COLORS = useBizlinkColors();
   const routes = useClientFlowRoutes();
   const status = getClientStatus(client);
-  const badge = CLIENT_STATUS_BADGES[status];
+  const badge = SALES_CLIENT_STATUS_BADGES[status];
   const isProspect = status === 'prospect';
+  // Wireframe's `aRenderClientsFiltered` progress-bar gate is
+  // `(c.status==='prospect'||c.status==='in_progress')`
+  // (Wireframe-Sales-BizLink.html:1502) — the bar tracks qualified-agenda
+  // progress for BOTH stages, not just prospect. Deadline stays
+  // prospect-only (matches the wireframe's separate `c.status==='prospect'
+  // ? '· deadline: '+c.deadline : ''` gate at line 1825 / this file's
+  // `[id].tsx` "1-month rule" helper).
+  const showsProgress = status === 'prospect' || status === 'in_progress';
   const deadline = isProspect ? getClientDeadlineInfo(client) : null;
-  const progress = isProspect ? getClientProgress(client, meetings) : null;
+  const progress = showsProgress ? getClientProgress(client, meetings) : null;
   const metaLabel = isProspect ? deadline?.label : client.sales_channel || null;
 
   return (

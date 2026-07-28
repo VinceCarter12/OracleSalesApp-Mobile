@@ -32,6 +32,31 @@ export type RemoteTagAlongContext = 'client_creation' | 'meeting';
 export type RemoteTagAlongInviteeKind = 'manager' | 'teammate';
 export type RemoteTagAlongStatus = 'pending' | 'accepted' | 'declined' | 'cancelled';
 
+// ADR-045 / Migration 035 + 038 Part D (Migration-035-Report.md,
+// Migration-038-Report.md): versioned agenda-policy system + per-cycle
+// pinning. `RemoteAgendaStage` is deliberately narrower than mobile's own
+// four-stage `StageId` (lib/policies/identifiers.ts) — the live
+// `agenda_stage_rules_stage_check` CHECK constraint only allows
+// 'prospect'/'in_progress' (Migration-038-Report.md line 203); 'new'/
+// 'existing' never get stage-rule rows (ADR-046 #5: those stages show a
+// fixed hardcoded agenda list, not a stage-rule lookup).
+export type RemoteAgendaStage = 'prospect' | 'in_progress';
+export type RemoteClientCycleEndReason = 'lost' | 'superseded' | 'deleted';
+
+// ADR-044 / Migration 039 (Migration-039-Report.md): domain-specific PO
+// confirmation approval table — NOT merged with `tag_along_requests`. Only
+// 'pending'/'approved'/'rejected'/'cancelled' are valid remotely (line 40);
+// mobile's own local-only 'draft' status (captured offline, not yet
+// submitted — see lib/db.ts's po_confirmation_requests table) never leaves
+// the device, so it is NOT part of this remote-shape union.
+export type RemotePoConfirmationStatus = 'pending' | 'approved' | 'rejected' | 'cancelled';
+
+// Migration 042 (Migration-042-Report.md): the literal UNIONed by both
+// `get_manager_approval_feed()` and `get_my_request_statuses()` —
+// ADR-046 correction addendum point 3 is explicit that this is
+// 'po_confirmation', never the shorthand 'po'.
+export type RemoteApprovalRequestKind = 'po_confirmation' | 'tag_along';
+
 /**
  * Supabase database type stubs.
  * Replace with the generated types from: npx supabase gen types typescript --project-id <your-id>
@@ -80,12 +105,32 @@ export type Database = {
           // cast at push time, so the gap never surfaced there); a direct
           // typed `.select()`/`.update()` call needs it declared here.
           details_deadline_at: string | null;
+          // Migration 035 (Migration-035-Report.md lines 62-64):
+          // server-maintained-only pointer to the client's open
+          // `client_cycles` row; never written by mobile.
+          current_cycle_id: string | null;
+          cycle_started_at: string | null;
+          // Migration 038 Part A (Migration-038-Report.md line 78):
+          // stamped once when the client enters 'in_progress', so a single
+          // meeting can't chain both stage transitions in one firing.
+          // Mobile never writes this (server-authoritative), same rule as
+          // `customer_type` itself — see `RemoteCustomerType`'s doc comment.
+          in_progress_at: string | null;
           created_at: string;
           updated_at: string;
         };
         Insert: Omit<
           Database['public']['Tables']['clients']['Row'],
-          'id' | 'created_at' | 'updated_at' | 'normalized_company_name' | 'lost_at' | 'reassignable_at' | 'inactive_reason'
+          | 'id'
+          | 'created_at'
+          | 'updated_at'
+          | 'normalized_company_name'
+          | 'lost_at'
+          | 'reassignable_at'
+          | 'inactive_reason'
+          | 'current_cycle_id'
+          | 'cycle_started_at'
+          | 'in_progress_at'
         >;
         Update: Partial<Database['public']['Tables']['clients']['Insert']>;
         Relationships: [];
@@ -130,8 +175,17 @@ export type Database = {
           end_gps_lat: number | null;
           end_gps_lng: number | null;
           created_at: string;
+          // Migration 038 Part B (Migration-038-Report.md lines 83-104):
+          // stamped server-side by the `stamp_meeting_cycle` trigger, only
+          // when inserted by the client's CURRENT owner — late-arriving
+          // meetings from a previous owner/cycle stay permanently
+          // uncorrelated to any cycle (`cycle_id` null), by design.
+          cycle_id: string | null;
+          // Stable agenda ids, additive alongside the legacy `agenda`
+          // display-label array above — never used as display text.
+          agenda_ids: string[] | null;
         };
-        Insert: Omit<Database['public']['Tables']['meetings']['Row'], 'id' | 'created_at'>;
+        Insert: Omit<Database['public']['Tables']['meetings']['Row'], 'id' | 'created_at' | 'cycle_id'>;
         Update: Partial<Database['public']['Tables']['meetings']['Insert']>;
         Relationships: [];
       };
@@ -216,6 +270,106 @@ export type Database = {
         };
         Relationships: [];
       };
+      // ADR-041 / Migration 035 (Migration-035-Report.md): generalized
+      // per-client ownership-cycle history. ⚠️ Live RLS is admin-only read
+      // (`"Admin read client cycles" ... using (public.is_admin())`,
+      // Migration-035-Report.md line 58) — no non-admin mobile role can
+      // currently SELECT this table; see lib/db.ts's v14 migration comment
+      // and lib/sync/policy-sync-down.ts for the flagged gap. Declared here
+      // anyway so a typed `.from('client_cycles')` call is ready the moment
+      // a scoped policy is added.
+      client_cycles: {
+        Row: {
+          id: string;
+          client_id: string;
+          owner_id: string;
+          started_at: string;
+          ended_at: string | null;
+          end_reason: RemoteClientCycleEndReason | null;
+          lost_at: string | null;
+          reassignable_at: string | null;
+          claimed_by: string | null;
+          claimed_at: string | null;
+          agenda_policy_version: number | null;
+          created_at: string;
+        };
+        Insert: Omit<Database['public']['Tables']['client_cycles']['Row'], 'id' | 'created_at'>;
+        Update: Partial<Database['public']['Tables']['client_cycles']['Insert']>;
+        Relationships: [];
+      };
+      // ADR-045 / Migration 038 Part D (Migration-038-Report.md lines
+      // 179-234): "Authenticated read ..." RLS — every signed-in mobile role
+      // can SELECT the full table, unfiltered (Admin-only write via a
+      // separate policy, not exercised by mobile).
+      agenda_policy_versions: {
+        Row: {
+          policy_version: number;
+          effective_date: string;
+          is_current: boolean;
+          created_by: string | null;
+          notes: string | null;
+        };
+        Insert: Omit<Database['public']['Tables']['agenda_policy_versions']['Row'], 'effective_date' | 'is_current'> & {
+          effective_date?: string;
+          is_current?: boolean;
+        };
+        Update: Partial<Database['public']['Tables']['agenda_policy_versions']['Insert']>;
+        Relationships: [];
+      };
+      agenda_catalog: {
+        Row: {
+          agenda_id: string;
+          policy_version: number;
+          display_label: string;
+          progress_weight: number;
+          progress_override: number | null;
+          is_active: boolean;
+          sort_order: number;
+        };
+        Insert: Database['public']['Tables']['agenda_catalog']['Row'];
+        Update: Partial<Database['public']['Tables']['agenda_catalog']['Insert']>;
+        Relationships: [];
+      };
+      agenda_stage_rules: {
+        Row: {
+          agenda_id: string;
+          policy_version: number;
+          stage: RemoteAgendaStage;
+          is_visible: boolean;
+        };
+        Insert: Database['public']['Tables']['agenda_stage_rules']['Row'];
+        Update: Partial<Database['public']['Tables']['agenda_stage_rules']['Insert']>;
+        Relationships: [];
+      };
+      // ADR-044 / Migration 039 (Migration-039-Report.md lines 32-46): no
+      // dedicated create-RPC — "Agents create own PO confirmation" is a
+      // direct RLS-gated INSERT policy (line 58), decisions go through
+      // `decide_po_confirmation()` only (line 77).
+      po_confirmation_requests: {
+        Row: {
+          id: string;
+          client_id: string;
+          cycle_id: string;
+          meeting_id: string;
+          requester_id: string;
+          po_photo_path: string;
+          status: RemotePoConfirmationStatus;
+          decided_by: string | null;
+          decided_at: string | null;
+          decision_note: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        // Client-generated `id` sent explicitly (same B-041/B-044 lesson as
+        // `tag_along_requests` above) — status/decision fields are
+        // server-defaulted/only ever set via decide_po_confirmation().
+        Insert: Omit<
+          Database['public']['Tables']['po_confirmation_requests']['Row'],
+          'status' | 'decided_by' | 'decided_at' | 'decision_note' | 'created_at' | 'updated_at'
+        >;
+        Update: Partial<Database['public']['Tables']['po_confirmation_requests']['Insert']>;
+        Relationships: [];
+      };
     };
     Views: Record<string, never>;
     // Batch 2 (2026-07-26): both RPCs are SECURITY DEFINER, live on Supabase.
@@ -234,6 +388,67 @@ export type Database = {
           normalized_company_name: string;
           city: string | null;
         }[];
+      };
+      // ADR-044 / Migration 039 (Migration-039-Report.md lines 80-113):
+      // idempotent CAS decision — `code` is one of 'invalid_decision',
+      // 'not_found', 'role_not_eligible', 'already_decided', 'approved',
+      // 'rejected'. `p_note` defaults to null server-side.
+      decide_po_confirmation: {
+        Args: { p_request_id: string; p_decision: string; p_note?: string | null };
+        Returns: { ok: boolean; code: string };
+      };
+      // Migration 042 (Migration-042-Report.md lines 33-52): SECURITY
+      // INVOKER — RLS on the underlying tables does the authorization work,
+      // this RPC just reshapes. `summary` shape depends on `request_kind`
+      // (po_confirmation: po_photo_path/meeting_id; tag_along:
+      // invitee_kind/context) — narrow it at the call site.
+      get_manager_approval_feed: {
+        Args: Record<string, never>;
+        Returns: {
+          request_kind: RemoteApprovalRequestKind;
+          request_id: string;
+          requester_id: string;
+          client_id: string;
+          status: string;
+          created_at: string;
+          decided_at: string | null;
+          summary: Record<string, unknown>;
+        }[];
+      };
+      // Migration 042 (Migration-042-Report.md lines 54-71): same row shape,
+      // scoped to `requester_id = current_profile_id()`.
+      get_my_request_statuses: {
+        Args: Record<string, never>;
+        Returns: {
+          request_kind: RemoteApprovalRequestKind;
+          request_id: string;
+          client_id: string;
+          status: string;
+          created_at: string;
+          decided_at: string | null;
+          summary: Record<string, unknown>;
+        }[];
+      };
+      // Migration 038 Part C, PATCHED live by Migration 044 (2026-07-28 P0
+      // security hotfix — see Migration-044-Report.md lines 122-176). Same
+      // signature as originally shipped; `code` is one of the
+      // ReassignResponseCode values in
+      // lib/policies/reassignment-response-policy.ts.
+      reassign_team_client: {
+        Args: {
+          p_client_id: string;
+          p_new_agent_id: string;
+          p_expected_current_agent_id: string;
+          p_reason: string;
+        };
+        Returns: { ok: boolean; code: string; client?: Record<string, unknown> };
+      };
+      // Migration 037 (Migration-037-Report.md lines 36-131) — atomic
+      // compare-and-swap claim. `code` is one of the LostOpportunityClaimCode
+      // values in lib/policies/lost-opportunity-claim-policy.ts.
+      claim_lost_opportunity: {
+        Args: { p_client_id: string };
+        Returns: { ok: boolean; code: string; client?: Record<string, unknown> };
       };
     };
     Enums: Record<string, never>;

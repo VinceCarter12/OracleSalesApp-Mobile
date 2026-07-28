@@ -41,6 +41,14 @@ export const MEETING_AGENDAS = [
 export const PRESENTATION_AGENDA: (typeof MEETING_AGENDAS)[number] =
   'Product / company presentation';
 
+// ADR-044/046: the display-label the PO-evidence card gates on (matches the
+// wireframe's own string checks, e.g. `aRecordAgendas.indexOf('Close deal')`
+// in Wireframe-Sales-BizLink.html) — not the stable `close_deal` agenda id
+// from `lib/policies/agenda-policy.ts`, since the Record Meeting UI still
+// selects agendas by label (that module's stage-aware picker is not yet
+// wired into record.tsx — separate, not-yet-scheduled track).
+export const CLOSE_DEAL_AGENDA: (typeof MEETING_AGENDAS)[number] = 'Close deal';
+
 export const MEETING_OUTCOMES = [
   'Successful',
   'Follow-up Required',
@@ -94,6 +102,12 @@ export interface Client {
   // non-prospect clients.
   details_deadline_at?: string | null;
   sync_status?: string;
+  // ADR-041/044 (Batch 3, SQLite v14): mirrors remote `clients.current_cycle_id`
+  // — the client's currently open ownership cycle, needed by PO confirmation
+  // (`po_confirmation_requests.cycle_id` is NOT NULL). Null for a client with
+  // no open cycle (e.g. never synced down since entering a cycle, or a
+  // pre-Batch-3 local row).
+  cycle_id?: string | null;
 }
 
 export interface Meeting {
@@ -124,7 +138,22 @@ export interface Meeting {
   location_name?: string | null;
   remarks?: string | null;
   sync_status?: string;
+  // ADR-046 (correction addendum, 2026-07-28): set once at creation
+  // (lib/meeting-service.ts::createMeeting) — 'pending_confirmation' only
+  // when a selected companion is a MANAGER-kind tag-along that isn't
+  // pre-accepted (i.e. NOT a manager recording their own meeting); a
+  // teammate-only (or no) companion is 'valid' immediately. Re-evaluated by
+  // lib/tag-along-validity-service.ts on sync-down once the manager
+  // responds — accepted clears it to 'valid', declined leaves it
+  // 'pending_confirmation' permanently (the record itself is never
+  // discarded). Optional because pre-migration-15 local rows read through
+  // `SELECT m.*` before this column existed would omit it — treat missing
+  // as 'valid' (SQLite's own column default), never as pending.
+  validity_status?: MeetingValidityStatus;
 }
+
+/** ADR-046 correction addendum: mirrors the wireframe's `meeting.validityStatus` field name/values exactly (Wireframe-Sales-BizLink.html). */
+export type MeetingValidityStatus = 'valid' | 'pending_confirmation';
 
 // Mirrors the web DB role enum (Database.md) + executive (mobile-only concept,
 // not in the DB). ADR-017 (2026-07-14, client decision): there is no

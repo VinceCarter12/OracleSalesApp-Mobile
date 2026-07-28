@@ -3,6 +3,7 @@ import { withTimeout } from './with-timeout';
 import { isLikelyOnline } from './sync/connectivity';
 import { initialsOf } from './team-remote-mappers';
 import type { Database } from '../types/database';
+import type { ReassignResponseCode } from './policies/reassignment-response-policy';
 
 // B-054 Phase 1: the first real Manager WRITE path (client reassignment).
 // Deliberately online-only — a manager's own device does not locally mirror
@@ -110,4 +111,76 @@ export async function reassignClient(input: ReassignClientInput): Promise<void> 
   if (!data || data.length === 0) {
     throw new ReassignConflictError();
   }
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// ADR-043 / Migration 044 (Batch 3, Slice 6a) — `reassign_team_client()`,
+// the RPC meant to REPLACE the bare CAS'd UPDATE above (Migration 038's own
+// comment: "Replaces the bare UPDATE write path (lib/manager-client-service.ts)
+// with an RPC that captures a mandatory reason and writes the audit event
+// atomically"). This is the authorized, PATCHED (Migration 044, 2026-07-28)
+// signature — adds manager/team-scope authorization on top of Migration
+// 038's original CAS + reason check.
+//
+// ⚠️ NOT wired into `app/(manager)/more/clients/reassign.tsx` yet. A
+// pre-implementation wireframe check (hard project rule) found
+// `Wireframe-Manager-BizLink.html`'s `#s-reassign` screen (lines 629-640) has
+// NO reason-capture control at all — agent selection flows straight into
+// `<button ... onclick="confirmReassign()">Confirm Reassignment</button>`,
+// no text field, no textarea. The RPC now hard-requires a non-empty
+// `p_reason` (`reason_required` otherwise), so wiring this in requires
+// either a new UI control the wireframe doesn't show, or a wireframe update
+// — flagged to Vince rather than inventing a form, per this batch's explicit
+// instruction. ADR-043 itself anticipated this ("Mobile's manager
+// reassignment UI (when built) must capture and submit the `reason`
+// parameter") but the actual wireframe file was never updated to match.
+//
+// This function is pure I/O, safe to call the moment a reason-capture
+// control is approved and added to the screen — same "ready but unwired"
+// convention as lib/po-confirmation-manager-service.ts::getManagerApprovalFeed.
+// ══════════════════════════════════════════════════════════════════════════
+
+export interface ReassignTeamClientInput {
+  clientId: string;
+  fromAgentProfileId: string;
+  toAgentProfileId: string;
+  reason: string;
+}
+
+export interface ReassignTeamClientResult {
+  code: ReassignResponseCode;
+}
+
+/**
+ * Calls the patched `reassign_team_client()` RPC (Migration 044). Unlike the
+ * older `reassignClient()` above, all authorization (caller must be the
+ * outgoing owner's manager, new owner must be same-team/active/eligible),
+ * the `reason_required`/`same_owner` guards, and the
+ * `client_reassignment_events` audit insert happen server-side in one
+ * transaction — this function only relays the RPC's `code`, it never assumes
+ * an outcome client-side. Online-only (ADR-032, no offline queueing).
+ */
+export async function reassignTeamClient(
+  input: ReassignTeamClientInput
+): Promise<ReassignTeamClientResult> {
+  const online = await isLikelyOnline();
+  if (!online) {
+    throw new Error('Kailangan ng internet connection para mag-reassign ng client.');
+  }
+
+  const { data, error } = await withTimeout(
+    Promise.resolve(
+      supabase.rpc('reassign_team_client', {
+        p_client_id: input.clientId,
+        p_new_agent_id: input.toAgentProfileId,
+        p_expected_current_agent_id: input.fromAgentProfileId,
+        p_reason: input.reason,
+      })
+    ),
+    REASSIGN_TIMEOUT_MS,
+    'reassignTeamClient'
+  );
+
+  if (error) throw error;
+  return { code: data.code as ReassignResponseCode };
 }

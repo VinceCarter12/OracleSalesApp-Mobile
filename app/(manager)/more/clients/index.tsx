@@ -18,14 +18,13 @@ import { type ClientStatus, type TeamAgent, type TeamClient, type TeamMeeting } 
 
 type StatusFilter = ClientStatus | 'all';
 
-// Wireframe-Manager-BizLink.html's `renderClients()` `clientStatusFilter`
-// chip row is exactly `[all, prospect, new, existing, inactive]` — it does
-// NOT include 'in_progress' (unlike the sales agent's My Clients filter or
-// the manager's own Record-Meeting picker, both of which do). Kept as an
-// explicit list rather than deriving from `CLIENT_STATUSES` (ADR-042 added
-// 'in_progress' to that shared array) so this screen doesn't silently gain a
-// filter chip the wireframe doesn't have.
-const CLIENT_STATUS_FILTER_ORDER: readonly ClientStatus[] = ['prospect', 'new', 'existing', 'inactive'];
+// Wireframe-Manager-BizLink.html:1340 — `var statuses = [['all','All'],
+// ['prospect','Prospect'],['in_progress','In Progress'],['new','New'],
+// ['existing','Existing'],['inactive','Inactive']];` — the chip row DOES
+// include 'in_progress', positioned between 'prospect' and 'new'. Kept as an
+// explicit list rather than deriving from `CLIENT_STATUSES` so this order is
+// pinned to the wireframe's exact sequence rather than incidental array order.
+const CLIENT_STATUS_FILTER_ORDER: readonly ClientStatus[] = ['prospect', 'in_progress', 'new', 'existing', 'inactive'];
 
 /** Wireframe s-clients — filter by agent + status, team-wide view (manager's own clients live in the separate `(manager)/clients` tab, F-205). Real data (B-054 Phase 1). */
 export default function ManagerClientsScreen() {
@@ -151,7 +150,7 @@ function ClientRow({ client, agents, meetings }: { client: TeamClient; agents: T
       </YStack>
       <YStack alignItems="flex-end" gap="$1">
         <StatusBadge {...CLIENT_STATUS_BADGES[client.status]} />
-        {client.status === 'prospect' ? (
+        {client.status === 'prospect' || client.status === 'in_progress' ? (
           <Text fontSize={12} fontFamily={BIZLINK_FONTS.semibold} color={BIZLINK_COLORS.brand}>{progress}%</Text>
         ) : null}
       </YStack>

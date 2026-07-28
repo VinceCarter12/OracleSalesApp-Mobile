@@ -12,7 +12,7 @@ export const DATABASE_NAME = 'oracle-sales-app.db';
 
 // Bump this and add a new `case` below whenever the schema changes — never
 // edit an already-shipped case, since devices may have already run it.
-const LATEST_SCHEMA_VERSION = 12;
+const LATEST_SCHEMA_VERSION = 16;
 
 /**
  * Runs once per app launch via `SQLiteProvider`'s `onInit` (see app/_layout.tsx).
@@ -399,6 +399,249 @@ export async function migrateDbIfNeeded(db: SQLiteDatabase): Promise<void> {
       WHERE city IS NULL;
     `);
     currentVersion = 12;
+  }
+
+  // ADR-036 (Batch 3): widens the `failure_class` CHECK constraint on
+  // `outbox`/`pending_uploads` to add `'rate_limited'` (see
+  // lib/sync/outbox-status.ts's `FailureClass` union, widened in the SAME
+  // change per ADR-036's core point — the TS union and this migration must
+  // never drift apart). SQLite can't ALTER a CHECK constraint, so this
+  // follows the same create-new -> copy-data -> drop-old -> rename pattern
+  // already used for `outbox` in the currentVersion===4 block above. Every
+  // other column/constraint is carried over unchanged from v12.
+  if (currentVersion === 12) {
+    await db.execAsync(`
+      CREATE TABLE outbox_new (
+        id TEXT PRIMARY KEY NOT NULL,
+        record_id TEXT NOT NULL,
+        table_name TEXT NOT NULL,
+        operation TEXT NOT NULL CHECK (operation IN ('insert', 'update')),
+        payload TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        synced_at TEXT,
+        retry_count INTEGER NOT NULL DEFAULT 0,
+        status TEXT NOT NULL DEFAULT 'pending'
+          CHECK (status IN ('pending', 'syncing', 'synced', 'conflict', 'failed')),
+        last_error TEXT,
+        last_attempt_at TEXT,
+        next_attempt_at TEXT,
+        priority INTEGER NOT NULL DEFAULT 100,
+        created_online INTEGER,
+        failure_class TEXT
+          CHECK (failure_class IN ('validation','network','authentication','conflict','server','rate_limited','unknown'))
+      );
+
+      INSERT INTO outbox_new
+        (id, record_id, table_name, operation, payload, created_at, synced_at,
+         retry_count, status, last_error, last_attempt_at, next_attempt_at,
+         priority, created_online, failure_class)
+      SELECT
+        id, record_id, table_name, operation, payload, created_at, synced_at,
+        retry_count, status, last_error, last_attempt_at, next_attempt_at,
+        priority, created_online, failure_class
+      FROM outbox;
+
+      DROP TABLE outbox;
+      ALTER TABLE outbox_new RENAME TO outbox;
+
+      CREATE INDEX idx_outbox_pending ON outbox (synced_at) WHERE synced_at IS NULL;
+
+      CREATE TABLE pending_uploads_new (
+        id TEXT PRIMARY KEY NOT NULL,
+        meeting_id TEXT NOT NULL,
+        agent_id TEXT NOT NULL,
+        kind TEXT NOT NULL CHECK (kind IN ('selfie', 'start', 'end')),
+        local_uri TEXT NOT NULL,
+        storage_path TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'pending'
+          CHECK (status IN ('pending', 'syncing', 'synced', 'conflict', 'failed')),
+        retry_count INTEGER NOT NULL DEFAULT 0,
+        last_error TEXT,
+        last_attempt_at TEXT,
+        next_attempt_at TEXT,
+        created_at TEXT NOT NULL,
+        synced_at TEXT,
+        failure_class TEXT
+          CHECK (failure_class IN ('validation','network','authentication','conflict','server','rate_limited','unknown'))
+      );
+
+      INSERT INTO pending_uploads_new
+        (id, meeting_id, agent_id, kind, local_uri, storage_path, status,
+         retry_count, last_error, last_attempt_at, next_attempt_at, created_at,
+         synced_at, failure_class)
+      SELECT
+        id, meeting_id, agent_id, kind, local_uri, storage_path, status,
+        retry_count, last_error, last_attempt_at, next_attempt_at, created_at,
+        synced_at, failure_class
+      FROM pending_uploads;
+
+      DROP TABLE pending_uploads;
+      ALTER TABLE pending_uploads_new RENAME TO pending_uploads;
+
+      CREATE INDEX idx_pending_uploads_status ON pending_uploads (status);
+      CREATE INDEX idx_pending_uploads_meeting_id ON pending_uploads (meeting_id);
+      CREATE INDEX idx_pending_uploads_agent_status_next_attempt
+        ON pending_uploads (agent_id, status, next_attempt_at);
+    `);
+    currentVersion = 13;
+  }
+
+  // ADR-045 (Batch 3, SQLite v14): four read-only server-authoritative
+  // mirrors, same wholesale-rebuild pattern as `team_roster_snapshot`
+  // (currentVersion===9 block above) — populated by
+  // `lib/sync/policy-sync-down.ts`, never written to via the outbox.
+  //
+  // `agenda_catalog_snapshot`/`agenda_policy_versions_snapshot`/
+  // `agenda_stage_rules_snapshot` mirror Migration 038 Part D exactly
+  // (Migration-038-Report.md lines 180-234): `agenda_stage_rules.stage` is
+  // CHECKed remotely to only `('prospect','in_progress')` — 'new'/'existing'
+  // deliberately have NO rows there (ADR-046 #5: those stages show a fixed
+  // hardcoded 6-ordinary-agenda list, not a stage-rule lookup) — so this
+  // local mirror does not add a CHECK constraint of its own, staying a
+  // faithful copy of whatever rows the server actually sends.
+  //
+  // `client_cycles_snapshot` mirrors Migration 035 (Migration-035-Report.md
+  // lines 31-45). ⚠️ Known live-RLS gap (flagged to Vince, not fixed here):
+  // `public.client_cycles`'s only SELECT policy is
+  // `"Admin read client cycles" ... using (public.is_admin())`
+  // (Migration-035-Report.md line 58) — sales_manager/sales_specialist/rsr
+  // are NOT admin, so `lib/sync/policy-sync-down.ts`'s pull for this table
+  // will return zero rows for every non-admin mobile user until a
+  // server-side policy scoping SELECT to `owner_id = auth.uid()` (or
+  // equivalent) is added. The table/column shapes below are still created
+  // now so the mirror is ready the moment that policy lands, but nothing in
+  // this app should assume `client_cycles_snapshot` is populated today.
+  if (currentVersion === 13) {
+    await db.execAsync(`
+      CREATE TABLE client_cycles_snapshot (
+        id TEXT PRIMARY KEY NOT NULL,
+        client_id TEXT NOT NULL,
+        owner_id TEXT NOT NULL,
+        started_at TEXT NOT NULL,
+        ended_at TEXT,
+        end_reason TEXT,
+        lost_at TEXT,
+        reassignable_at TEXT,
+        claimed_by TEXT,
+        claimed_at TEXT,
+        agenda_policy_version INTEGER,
+        created_at TEXT NOT NULL,
+        synced_at TEXT NOT NULL
+      );
+      CREATE INDEX idx_client_cycles_snapshot_client ON client_cycles_snapshot (client_id);
+
+      CREATE TABLE agenda_policy_versions_snapshot (
+        policy_version INTEGER PRIMARY KEY NOT NULL,
+        effective_date TEXT NOT NULL,
+        is_current INTEGER NOT NULL,
+        created_by TEXT,
+        notes TEXT,
+        synced_at TEXT NOT NULL
+      );
+
+      CREATE TABLE agenda_catalog_snapshot (
+        agenda_id TEXT NOT NULL,
+        policy_version INTEGER NOT NULL,
+        display_label TEXT NOT NULL,
+        progress_weight REAL NOT NULL,
+        progress_override REAL,
+        is_active INTEGER NOT NULL,
+        sort_order INTEGER NOT NULL,
+        synced_at TEXT NOT NULL,
+        PRIMARY KEY (agenda_id, policy_version)
+      );
+      CREATE INDEX idx_agenda_catalog_snapshot_version ON agenda_catalog_snapshot (policy_version);
+
+      CREATE TABLE agenda_stage_rules_snapshot (
+        agenda_id TEXT NOT NULL,
+        policy_version INTEGER NOT NULL,
+        stage TEXT NOT NULL,
+        is_visible INTEGER NOT NULL,
+        synced_at TEXT NOT NULL,
+        PRIMARY KEY (agenda_id, policy_version, stage)
+      );
+      CREATE INDEX idx_agenda_stage_rules_snapshot_version ON agenda_stage_rules_snapshot (policy_version);
+
+      -- Migration 038 Part A/B: 'in_progress' anchor + cycle-scoped meeting
+      -- eligibility. Local column names deliberately differ from the
+      -- remote's \`current_cycle_id\` (shortened to \`cycle_id\`, matching
+      -- \`meetings.cycle_id\` below for consistency) but keep the exact
+      -- remote name where the remote name is already the natural local one
+      -- (\`in_progress_at\`, \`agenda_ids\`).
+      ALTER TABLE clients ADD COLUMN cycle_id TEXT;
+      ALTER TABLE clients ADD COLUMN in_progress_at TEXT;
+
+      ALTER TABLE meetings ADD COLUMN cycle_id TEXT;
+      -- JSON-stringified array of stable agenda ids, additive alongside the
+      -- existing \`agendas\` column (legacy display-label array) — same
+      -- storage convention as \`agendas\` (lib/db.ts v1 block above).
+      ALTER TABLE meetings ADD COLUMN agenda_ids TEXT NOT NULL DEFAULT '[]';
+    `);
+    currentVersion = 14;
+  }
+
+  // ADR-046 (correction addendum, 2026-07-28, SQLite v15): a meeting can be
+  // saved locally offline even while a selected MANAGER-kind tag-along
+  // companion is still pending — saving evidence and counting as
+  // lifecycle-valid/quota-eligible are separate events. Mirrors the
+  // wireframe's own `meeting.validityStatus` field 1:1 (Wireframe-Sales-
+  // BizLink.html: `validityStatus:tagAlongPending?'pending_confirmation':'valid'`).
+  // Not derived on-the-fly from `tag_along_requests` at read time — a real
+  // stored column, same as the wireframe's demo data model — because it must
+  // survive a declined manager tag-along staying excluded forever (not just
+  // "no longer pending"), which a pure existence-of-a-pending-row join could
+  // not represent on its own. DEFAULT 'valid' backfills every pre-existing
+  // row (no historical meeting was ever gated by this rule). Follows the
+  // `failure_class` precedent (currentVersion===8 block above) for adding a
+  // CHECK constraint via plain ALTER TABLE ADD COLUMN — no create/copy/drop
+  // rebuild needed since this is an addition, not a constraint widening.
+  if (currentVersion === 14) {
+    await db.execAsync(`
+      ALTER TABLE meetings ADD COLUMN validity_status TEXT NOT NULL DEFAULT 'valid'
+        CHECK (validity_status IN ('valid', 'pending_confirmation'));
+    `);
+    currentVersion = 15;
+  }
+
+  // ADR-044 / Migration 039 (SQLite v16): local mirror of
+  // `po_confirmation_requests` (Migration-039-Report.md lines 32-46). Unlike
+  // `tag_along_requests`, PO confirmation creation is NOT queued through the
+  // outbox (ADR-044 decision 5: "No offline queueing... all approval actions
+  // are online-only") — this table instead has an EXTRA local-only status,
+  // `'draft'`, for evidence captured offline before the network call that
+  // creates the real server row has happened (this slice's
+  // `lib/po-confirmation-service.ts::capturePoEvidenceLocally()`). A draft
+  // row's `id` becomes the server row's `id` once
+  // `submitPoConfirmation()` succeeds (client-generated UUID, same
+  // B-041/B-044 discipline as every other synced entity) — `po_photo_path`
+  // holds the local `file://` capture URI until submission swaps it for the
+  // uploaded Storage public URL, mirroring `meetings.selfie_url`'s own
+  // local-then-remote lifecycle. `synced_at` tracks the last successful
+  // reconciliation against `get_my_request_statuses()` — null for a row
+  // never yet confirmed to exist server-side.
+  if (currentVersion === 15) {
+    await db.execAsync(`
+      CREATE TABLE po_confirmation_requests (
+        id TEXT PRIMARY KEY NOT NULL,
+        client_id TEXT NOT NULL,
+        cycle_id TEXT NOT NULL,
+        meeting_id TEXT NOT NULL,
+        requester_id TEXT NOT NULL,
+        po_photo_path TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'draft'
+          CHECK (status IN ('draft', 'pending', 'approved', 'rejected', 'cancelled')),
+        decided_by TEXT,
+        decided_at TEXT,
+        decision_note TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        synced_at TEXT
+      );
+      CREATE INDEX idx_po_confirmation_meeting ON po_confirmation_requests (meeting_id);
+      CREATE INDEX idx_po_confirmation_requester ON po_confirmation_requests (requester_id, status);
+      CREATE INDEX idx_po_confirmation_client ON po_confirmation_requests (client_id);
+    `);
+    currentVersion = 16;
   }
 
   await db.execAsync(`PRAGMA user_version = ${currentVersion}`);

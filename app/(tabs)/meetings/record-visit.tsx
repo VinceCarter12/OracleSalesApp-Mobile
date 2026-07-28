@@ -8,7 +8,7 @@ import { useSession } from '../../../lib/session-store';
 import { getClientById } from '../../../lib/client-service';
 import { createMeeting } from '../../../lib/meeting-service';
 import { saveDraft, getDraftForClient, deleteDraft, type MeetingDraft } from '../../../lib/meeting-drafts';
-import { getTeamRoster, inviteeKindForRole } from '../../../lib/team-roster';
+import { getCompanionRosterForViewer, getTeamRoster, inviteeKindForRole } from '../../../lib/team-roster';
 import { MAX_COMPANIONS_PER_REQUEST } from '../../../lib/tag-along-service';
 import { useElapsedTimer } from '../../../lib/use-elapsed-timer';
 import { isInfoComplete } from '../../../lib/client-progress';
@@ -276,7 +276,7 @@ export default function RecordVisitScreen() {
           />
         ) : !start ? (
           <VisitStartPanel
-            roster={roster}
+            roster={getCompanionRosterForViewer(roster, role)}
             selectedCompanions={selectedCompanions}
             onToggleCompanion={toggleCompanion}
             mode={mode}

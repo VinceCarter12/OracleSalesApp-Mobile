@@ -3,6 +3,7 @@ import { withTimeout } from './with-timeout';
 import { normalizeCompanyName } from './company-name';
 import { getDb } from './db';
 import { ENTITY_REGISTRY, type EntityTableName } from './sync/entity-registry';
+import { syncAgendaPolicyAndCycles } from './sync/policy-sync-down';
 import type { SQLiteDatabase } from 'expo-sqlite';
 
 // T-002/T-005/T-014: the pull half of the sync engine — split out of
@@ -121,6 +122,13 @@ export async function syncDown(agentId: string, teamId?: string | null): Promise
   }
 
   await pullTeamRoster(db, agentId, teamId, now);
+
+  // ADR-045 (Batch 3, SQLite v14): agenda-policy catalog/stage-rules/
+  // policy-version mirrors + client_cycles snapshot. Best-effort like the
+  // pulls above — see lib/sync/policy-sync-down.ts for the per-table error
+  // handling (each of the four tables catches its own failure independently
+  // so one bad pull never blocks another).
+  await syncAgendaPolicyAndCycles(db, agentId);
 }
 
 /**
