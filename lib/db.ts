@@ -12,7 +12,7 @@ export const DATABASE_NAME = 'oracle-sales-app.db';
 
 // Bump this and add a new `case` below whenever the schema changes — never
 // edit an already-shipped case, since devices may have already run it.
-const LATEST_SCHEMA_VERSION = 16;
+const LATEST_SCHEMA_VERSION = 17;
 
 /**
  * Runs once per app launch via `SQLiteProvider`'s `onInit` (see app/_layout.tsx).
@@ -401,6 +401,87 @@ export async function migrateDbIfNeeded(db: SQLiteDatabase): Promise<void> {
     currentVersion = 12;
   }
 
+  // F-007 (2026-07-28): local mirrors for the Collection & Delivery lists (web
+  // migrations 043/044/045/046). Read path first (Phase 1) — synced-down by
+  // lib/sync/entity-appliers.ts. Columns mirror the live Supabase shape incl.
+  // 045's denormalized client_name/area and 046's claim columns; booleans are
+  // stored 0/1. Field roles pull the WHOLE day's list (RLS-scoped), so there's
+  // no per-agent column here.
+  if (currentVersion === 12) {
+    await db.execAsync(`
+      CREATE TABLE collection_visits (
+        id TEXT PRIMARY KEY NOT NULL,
+        client_id TEXT,
+        client_name TEXT,
+        area TEXT,
+        status TEXT NOT NULL DEFAULT 'pending',
+        scheduled_for TEXT,
+        amount_due REAL,
+        collector_id TEXT,
+        amount_collected REAL,
+        payment_method TEXT,
+        payment_photo_url TEXT,
+        delivery_receipt_photo_url TEXT,
+        gps_lat REAL,
+        gps_lng REAL,
+        remarks TEXT,
+        rescheduled_to TEXT,
+        visited_at TEXT,
+        claimed_by TEXT,
+        claimed_at TEXT,
+        claimed_by_name TEXT,
+        created_at TEXT,
+        updated_at TEXT,
+        sync_status TEXT NOT NULL DEFAULT 'synced',
+        sync_error TEXT,
+        local_updated_at TEXT NOT NULL
+      );
+      CREATE INDEX idx_collection_visits_status ON collection_visits (status);
+      CREATE INDEX idx_collection_visits_scheduled_for ON collection_visits (scheduled_for);
+      CREATE INDEX idx_collection_visits_sync_status ON collection_visits (sync_status);
+
+      CREATE TABLE purchase_orders (
+        id TEXT PRIMARY KEY NOT NULL,
+        po_number TEXT,
+        client_id TEXT,
+        client_name TEXT,
+        area TEXT,
+        status TEXT NOT NULL DEFAULT 'pending',
+        scheduled_for TEXT,
+        cod INTEGER NOT NULL DEFAULT 0,
+        cod_due REAL,
+        driver_id TEXT,
+        truck_plate TEXT,
+        sequence_no INTEGER,
+        receiver_name TEXT,
+        receiver_signature_url TEXT,
+        time_in TEXT,
+        time_out TEXT,
+        proof_url TEXT,
+        backload_photo_url TEXT,
+        gps_lat REAL,
+        gps_lng REAL,
+        remarks TEXT,
+        cod_amount REAL,
+        cod_method TEXT,
+        cod_photo_url TEXT,
+        cod_remitted INTEGER NOT NULL DEFAULT 0,
+        claimed_by TEXT,
+        claimed_at TEXT,
+        claimed_by_name TEXT,
+        created_at TEXT,
+        updated_at TEXT,
+        sync_status TEXT NOT NULL DEFAULT 'synced',
+        sync_error TEXT,
+        local_updated_at TEXT NOT NULL
+      );
+      CREATE INDEX idx_purchase_orders_status ON purchase_orders (status);
+      CREATE INDEX idx_purchase_orders_scheduled_for ON purchase_orders (scheduled_for);
+      CREATE INDEX idx_purchase_orders_sync_status ON purchase_orders (sync_status);
+    `);
+    currentVersion = 13;
+  }
+
   // ADR-036 (Batch 3): widens the `failure_class` CHECK constraint on
   // `outbox`/`pending_uploads` to add `'rate_limited'` (see
   // lib/sync/outbox-status.ts's `FailureClass` union, widened in the SAME
@@ -409,7 +490,7 @@ export async function migrateDbIfNeeded(db: SQLiteDatabase): Promise<void> {
   // follows the same create-new -> copy-data -> drop-old -> rename pattern
   // already used for `outbox` in the currentVersion===4 block above. Every
   // other column/constraint is carried over unchanged from v12.
-  if (currentVersion === 12) {
+  if (currentVersion === 13) {
     await db.execAsync(`
       CREATE TABLE outbox_new (
         id TEXT PRIMARY KEY NOT NULL,
@@ -483,10 +564,10 @@ export async function migrateDbIfNeeded(db: SQLiteDatabase): Promise<void> {
       CREATE INDEX idx_pending_uploads_agent_status_next_attempt
         ON pending_uploads (agent_id, status, next_attempt_at);
     `);
-    currentVersion = 13;
+    currentVersion = 14;
   }
 
-  // ADR-045 (Batch 3, SQLite v14): four read-only server-authoritative
+  // ADR-045 (Batch 3, SQLite v15): four read-only server-authoritative
   // mirrors, same wholesale-rebuild pattern as `team_roster_snapshot`
   // (currentVersion===9 block above) — populated by
   // `lib/sync/policy-sync-down.ts`, never written to via the outbox.
@@ -511,7 +592,7 @@ export async function migrateDbIfNeeded(db: SQLiteDatabase): Promise<void> {
   // equivalent) is added. The table/column shapes below are still created
   // now so the mirror is ready the moment that policy lands, but nothing in
   // this app should assume `client_cycles_snapshot` is populated today.
-  if (currentVersion === 13) {
+  if (currentVersion === 14) {
     await db.execAsync(`
       CREATE TABLE client_cycles_snapshot (
         id TEXT PRIMARY KEY NOT NULL,
@@ -577,10 +658,10 @@ export async function migrateDbIfNeeded(db: SQLiteDatabase): Promise<void> {
       -- storage convention as \`agendas\` (lib/db.ts v1 block above).
       ALTER TABLE meetings ADD COLUMN agenda_ids TEXT NOT NULL DEFAULT '[]';
     `);
-    currentVersion = 14;
+    currentVersion = 15;
   }
 
-  // ADR-046 (correction addendum, 2026-07-28, SQLite v15): a meeting can be
+  // ADR-046 (correction addendum, 2026-07-28, SQLite v16): a meeting can be
   // saved locally offline even while a selected MANAGER-kind tag-along
   // companion is still pending — saving evidence and counting as
   // lifecycle-valid/quota-eligible are separate events. Mirrors the
@@ -595,15 +676,15 @@ export async function migrateDbIfNeeded(db: SQLiteDatabase): Promise<void> {
   // `failure_class` precedent (currentVersion===8 block above) for adding a
   // CHECK constraint via plain ALTER TABLE ADD COLUMN — no create/copy/drop
   // rebuild needed since this is an addition, not a constraint widening.
-  if (currentVersion === 14) {
+  if (currentVersion === 15) {
     await db.execAsync(`
       ALTER TABLE meetings ADD COLUMN validity_status TEXT NOT NULL DEFAULT 'valid'
         CHECK (validity_status IN ('valid', 'pending_confirmation'));
     `);
-    currentVersion = 15;
+    currentVersion = 16;
   }
 
-  // ADR-044 / Migration 039 (SQLite v16): local mirror of
+  // ADR-044 / Migration 039 (SQLite v17): local mirror of
   // `po_confirmation_requests` (Migration-039-Report.md lines 32-46). Unlike
   // `tag_along_requests`, PO confirmation creation is NOT queued through the
   // outbox (ADR-044 decision 5: "No offline queueing... all approval actions
@@ -619,7 +700,7 @@ export async function migrateDbIfNeeded(db: SQLiteDatabase): Promise<void> {
   // local-then-remote lifecycle. `synced_at` tracks the last successful
   // reconciliation against `get_my_request_statuses()` — null for a row
   // never yet confirmed to exist server-side.
-  if (currentVersion === 15) {
+  if (currentVersion === 16) {
     await db.execAsync(`
       CREATE TABLE po_confirmation_requests (
         id TEXT PRIMARY KEY NOT NULL,
@@ -641,7 +722,7 @@ export async function migrateDbIfNeeded(db: SQLiteDatabase): Promise<void> {
       CREATE INDEX idx_po_confirmation_requester ON po_confirmation_requests (requester_id, status);
       CREATE INDEX idx_po_confirmation_client ON po_confirmation_requests (client_id);
     `);
-    currentVersion = 16;
+    currentVersion = 17;
   }
 
   await db.execAsync(`PRAGMA user_version = ${currentVersion}`);

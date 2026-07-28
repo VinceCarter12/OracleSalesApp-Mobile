@@ -1,15 +1,20 @@
-import { ScrollView } from 'react-native';
+import { useCallback } from 'react';
+import { Pressable, ScrollView } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { router, useFocusEffect } from 'expo-router';
+import { Footprints } from 'lucide-react-native';
 import { Text, View, XStack, YStack } from 'tamagui';
 import { useBizlinkColors, BIZLINK_FONTS, COLORS } from '../../lib/theme';
 import { Avatar } from '../../components/ui/Avatar';
 import { StatusBadge } from '../../components/ui/StatusBadge';
+import { BizTopBar } from '../../components/bizlink/BizTopBar';
 import {
-  COLLECTION_STORES,
+  formatClockTime,
   formatPeso,
   getCollectionSummary,
   type CollectionStore,
 } from '../../lib/collection-delivery-data';
+import { useCollectionStores } from '../../lib/use-collection-delivery';
 
 /**
  * F-007 first draft (2026-07-25): Today's List — wireframe `c-today`, read-only
@@ -18,10 +23,10 @@ import {
  * the Collect Payment flow the rows will open into.
  */
 
-function StoreRow({ store }: { store: CollectionStore }) {
+function StoreRow({ store, onPress }: { store: CollectionStore; onPress?: () => void }) {
   const BIZLINK_COLORS = useBizlinkColors();
   const collected = store.status === 'collected';
-  return (
+  const row = (
     <XStack
       alignItems="center"
       gap="$3"
@@ -44,35 +49,45 @@ function StoreRow({ store }: { store: CollectionStore }) {
         <XStack gap="$2.5">
           <Text fontSize={10.5} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted}>{store.area}</Text>
           <Text fontSize={10.5} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted}>Due {formatPeso(store.due)}</Text>
-          {store.time ? (
-            <Text fontSize={10.5} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted}>{store.time}</Text>
+          {store.visitedAt ? (
+            <Text fontSize={10.5} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted}>{formatClockTime(store.visitedAt)}</Text>
           ) : null}
         </XStack>
+        {store.onTheWay && store.status === 'pending' ? (
+          <XStack alignItems="center" gap="$1.5" marginTop={2}>
+            <Footprints size={12} color={COLORS.orange} strokeWidth={1.75} />
+            <Text fontSize={10.5} fontFamily={BIZLINK_FONTS.semibold} color={COLORS.orange}>
+              Kinukuha na ni {store.claimedBy}
+            </Text>
+          </XStack>
+        ) : null}
       </YStack>
       {collected ? (
         <StatusBadge label="Collected" background={COLORS.greenSoft} color={COLORS.ledgeGreen} />
-      ) : store.status === 'resched' ? (
+      ) : store.status === 'rescheduled' ? (
         <StatusBadge label={`Moved to ${store.reschedTo}`} background={COLORS.amberSoft} color={COLORS.orange} />
+      ) : store.onTheWay ? (
+        <StatusBadge label="On the way" background={COLORS.amberSoft} color={COLORS.orange} />
       ) : (
         <StatusBadge label="Pending" background={COLORS.blueSoft} color={COLORS.blue} />
       )}
     </XStack>
   );
+  return onPress ? <Pressable onPress={onPress}>{row}</Pressable> : row;
 }
 
 export default function CollectionTodayScreen() {
   const BIZLINK_COLORS = useBizlinkColors();
   const insets = useSafeAreaInsets();
-  const summary = getCollectionSummary();
+  // F-007 Phase 1: real data from the local mirror; re-read on focus.
+  const { stores, refresh } = useCollectionStores();
+  useFocusEffect(useCallback(() => { refresh(); }, [refresh]));
+  const summary = getCollectionSummary(stores);
 
   return (
     <YStack flex={1} backgroundColor={BIZLINK_COLORS.canvas} paddingTop={insets.top}>
-      <XStack alignItems="center" paddingHorizontal="$4" paddingTop="$3" paddingBottom="$2">
-        <Text fontSize={21} fontFamily={BIZLINK_FONTS.semibold} letterSpacing={-0.4} color={BIZLINK_COLORS.text}>
-          Today's List
-        </Text>
-      </XStack>
-      <ScrollView contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 96 }}>
+      <BizTopBar title="Today's List" />
+      <ScrollView contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 40 }}>
         <YStack backgroundColor={BIZLINK_COLORS.tintA} borderRadius={24} padding={16} marginBottom={12}>
           <Text fontSize={13} fontFamily={BIZLINK_FONTS.semibold} color={BIZLINK_COLORS.text}>
             {summary.pendingCount} stores na lang
@@ -84,8 +99,16 @@ export default function CollectionTodayScreen() {
             Nagde-decrement habang nabibisita — ang natapos ay naka-cross-out sa ibaba.
           </Text>
         </YStack>
-        {COLLECTION_STORES.map((store) => (
-          <StoreRow key={store.id} store={store} />
+        {stores.map((store) => (
+          <StoreRow
+            key={store.id}
+            store={store}
+            onPress={
+              store.status === 'pending'
+                ? () => router.push({ pathname: '/(collection)/visit', params: { id: String(store.id) } })
+                : undefined
+            }
+          />
         ))}
         <Text fontSize={12.5} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} textAlign="center" marginTop={14}>
           Bawat store visit ay may GPS pinpoint + timestamp.{'\n'}Walang route-line drawing — pinpoint lang per visit.

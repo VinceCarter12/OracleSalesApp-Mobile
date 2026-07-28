@@ -57,6 +57,14 @@ export type RemotePoConfirmationStatus = 'pending' | 'approved' | 'rejected' | '
 // 'po_confirmation', never the shorthand 'po'.
 export type RemoteApprovalRequestKind = 'po_confirmation' | 'tag_along';
 
+// F-007 Collection & Delivery (web migrations 043/044/045/046, deployed
+// 2026-07-28). Lowercase remote value sets — mobile's display casing
+// ('Cash'/etc.) is applied at render time (lib/collection-delivery-data.ts).
+export type RemoteCollectionStatus = 'collected' | 'rescheduled' | 'pending';
+export type RemotePaymentMethod = 'cash' | 'check' | 'gcash' | 'counter';
+export type RemotePurchaseOrderStatus = 'pending' | 'delivered' | 'failed';
+export type RemoteCodMethod = 'cash' | 'check' | 'gcash';
+
 /**
  * Supabase database type stubs.
  * Replace with the generated types from: npx supabase gen types typescript --project-id <your-id>
@@ -368,6 +376,85 @@ export type Database = {
           'status' | 'decided_by' | 'decided_at' | 'decision_note' | 'created_at' | 'updated_at'
         >;
         Update: Partial<Database['public']['Tables']['po_confirmation_requests']['Insert']>;
+        Relationships: [];
+      };
+      // F-007 Collection module — migrations 043 (base) + 045 (client_name/area)
+      // + 046 (claimed_by/claimed_at/claimed_by_name). Field roles read the
+      // whole day's list; `client_name`/`area`/`claimed_by_name` are
+      // denormalized because collectors have no RLS read on clients/profiles.
+      collection_visits: {
+        Row: {
+          id: string;
+          client_id: string;
+          status: RemoteCollectionStatus;
+          scheduled_for: string;
+          listed_by: string | null;
+          listed_at: string;
+          amount_due: number;
+          collector_id: string | null;
+          amount_collected: number | null;
+          payment_method: RemotePaymentMethod | null;
+          payment_photo_url: string | null;
+          delivery_receipt_photo_url: string | null;
+          gps_lat: number | null;
+          gps_lng: number | null;
+          remarks: string | null;
+          rescheduled_to: string | null;
+          visited_at: string | null;
+          created_at: string;
+          updated_at: string;
+          // 045 — denormalized customer identity (point-in-time copy).
+          client_name: string | null;
+          area: string | null;
+          // 046 — en-route claim ("On the way"). NOT collector_id (who worked it).
+          claimed_by: string | null;
+          claimed_at: string | null;
+          claimed_by_name: string | null;
+        };
+        Insert: Partial<Database['public']['Tables']['collection_visits']['Row']>;
+        Update: Partial<Database['public']['Tables']['collection_visits']['Row']>;
+        Relationships: [];
+      };
+      // F-007 Delivery module — migrations 044 (base) + 045 (client_name) + 046
+      // (claim columns). `area` is admin-entered on the PO (044), so 045 only
+      // added client_name here.
+      purchase_orders: {
+        Row: {
+          id: string;
+          po_number: string;
+          client_id: string;
+          area: string;
+          status: RemotePurchaseOrderStatus;
+          scheduled_for: string;
+          listed_by: string | null;
+          listed_at: string;
+          cod: boolean;
+          cod_due: number | null;
+          driver_id: string | null;
+          truck_plate: string | null;
+          sequence_no: number | null;
+          receiver_name: string | null;
+          receiver_signature_url: string | null;
+          time_in: string | null;
+          time_out: string | null;
+          proof_url: string | null;
+          backload_photo_url: string | null;
+          gps_lat: number | null;
+          gps_lng: number | null;
+          remarks: string | null;
+          cod_amount: number | null;
+          cod_method: RemoteCodMethod | null;
+          cod_photo_url: string | null;
+          cod_remitted: boolean;
+          created_at: string;
+          updated_at: string;
+          client_name: string | null;
+          claimed_by: string | null;
+          claimed_at: string | null;
+          claimed_by_name: string | null;
+        };
+        Insert: Partial<Database['public']['Tables']['purchase_orders']['Row']>;
+        Update: Partial<Database['public']['Tables']['purchase_orders']['Row']>;
         Relationships: [];
       };
     };

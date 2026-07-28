@@ -1,8 +1,8 @@
-import { useState } from 'react';
+import { useCallback, useState } from 'react';
 import { Pressable, ScrollView } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { router } from 'expo-router';
-import { Bell, Ellipsis, Hourglass, Package, PackageCheck, TriangleAlert, Vault } from 'lucide-react-native';
+import { router, useFocusEffect } from 'expo-router';
+import { Bell, History, Package, PackageX, TriangleAlert, User, Vault } from 'lucide-react-native';
 import { Text, XStack, YStack } from 'tamagui';
 import { useBizlinkColors, BIZLINK_FONTS, COLORS } from '../../lib/theme';
 import { useSession } from '../../lib/session-store';
@@ -17,11 +17,11 @@ import { BizQuickAction } from '../../components/bizlink/BizQuickAction';
 import { SyncStatusChip } from '../../components/sync/SyncStatusChip';
 import { SyncCenterSheet } from '../../components/sync/SyncCenterSheet';
 import {
-  DELIVERY_POS,
   formatPeso,
   getDeliverySummary,
   type DeliveryPo,
 } from '../../lib/collection-delivery-data';
+import { useDeliveryPos } from '../../lib/use-collection-delivery';
 
 /**
  * F-007 first draft (2026-07-25): Driver dashboard — wireframe `d-home`
@@ -31,17 +31,17 @@ import {
  * Meeting-2026-07-25-Collection-Delivery (incl. COD addendum).
  */
 
-// Wireframe .b-pending/.b-followup/.b-delivered/.b-backload — static palette,
-// same precedent as OUTCOME_BADGE_STYLES.
+// One outcome (web 044): delivered / failed(= backload) / pending. Static
+// palette, same precedent as OUTCOME_BADGE_STYLES.
 function PoBadge({ po }: { po: DeliveryPo }) {
   if (po.status === 'delivered') {
     return <StatusBadge label={po.seq ? `#${po.seq} · Delivered` : 'Delivered'} background={COLORS.greenSoft} color={COLORS.ledgeGreen} />;
   }
-  if (po.status === 'backload') {
+  if (po.status === 'failed') {
     return <StatusBadge label="Backload" background={COLORS.redSoft} color={COLORS.ledgeRed} />;
   }
-  if (po.status === 'followup') {
-    return <StatusBadge label={`Follow-up · day ${po.day} of 3`} background={COLORS.amberSoft} color={COLORS.orange} />;
+  if (po.onTheWay) {
+    return <StatusBadge label="On the way" background={COLORS.amberSoft} color={COLORS.orange} />;
   }
   return <StatusBadge label="Pending" background={COLORS.blueSoft} color={COLORS.blue} />;
 }
@@ -66,7 +66,7 @@ function PoPreviewRow({ po, onPress }: { po: DeliveryPo; onPress: () => void }) 
             {po.po} · {po.client}
           </Text>
           <Text fontSize={11.5} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} numberOfLines={1}>
-            {po.items}
+            {po.area}{po.cod && po.codDue ? ` · COD ${formatPeso(po.codDue)}` : ''}
           </Text>
         </YStack>
         <PoBadge po={po} />
@@ -82,10 +82,16 @@ export default function DeliveryDashboardScreen() {
   const [syncSheetOpen, setSyncSheetOpen] = useState(false);
   // B-023: remount the chip on sheet-close, same as the other dashboards.
   const [syncChipKey, setSyncChipKey] = useState(0);
+  // F-007 Phase 1: real data from the local mirror; re-read on focus.
+  const { pos, refresh } = useDeliveryPos();
+  useFocusEffect(useCallback(() => { refresh(); }, [refresh]));
 
-  const summary = getDeliverySummary();
-  const preview = DELIVERY_POS.filter((p) => p.status === 'pending' || p.status === 'followup').slice(0, 3);
+  const summary = getDeliverySummary(pos);
+  const preview = pos.filter((p) => p.status === 'pending').slice(0, 3);
   const greetingName = firstName(fullName) || 'Driver';
+
+  const openDeliver = (id: string) =>
+    router.push({ pathname: '/(delivery)/deliver', params: { id } });
 
   return (
     <YStack flex={1} backgroundColor={BIZLINK_COLORS.canvas} paddingTop={insets.top}>
@@ -97,14 +103,14 @@ export default function DeliveryDashboardScreen() {
           </Text>
           <StatusBadge label="Delivery" background={COLORS.greenTint} color={COLORS.ledgeGreen} />
         </YStack>
-        <Pressable onPress={() => router.push('/(delivery)/more')} style={{ marginLeft: 'auto' }} hitSlop={6}>
+        <Pressable onPress={() => setSyncSheetOpen(true)} style={{ marginLeft: 'auto' }} hitSlop={6}>
           <YStack width={44} height={44} borderRadius={22} backgroundColor={BIZLINK_COLORS.card} alignItems="center" justifyContent="center">
             <Bell size={17} color={BIZLINK_COLORS.text} strokeWidth={1.75} />
           </YStack>
         </Pressable>
       </XStack>
 
-      <ScrollView contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 96 }}>
+      <ScrollView contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 40 }}>
         {/* Wireframe d-home pendbanner: the delivery spec is still thin (OQ-5) —
             these screens are a proposal until the client specs the module. */}
         <XStack
@@ -118,7 +124,7 @@ export default function DeliveryDashboardScreen() {
         >
           <TriangleAlert size={16} color={BIZLINK_COLORS.orange} strokeWidth={1.75} />
           <Text flex={1} fontSize={12} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.orange} lineHeight={17}>
-            DRAFT — pending spec (OQ-5). Proposal lang ang mga screen na ito hangga't hindi nase-spec ang delivery module.
+            Mock data pa — nakabatay na sa web&apos;s authoritative model (043/044). Hindi pa naka-wire sa backend.
           </Text>
         </XStack>
 
@@ -135,9 +141,9 @@ export default function DeliveryDashboardScreen() {
           <YStack flex={1}>
             <BizStatCard
               tone="tintB"
-              value={summary.followUpCount}
-              label="Follow-up"
-              caption={summary.followUpDay ? `day ${summary.followUpDay} of 3` : 'wala'}
+              value={summary.backloadCount}
+              label="Backloads"
+              caption="goods na bumalik"
               onPress={() => router.push('/(delivery)/pos')}
             />
           </YStack>
@@ -150,28 +156,9 @@ export default function DeliveryDashboardScreen() {
           onPress={() => router.push('/(delivery)/remit')}
         />
 
-        <SyncStatusChip key={syncChipKey} onPress={() => setSyncSheetOpen(true)} />
-
-        {summary.followUpPo && summary.followUpDay ? (
-          <BizDashboardAlert
-            tone="amber"
-            icon={<Hourglass size={18} color={BIZLINK_COLORS.orange} strokeWidth={1.75} />}
-            title={`${summary.followUpPo}: day ${summary.followUpDay} ng 3-day follow-up`}
-            caption="Ma-a-auto-delete ang undelivered pagkatapos ng 3 araw"
-            onPress={() => router.push('/(delivery)/pos')}
-          />
-        ) : null}
-
-        <BizSectionHeader title="Today's deliveries" actionLabel="Tingnan lahat" onAction={() => router.push('/(delivery)/pos')} />
-        {preview.length === 0 ? (
-          <Text fontSize={13} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} paddingVertical="$3">
-            Tapos na ang lahat ng deliveries!
-          </Text>
-        ) : (
-          preview.map((po) => <PoPreviewRow key={po.id} po={po} onPress={() => router.push('/(delivery)/pos')} />)
-        )}
-
-        <BizSectionHeader title="Quick Actions" />
+        {/* Wireframe d-home: Actions are the dashboard's main focus, surfaced
+            directly under the hero (before the deliveries list, not buried). */}
+        <BizSectionHeader title="Actions" />
         <XStack gap="$2.5" flexWrap="wrap">
           <BizQuickAction
             icon={<Package size={20} color={BIZLINK_COLORS.ink} strokeWidth={1.75} />}
@@ -180,21 +167,44 @@ export default function DeliveryDashboardScreen() {
             onPress={() => router.push('/(delivery)/pos')}
           />
           <BizQuickAction
-            icon={<PackageCheck size={20} color={BIZLINK_COLORS.ink} strokeWidth={1.75} />}
-            label="Deliver"
-            onPress={() => router.push('/(delivery)/pos')}
-          />
-          <BizQuickAction
             icon={<Vault size={20} color={BIZLINK_COLORS.ink} strokeWidth={1.75} />}
             label="Remit"
             onPress={() => router.push('/(delivery)/remit')}
           />
           <BizQuickAction
-            icon={<Ellipsis size={20} color={BIZLINK_COLORS.ink} strokeWidth={1.75} />}
-            label="More"
-            onPress={() => router.push('/(delivery)/more')}
+            icon={<History size={20} color={BIZLINK_COLORS.ink} strokeWidth={1.75} />}
+            label="History"
+            onPress={() => router.push('/(delivery)/history')}
+          />
+          <BizQuickAction
+            icon={<User size={20} color={BIZLINK_COLORS.ink} strokeWidth={1.75} />}
+            label="Account"
+            onPress={() => router.push('/(delivery)/account')}
           />
         </XStack>
+
+        <BizSectionHeader title="Today's deliveries" actionLabel="Tingnan lahat" onAction={() => router.push('/(delivery)/pos')} />
+        {preview.length === 0 ? (
+          <Text fontSize={13} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} paddingVertical="$3">
+            Tapos na ang lahat ng deliveries!
+          </Text>
+        ) : (
+          preview.map((po) => <PoPreviewRow key={po.id} po={po} onPress={() => openDeliver(po.id)} />)
+        )}
+
+        {summary.backloadCount > 0 ? (
+          <BizDashboardAlert
+            tone="amber"
+            icon={<PackageX size={18} color={BIZLINK_COLORS.orange} strokeWidth={1.75} />}
+            title={`${summary.backloadCount} PO na-backload ngayong araw`}
+            caption="Goods na bumalik — hihintayin ang manual na aksyon ng dispatcher/admin"
+            onPress={() => router.push('/(delivery)/pos')}
+          />
+        ) : null}
+
+        {/* Wireframe d-home: Sync status lives at the bottom of the dashboard. */}
+        <BizSectionHeader title="Sync" />
+        <SyncStatusChip key={syncChipKey} onPress={() => setSyncSheetOpen(true)} />
       </ScrollView>
 
       <SyncCenterSheet
