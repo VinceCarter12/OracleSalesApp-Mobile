@@ -55,6 +55,8 @@ export function AccountScreen({
 
         {statsSlot}
 
+        {securityItems.length > 0 ? (
+          <>
         <SectionHeader title="Security" />
         <Card padding={0}>
           {securityItems.map((item, index) => (
@@ -78,6 +80,8 @@ export function AccountScreen({
             </XStack>
           ))}
         </Card>
+          </>
+        ) : null}
 
         {sessionPolicyText ? (
           <Card flat marginTop="$4">

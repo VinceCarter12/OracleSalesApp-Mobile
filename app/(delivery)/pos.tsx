@@ -1,36 +1,37 @@
-import { ScrollView } from 'react-native';
+import { useCallback, useReducer } from 'react';
+import { Pressable, ScrollView } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Package } from 'lucide-react-native';
+import { router, useFocusEffect } from 'expo-router';
+import { Package, Truck } from 'lucide-react-native';
 import { Text, XStack, YStack } from 'tamagui';
 import { useBizlinkColors, BIZLINK_FONTS, COLORS } from '../../lib/theme';
 import { StatusBadge } from '../../components/ui/StatusBadge';
-import { DELIVERY_POS, formatPeso, type DeliveryPo } from '../../lib/collection-delivery-data';
+import { BizTopBar } from '../../components/bizlink/BizTopBar';
+import { DELIVERY_POS, formatClockTime, formatPeso, type DeliveryPo } from '../../lib/collection-delivery-data';
 
 /**
- * F-007 first draft (2026-07-25): PO List — wireframe `d-pos`, read-only for
- * now. Not yet built this pass: filters, the Deliver PO flow (plate number +
- * proof photo + optional signature/receiver, COD payment step, Failed
- * attempt vs Backload actions). Sequence badge shows ACTUAL visit order
- * (driver-driven, not pre-assigned — 2026-07-25 decision).
+ * F-007 PO List — wireframe `d-pos`. Opens the Deliver PO flow for a pending
+ * stop. One-outcome model (web 044): pending → delivered or failed(= backload).
+ * Sequence badge shows ACTUAL visit order (driver-driven, not pre-assigned).
  */
 
 function PoBadge({ po }: { po: DeliveryPo }) {
   if (po.status === 'delivered') {
     return <StatusBadge label={po.seq ? `#${po.seq} · Delivered` : 'Delivered'} background={COLORS.greenSoft} color={COLORS.ledgeGreen} />;
   }
-  if (po.status === 'backload') {
+  if (po.status === 'failed') {
     return <StatusBadge label="Backload" background={COLORS.redSoft} color={COLORS.ledgeRed} />;
   }
-  if (po.status === 'followup') {
-    return <StatusBadge label={`Follow-up · day ${po.day} of 3`} background={COLORS.amberSoft} color={COLORS.orange} />;
+  if (po.onTheWay) {
+    return <StatusBadge label="On the way" background={COLORS.amberSoft} color={COLORS.orange} />;
   }
   return <StatusBadge label="Pending" background={COLORS.blueSoft} color={COLORS.blue} />;
 }
 
-function PoRow({ po }: { po: DeliveryPo }) {
+function PoRow({ po, onPress }: { po: DeliveryPo; onPress?: () => void }) {
   const BIZLINK_COLORS = useBizlinkColors();
-  const done = po.status === 'delivered' || po.status === 'backload';
-  return (
+  const done = po.status === 'delivered' || po.status === 'failed';
+  const row = (
     <XStack
       alignItems="center"
       gap="$3"
@@ -49,7 +50,7 @@ function PoRow({ po }: { po: DeliveryPo }) {
           {po.po} · {po.client}
         </Text>
         <Text fontSize={10.5} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} numberOfLines={1}>
-          {po.area} · {po.items}
+          {po.area}
         </Text>
         <XStack gap="$2.5">
           {po.cod && po.codDue ? (
@@ -57,37 +58,54 @@ function PoRow({ po }: { po: DeliveryPo }) {
               COD · {formatPeso(po.codDue)}
             </Text>
           ) : null}
-          {po.time ? (
-            <Text fontSize={10.5} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted}>{po.time}</Text>
+          {po.timeOut ? (
+            <Text fontSize={10.5} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted}>{formatClockTime(po.timeOut)}</Text>
           ) : null}
           {po.plate ? (
             <Text fontSize={10.5} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted}>{po.plate}</Text>
           ) : null}
         </XStack>
+        {po.onTheWay && po.status === 'pending' ? (
+          <XStack alignItems="center" gap="$1.5" marginTop={2}>
+            <Truck size={12} color={COLORS.orange} strokeWidth={1.75} />
+            <Text fontSize={10.5} fontFamily={BIZLINK_FONTS.semibold} color={COLORS.orange}>
+              Dinadala na ni {po.claimedBy}
+            </Text>
+          </XStack>
+        ) : null}
       </YStack>
       <PoBadge po={po} />
     </XStack>
   );
+  return onPress ? <Pressable onPress={onPress}>{row}</Pressable> : row;
 }
 
 export default function DeliveryPosScreen() {
   const BIZLINK_COLORS = useBizlinkColors();
   const insets = useSafeAreaInsets();
+  // Mock data mutates in place (markPoDelivered/…); re-render on focus so the
+  // list reflects a just-completed delivery/backload/failed attempt.
+  const [, refresh] = useReducer((x: number) => x + 1, 0);
+  useFocusEffect(useCallback(() => refresh(), []));
 
   return (
     <YStack flex={1} backgroundColor={BIZLINK_COLORS.canvas} paddingTop={insets.top}>
-      <XStack alignItems="center" paddingHorizontal="$4" paddingTop="$3" paddingBottom="$2">
-        <Text fontSize={21} fontFamily={BIZLINK_FONTS.semibold} letterSpacing={-0.4} color={BIZLINK_COLORS.text}>
-          Purchase Orders
-        </Text>
-      </XStack>
-      <ScrollView contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 96 }}>
+      <BizTopBar title="Purchase Orders" />
+      <ScrollView contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 40 }}>
         {DELIVERY_POS.map((po) => (
-          <PoRow key={po.id} po={po} />
+          <PoRow
+            key={po.id}
+            po={po}
+            onPress={
+              po.status === 'pending'
+                ? () => router.push({ pathname: '/(delivery)/deliver', params: { id: po.id } })
+                : undefined
+            }
+          />
         ))}
         <Text fontSize={12.5} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} textAlign="center" marginTop={14} lineHeight={18}>
-          Walang GPS sa delivery module (per confirmed scope) — timestamp + proof photo lang.{'\n'}
-          Failed attempt = 3-day follow-up bago auto-delete. Backload = same-day terminal outcome, walang countdown.
+          May GPS na ang delivery — kasabay ng proof photo (walang photo, walang pin).{'\n'}
+          Isang araw, isang resulta: delivered o failed (= backload, kailangan ng photo proof).
         </Text>
       </ScrollView>
     </YStack>
