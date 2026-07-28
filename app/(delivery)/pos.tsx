@@ -1,4 +1,4 @@
-import { useCallback, useReducer } from 'react';
+import { useCallback } from 'react';
 import { Pressable, ScrollView } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router, useFocusEffect } from 'expo-router';
@@ -7,7 +7,8 @@ import { Text, XStack, YStack } from 'tamagui';
 import { useBizlinkColors, BIZLINK_FONTS, COLORS } from '../../lib/theme';
 import { StatusBadge } from '../../components/ui/StatusBadge';
 import { BizTopBar } from '../../components/bizlink/BizTopBar';
-import { DELIVERY_POS, formatClockTime, formatPeso, type DeliveryPo } from '../../lib/collection-delivery-data';
+import { formatClockTime, formatPeso, type DeliveryPo } from '../../lib/collection-delivery-data';
+import { useDeliveryPos } from '../../lib/use-collection-delivery';
 
 /**
  * F-007 PO List — wireframe `d-pos`. Opens the Deliver PO flow for a pending
@@ -83,16 +84,15 @@ function PoRow({ po, onPress }: { po: DeliveryPo; onPress?: () => void }) {
 export default function DeliveryPosScreen() {
   const BIZLINK_COLORS = useBizlinkColors();
   const insets = useSafeAreaInsets();
-  // Mock data mutates in place (markPoDelivered/…); re-render on focus so the
-  // list reflects a just-completed delivery/backload/failed attempt.
-  const [, refresh] = useReducer((x: number) => x + 1, 0);
-  useFocusEffect(useCallback(() => refresh(), []));
+  // F-007 Phase 1: real data from the local mirror; re-read on focus.
+  const { pos, refresh } = useDeliveryPos();
+  useFocusEffect(useCallback(() => { refresh(); }, [refresh]));
 
   return (
     <YStack flex={1} backgroundColor={BIZLINK_COLORS.canvas} paddingTop={insets.top}>
       <BizTopBar title="Purchase Orders" />
       <ScrollView contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 40 }}>
-        {DELIVERY_POS.map((po) => (
+        {pos.map((po) => (
           <PoRow
             key={po.id}
             po={po}

@@ -17,7 +17,13 @@ import type { OutboxRow } from './outbox-row';
 const SYNC_TIMEOUT_MS = 15000;
 
 /** Known remote table names — a single-level cast at the dispatch boundary, same pattern as lib/mappers.ts/lib/remote-client-mapping.ts. */
-type RemoteTableName = 'clients' | 'meetings' | 'tag_along_requests' | typeof AUDIT_REMOTE_TABLE;
+type RemoteTableName =
+  | 'clients'
+  | 'meetings'
+  | 'tag_along_requests'
+  | 'collection_visits'
+  | 'purchase_orders'
+  | typeof AUDIT_REMOTE_TABLE;
 
 /**
  * The outbox stores each row's payload pre-shaped for its own remote table
@@ -31,6 +37,8 @@ type AnyRemoteInsertPayload =
   | Database['public']['Tables']['clients']['Insert']
   | Database['public']['Tables']['meetings']['Insert']
   | Database['public']['Tables']['tag_along_requests']['Insert']
+  | Database['public']['Tables']['collection_visits']['Insert']
+  | Database['public']['Tables']['purchase_orders']['Insert']
   | Database['public']['Tables']['sync_audit_log']['Insert'];
 
 export interface PushTarget {
@@ -63,6 +71,16 @@ function upsertOne(remoteTable: RemoteTableName, payload: AnyRemoteInsertPayload
       return supabase
         .from('tag_along_requests')
         .upsert(payload as Database['public']['Tables']['tag_along_requests']['Insert'], { onConflict });
+    case 'collection_visits':
+      // F-007: mobile never INSERTs these (the admin publishes the list), so
+      // this branch is unused in practice — present to keep the switch total.
+      return supabase
+        .from('collection_visits')
+        .upsert(payload as Database['public']['Tables']['collection_visits']['Insert'], { onConflict });
+    case 'purchase_orders':
+      return supabase
+        .from('purchase_orders')
+        .upsert(payload as Database['public']['Tables']['purchase_orders']['Insert'], { onConflict });
     case AUDIT_REMOTE_TABLE:
       // Plain INSERT, not `.upsert()` — confirmed via a manual SQL Editor
       // simulation (2026-07-16, same auth context/values) that a bare
@@ -89,7 +107,7 @@ function upsertOne(remoteTable: RemoteTableName, payload: AnyRemoteInsertPayload
  * always `operation: 'insert'` and never reach this function.
  */
 function updateOne(
-  remoteTable: 'clients' | 'meetings' | 'tag_along_requests',
+  remoteTable: 'clients' | 'meetings' | 'tag_along_requests' | 'collection_visits' | 'purchase_orders',
   payload: AnyRemoteInsertPayload,
   recordId: string
 ) {
@@ -111,6 +129,19 @@ function updateOne(
         .from('tag_along_requests')
         .update(payload as Database['public']['Tables']['tag_along_requests']['Update'])
         .eq('id', recordId);
+    case 'collection_visits':
+      // F-007 Phase 2: the collector works a row — collect / reschedule /
+      // claim. Partial update on a row the admin published (never an insert).
+      return supabase
+        .from('collection_visits')
+        .update(payload as Database['public']['Tables']['collection_visits']['Update'])
+        .eq('id', recordId);
+    case 'purchase_orders':
+      // F-007 Phase 2: the driver works a stop — deliver / fail(backload) / claim.
+      return supabase
+        .from('purchase_orders')
+        .update(payload as Database['public']['Tables']['purchase_orders']['Update'])
+        .eq('id', recordId);
   }
 }
 
@@ -128,6 +159,14 @@ function upsertMany(remoteTable: RemoteTableName, payloads: AnyRemoteInsertPaylo
       return supabase
         .from('tag_along_requests')
         .upsert(payloads as Database['public']['Tables']['tag_along_requests']['Insert'][], { onConflict });
+    case 'collection_visits':
+      return supabase
+        .from('collection_visits')
+        .upsert(payloads as Database['public']['Tables']['collection_visits']['Insert'][], { onConflict });
+    case 'purchase_orders':
+      return supabase
+        .from('purchase_orders')
+        .upsert(payloads as Database['public']['Tables']['purchase_orders']['Insert'][], { onConflict });
     case AUDIT_REMOTE_TABLE:
       // Plain INSERT — see the matching comment in upsertOne() above.
       return supabase
@@ -136,8 +175,19 @@ function upsertMany(remoteTable: RemoteTableName, payloads: AnyRemoteInsertPaylo
   }
 }
 
-function assertUpdatableTable(remoteTable: RemoteTableName, row: OutboxRow): 'clients' | 'meetings' | 'tag_along_requests' {
-  if (remoteTable === 'clients' || remoteTable === 'meetings' || remoteTable === 'tag_along_requests') return remoteTable;
+function assertUpdatableTable(
+  remoteTable: RemoteTableName,
+  row: OutboxRow
+): 'clients' | 'meetings' | 'tag_along_requests' | 'collection_visits' | 'purchase_orders' {
+  if (
+    remoteTable === 'clients' ||
+    remoteTable === 'meetings' ||
+    remoteTable === 'tag_along_requests' ||
+    remoteTable === 'collection_visits' ||
+    remoteTable === 'purchase_orders'
+  ) {
+    return remoteTable;
+  }
   throw new Error(`pushSingleRow: 'update' operation is unsupported for remoteTable=${remoteTable} (row ${row.table_name}/${row.record_id})`);
 }
 

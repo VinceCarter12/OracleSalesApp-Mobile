@@ -7,28 +7,26 @@ import {
   CalendarClock,
   Check,
   FileCheck,
+  Footprints,
   Lightbulb,
+  Lock,
   MessageSquareWarning,
   Receipt,
   Smartphone,
 } from 'lucide-react-native';
+import { useSQLiteContext } from 'expo-sqlite';
 import { Text, XStack, YStack } from 'tamagui';
 import { useBizlinkColors, BIZLINK_FONTS, BIZLINK_ON_INK, COLORS } from '../../lib/theme';
+import { useSession } from '../../lib/session-store';
+import { captureGps, type GpsFix } from '../../lib/gps';
 import { Avatar } from '../../components/ui/Avatar';
 import { BizTopBar } from '../../components/bizlink/BizTopBar';
 import { BizSectionHeader } from '../../components/bizlink/BizSectionHeader';
 import { BizButton } from '../../components/bizlink/BizButton';
 import { PhotoSlot } from '../../components/collection-delivery/PhotoSlot';
-import {
-  COLLECTION_STORES,
-  markStoreCollected,
-  rescheduleStore,
-  type PaymentMethod,
-} from '../../lib/collection-delivery-data';
-
-// GPS captured at payment-photo time (mock coords for now; wired to lib/gps.ts
-// when the flow goes real — the fix is written to the business row at capture).
-const MOCK_GPS = { lat: 14.8006, lng: 120.5372 };
+import { type PaymentMethod } from '../../lib/collection-delivery-data';
+import { claimStop, collectPayment, releaseStop, rescheduleVisit } from '../../lib/collection-delivery-write';
+import { useCollectionStore } from '../../lib/use-collection-delivery';
 
 /**
  * F-007 first draft (2026-07-25): Collect Payment — wireframe `c-visit`.
@@ -91,27 +89,60 @@ export default function CollectPaymentScreen() {
   const { id } = useLocalSearchParams<{ id?: string }>();
 
   const storeId = String(id ?? '');
-  // Read-only lookup for display; the collect/reschedule mutations go through
-  // markStoreCollected/rescheduleStore (by id) so this render-scoped value is
-  // never mutated (react-hooks/immutability).
-  const store = COLLECTION_STORES.find((s) => s.id === storeId);
+  const db = useSQLiteContext();
+  const { profileId, fullName } = useSession();
+  // Real record from the local mirror for display; the collect/reschedule/claim
+  // WRITE goes through collection-delivery-write.ts (local update + outbox push).
+  const { store, loading, refresh } = useCollectionStore(storeId);
 
   const [payMode, setPayMode] = useState<PayMode>('cash');
   const [payPhotoUri, setPayPhotoUri] = useState<string | null>(null);
   const [receiptPhotoUri, setReceiptPhotoUri] = useState<string | null>(null);
   const [amount, setAmount] = useState('');
   const [remarks, setRemarks] = useState('');
+  // GPS captured at the moment the payment photo is taken (web rule: the fix
+  // rides with the photo). Null = "no pin" — never synthesized.
+  const [gps, setGps] = useState<GpsFix | null>(null);
 
   const amountValue = parseFloat((amount || '').replace(/[^\d.]/g, ''));
   const amountValid = amountValue > 0;
-  const canCollect = amountValid && !!payPhotoUri && !!receiptPhotoUri;
+  const claimedByMe = !!store?.claimedById && store.claimedById === profileId;
+  const claimedByOther = !!store?.claimedById && !claimedByMe;
+  const canCollect = amountValid && !!payPhotoUri && !!receiptPhotoUri && !claimedByOther;
 
   function iconColor(mode: PayMode) {
     return payMode === mode ? BIZLINK_ON_INK.solid : BIZLINK_COLORS.muted;
   }
 
-  function confirmCollect(): void {
-    markStoreCollected(storeId, payMode, amountValue, MOCK_GPS);
+  async function onPayPhoto(uri: string): Promise<void> {
+    setPayPhotoUri(uri);
+    try {
+      setGps(await captureGps());
+    } catch {
+      // Photo taken but GPS unavailable → no pin (web renders it as such).
+    }
+  }
+
+  async function claim(): Promise<void> {
+    if (!profileId) return;
+    await claimStop(db, 'collection_visits', storeId, profileId, fullName ?? 'Collector');
+    refresh();
+  }
+
+  async function release(): Promise<void> {
+    if (!profileId) return;
+    await releaseStop(db, 'collection_visits', storeId, profileId);
+    refresh();
+  }
+
+  async function confirmCollect(): Promise<void> {
+    if (!profileId) return;
+    await collectPayment(db, storeId, profileId, {
+      method: payMode,
+      amount: amountValue,
+      gps: gps ?? undefined,
+      remarks,
+    });
     router.replace('/(collection)/celebrate');
   }
 
@@ -123,8 +154,10 @@ export default function CollectPaymentScreen() {
         { text: 'Cancel', style: 'cancel' },
         {
           text: 'I-reschedule bukas',
-          onPress: () => {
-            rescheduleStore(storeId);
+          onPress: async () => {
+            if (!profileId) return;
+            const tomorrow = new Date(Date.now() + 86400000).toISOString();
+            await rescheduleVisit(db, storeId, tomorrow, profileId, remarks);
             router.back();
           },
         },
@@ -132,13 +165,13 @@ export default function CollectPaymentScreen() {
     );
   }
 
-  if (!store) {
+  if (loading || !store) {
     return (
       <YStack flex={1} backgroundColor={BIZLINK_COLORS.canvas} paddingTop={insets.top}>
         <BizTopBar title="Collect Payment" />
         <YStack flex={1} alignItems="center" justifyContent="center" paddingHorizontal="$6">
           <Text fontSize={13} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} textAlign="center">
-            Hindi mahanap ang store na ito.
+            {loading ? 'Naglo-load…' : 'Hindi mahanap ang store na ito.'}
           </Text>
         </YStack>
       </YStack>
@@ -165,15 +198,39 @@ export default function CollectPaymentScreen() {
           </YStack>
         </XStack>
 
+        {/* Claim / "On the way" — hard lock (web 046) */}
+        {store.status === 'pending' ? (
+          claimedByOther ? (
+            <XStack alignItems="center" gap="$2.5" backgroundColor={BIZLINK_COLORS.tintB} borderRadius={16} paddingHorizontal={14} paddingVertical={12} marginTop={10}>
+              <Lock size={16} color={COLORS.ledgeRed} strokeWidth={1.75} />
+              <Text flex={1} fontSize={12} fontFamily={BIZLINK_FONTS.medium} color={COLORS.ledgeRed} lineHeight={16}>
+                On the way na si {store.claimedBy} — hindi mo ito pwedeng kunin.
+              </Text>
+            </XStack>
+          ) : claimedByMe ? (
+            <XStack alignItems="center" gap="$2.5" backgroundColor={BIZLINK_COLORS.tintA} borderRadius={16} paddingHorizontal={14} paddingVertical={10} marginTop={10}>
+              <Footprints size={16} color={BIZLINK_COLORS.ink} strokeWidth={1.75} />
+              <Text flex={1} fontSize={12} fontFamily={BIZLINK_FONTS.semibold} color={BIZLINK_COLORS.ink}>On the way ka na papunta rito.</Text>
+              <Pressable onPress={release} hitSlop={6}>
+                <Text fontSize={12} fontFamily={BIZLINK_FONTS.semibold} color={BIZLINK_COLORS.brand}>Release</Text>
+              </Pressable>
+            </XStack>
+          ) : (
+            <BizButton label="Claim — On the way na ako" variant="white" onPress={claim} icon={<Footprints size={16} color={BIZLINK_COLORS.text} strokeWidth={1.75} />} style={{ marginTop: 10 }} />
+          )
+        ) : null}
+
         {/* Auto-captured (dark card) */}
         <Text fontSize={10.5} fontFamily={BIZLINK_FONTS.semibold} letterSpacing={0.5} color={BIZLINK_COLORS.muted} marginTop={16} marginBottom={6}>
           AUTO-CAPTURED
         </Text>
         <YStack backgroundColor={BIZLINK_COLORS.ink} borderRadius={24} padding={16} gap="$1.5">
           <XStack alignItems="center" gap="$2">
-            <Text fontSize={12.5} fontFamily={BIZLINK_FONTS.semibold} color="#8FD7B4">✓</Text>
+            <Text fontSize={12.5} fontFamily={BIZLINK_FONTS.semibold} color={gps ? '#8FD7B4' : BIZLINK_ON_INK.textMuted}>{gps ? '✓' : '…'}</Text>
             <Text fontSize={12.5} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_ON_INK.solid}>GPS pinpoint</Text>
-            <Text fontSize={11} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_ON_INK.textMuted}>14.8006° N, 120.5372° E</Text>
+            <Text fontSize={11} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_ON_INK.textMuted}>
+              {gps ? `${gps.lat.toFixed(4)}° N, ${gps.lng.toFixed(4)}° E` : 'kukunin kasabay ng payment photo'}
+            </Text>
           </XStack>
           <XStack alignItems="center" gap="$2">
             <Text fontSize={12.5} fontFamily={BIZLINK_FONTS.semibold} color="#8FD7B4">✓</Text>
@@ -197,7 +254,7 @@ export default function CollectPaymentScreen() {
           title={PAY_LABELS[payMode]}
           subtitle="Compressed ≤3MB · naka-save locally"
           uri={payPhotoUri}
-          onCaptured={setPayPhotoUri}
+          onCaptured={onPayPhoto}
         />
 
         {/* Amount collected — NO target shown (anchoring-bias decision) */}
@@ -278,6 +335,7 @@ export default function CollectPaymentScreen() {
             label="Reschedule"
             variant="white"
             onPress={reschedule}
+            disabled={claimedByOther}
             icon={<CalendarClock size={17} color={BIZLINK_COLORS.text} strokeWidth={1.75} />}
             style={{ flex: 1 }}
           />

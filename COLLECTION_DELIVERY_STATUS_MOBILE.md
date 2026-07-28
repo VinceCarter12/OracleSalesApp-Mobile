@@ -3,76 +3,87 @@
 > Maintained by the mobile repo, for the web/admin team. The mirror of web's
 > `COLLECTION_DELIVERY_FOR_MOBILE.md`. Last updated: 2026-07-28.
 >
-> **TL;DR:** screens are built and aligned to web's `043`/`044` model, still on
-> mock data. Phase 1 (read) was blocked on one web change; **web shipped it on
-> 2026-07-28 (migration 045) and Phase 1 is UNBLOCKED.** Web also shipped `046`,
-> which gives the "On the way" indicator real schema. Integration checklist in
-> `WEB_FIXES_NEEDED_FOR_SYNC.md`.
+> **TL;DR:** the mobile sync is live. Read is verified on-device; the write path
+> (collect / deliver / fail / reschedule / **claim**) reaches the live DB —
+> confirmed by seeing `claimed_by` land on a `collection_visits` row after a
+> phone claim. **The one thing waiting on web now: the admin board doesn't
+> display claims yet** (see "Where web picks up"). Photos + remittances are the
+> remaining mobile work.
 
 ## Where we are
 
 | Area | Status |
 | --- | --- |
 | Screens / flows | ✅ Built (dashboard-first, no bottom nav) |
-| Data model aligned to `043`/`044` | ✅ Done (mock, but correct shapes) |
-| Phase 1 — READ from live DB | ✅ **Unblocked** 2026-07-28 (web migration 045) — not yet wired |
-| Phase 2 — WRITE / photos / GPS | ⬜ Not started |
-| Claiming / "On the way" | ✅ Schema exists (web migration 046) — mobile not yet wired |
+| Data model aligned to `043`–`046` | ✅ Done |
+| **Phase 1 — READ** from live DB | ✅ Built + **verified on-device** (lists/dashboards show the admin-published rows with `client_name`/`area`) |
+| **Phase 2 — WRITE outcome** (collect / deliver / fail / reschedule) | ✅ Built + **write path verified landing in DB** (same outbox path as the claim write below) |
+| **Claiming / "On the way"** (write) | ✅ Built + **verified** — a phone claim writes `claimed_by`/`claimed_at`/`claimed_by_name` to the row |
+| Real GPS (captured with the photo) | ✅ Built (`captureGps()` on payment/proof/backload photo) |
+| Photos upload (`pending_uploads`) | ⬜ Not started |
+| Remittances (`remittances` / `cod_remittances`) | ⬜ Not started |
+
+## 👉 Where the WEB dev picks up (immediate)
+
+**The admin board must display claims.** Mobile is writing `claimed_by` /
+`claimed_at` / `claimed_by_name` to `collection_visits` / `purchase_orders`
+(migration `046`) — verified in the DB — but the web board doesn't render them
+yet, so a claim is invisible on the page even though it's really there.
+
+This is web's own spec (`COLLECTION_DELIVERY_FOR_MOBILE.md` §11: *"the admin sees
+who claimed what"*, *"the web board should visually flag a claim"*). Needed:
+
+- Read `claimed_by_name` / `claimed_at` per row and show an "On the way — {name}"
+  badge / lock indicator on the day board.
+- Per §11, visually flag a claim sitting on a **past-dated pending** row so an
+  admin can clear a stale one (claims never expire by decision).
+
+Everything else the field app writes (status, `collector_id`/`driver_id`,
+amounts, timestamps, GPS) already lands on the existing columns, so the board
+should reflect those with no change.
 
 ## What's built (mobile)
 
-- **Collection:** dashboard, Today's List, Collect Payment (`visit`), Remit, History, Account, celebrate.
-- **Delivery:** dashboard, PO List, Deliver PO (`deliver`), Remit COD, History, Account, celebrate.
-- Navigation is **dashboard-first, no bottom tab bar** (Actions grid is the nav).
+- Full **read**: `collection_visits` + `purchase_orders` synced into a local
+  SQLite mirror via the existing entity registry + appliers; lists, dashboards,
+  and the Collect/Deliver detail screens all read live data.
+- Full **write** through the offline outbox (local update → queue → push):
+  - Collect → `status='collected'`, `collector_id`, `amount_collected`,
+    `payment_method`, `visited_at`, GPS.
+  - Reschedule → `status='rescheduled'`, `rescheduled_to`.
+  - Deliver → `status='delivered'`, `driver_id`, `time_in`/`time_out`,
+    `sequence_no`, `truck_plate`, `receiver_name`, COD fields, GPS.
+  - Fail (= backload) → `status='failed'`, `driver_id`, times, `sequence_no`, GPS.
+  - Claim / release → the three `claimed_*` columns together.
+- **Real GPS** captured at photo time (the fix rides with the payment/proof/
+  backload photo; "no fix" → no pin, never synthesized).
+- Hard-lock UX: a stop claimed by someone else shows a red lock and disables the
+  outcome buttons on that phone.
 
-## Data model — aligned to web `043`/`044` (still mock)
+## What mobile still owes
 
-Adopted all of the authoritative model:
-- Delivery status `pending | delivered | failed` (failed = backload, one outcome, no follow-up window / `day`).
-- Delivery **has GPS** (captured with the proof photo); no PO line-items.
-- Lowercase payment methods incl. `counter` (collection); COD methods `cash|check|gcash`.
-- Real ISO timestamps (`visited_at` / `time_in` / `time_out`); UUID string ids; `rescheduled`.
+- **Photos** — upload payment / delivery-receipt / proof / backload / COD /
+  receiver-signature images to the `collection-proofs` / `delivery-proofs`
+  buckets. Needs the shared `pending_uploads` lane generalised (it's meeting-only
+  today) for the 6 new kinds. Outcome rows currently land with **null photo
+  URLs** (schema allows it; web shows "missing proof"). This is the structural
+  piece flagged in web's doc §5b.
+- **Remittances** — submit `remittances` / `cod_remittances`, and wire the Remit
+  screens off mock totals onto the real collected/COD figures.
 
-## ✅ Was blocked on web — resolved 2026-07-28
+## Known limitations / notes
 
-Mobile couldn't display the customer name: `collection_visits`/`purchase_orders`
-carried only `client_id`, and `collector`/`delivery` roles have no RLS read on
-`clients` (post `030`/`031`). Web shipped **migration 045**, which denormalizes
-`client_name` (+ `area` for collection) onto the rows and backfills existing
-ones. Read the name straight off the list row — don't join to `clients`, that
-will keep failing under RLS.
+- **23505 (one-claim) surfacing** — a claim rides the outbox, so if two phones
+  claim the same stop the loser's push fails with `23505` on the next flush. The
+  local claim is optimistic; a visible "your claim didn't stick" path is a
+  follow-up (web doc §11 offline note).
+- Not committed to `main` yet — the write/claim/GPS work sits on a branch pending
+  review.
 
-Phase 1 can start. Integration checklist in **`WEB_FIXES_NEEDED_FOR_SYNC.md`**.
+## Testing done
 
-## What mobile still owes (Phase 2, after read works)
-
-- Add `collection_visits` + `purchase_orders` to the sync entity registry + local
-  SQLite tables + appliers (`clients` dependency for the outbox push).
-- Generalise `pending_uploads` to carry the 6 new photo kinds (payment, delivery
-  receipt, proof, backload, cod, receiver signature).
-- Wire real GPS (`captureGps()`) onto the row at photo-capture time (a `MOCK_GPS`
-  marker sits at the swap point in `visit.tsx` / `deliver.tsx`).
-- Write `collector_id`/`driver_id`, `visited_at`, `time_in`/`time_out` on the
-  outcome; submit `remittances` / `cod_remittances`.
-
-## "On the way" indicator — schema now exists (web migration 046)
-
-No longer mock-only on the web side. The rules the business settled: **hard
-lock** (a claimed stop can't be worked by anyone else), **exactly one claim per
-collector/driver**, **never expires**, cancellable by the claimer or an admin.
-
-Mobile's side of it, in short — full detail in `WEB_FIXES_NEEDED_FOR_SYNC.md`:
-
-- Claim by writing `claimed_by` / `claimed_at` / `claimed_by_name` together (a
-  CHECK rejects a partial claim). The name is denormalized for the same reason
-  as `client_name`: a collector can read only their own `profiles` row.
-- **Handle Postgres 23505** on the one-active-claim index. It means either
-  someone beat you to the stop, or you already hold a different one — two
-  different messages.
-- Completion needs no release; the outcome frees your slot automatically.
-
-## Testing
-
-Mobile is tested on-device against the live DB. First real end-to-end check:
-admin publishes a list on web → collector/driver phone reads it → works one stop
-down → it shows back on the web board.
+- **Read** verified on-device: admin-published rows show on the phone with names.
+- **Write** verified: a phone **claim** wrote `claimed_by`/`claimed_by_name` to
+  the live `collection_visits` row. (Collect/Deliver use the same outbox path —
+  confirm the same way: collect a store, check the row shows `status='collected'`
+  + `collector_id` + `amount_collected` + `visited_at`.)

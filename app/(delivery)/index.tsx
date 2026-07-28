@@ -1,4 +1,4 @@
-import { useCallback, useReducer, useState } from 'react';
+import { useCallback, useState } from 'react';
 import { Pressable, ScrollView } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router, useFocusEffect } from 'expo-router';
@@ -17,11 +17,11 @@ import { BizQuickAction } from '../../components/bizlink/BizQuickAction';
 import { SyncStatusChip } from '../../components/sync/SyncStatusChip';
 import { SyncCenterSheet } from '../../components/sync/SyncCenterSheet';
 import {
-  DELIVERY_POS,
   formatPeso,
   getDeliverySummary,
   type DeliveryPo,
 } from '../../lib/collection-delivery-data';
+import { useDeliveryPos } from '../../lib/use-collection-delivery';
 
 /**
  * F-007 first draft (2026-07-25): Driver dashboard — wireframe `d-home`
@@ -82,13 +82,12 @@ export default function DeliveryDashboardScreen() {
   const [syncSheetOpen, setSyncSheetOpen] = useState(false);
   // B-023: remount the chip on sheet-close, same as the other dashboards.
   const [syncChipKey, setSyncChipKey] = useState(0);
-  // Mock data mutates in place after a delivery (markPoDelivered); re-render on
-  // focus so the stats/list reflect it when returning to the dashboard.
-  const [, refresh] = useReducer((x: number) => x + 1, 0);
-  useFocusEffect(useCallback(() => refresh(), []));
+  // F-007 Phase 1: real data from the local mirror; re-read on focus.
+  const { pos, refresh } = useDeliveryPos();
+  useFocusEffect(useCallback(() => { refresh(); }, [refresh]));
 
-  const summary = getDeliverySummary();
-  const preview = DELIVERY_POS.filter((p) => p.status === 'pending').slice(0, 3);
+  const summary = getDeliverySummary(pos);
+  const preview = pos.filter((p) => p.status === 'pending').slice(0, 3);
   const greetingName = firstName(fullName) || 'Driver';
 
   const openDeliver = (id: string) =>
