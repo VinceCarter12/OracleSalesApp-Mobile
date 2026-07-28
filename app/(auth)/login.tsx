@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { KeyboardAvoidingView, Platform, Pressable, ScrollView, TextInput } from 'react-native';
+import { Image, KeyboardAvoidingView, Platform, Pressable, ScrollView, TextInput } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AlertTriangle, Eye, EyeOff } from 'lucide-react-native';
 import { Spinner, Text, View, XStack, YStack } from 'tamagui';
@@ -7,7 +7,6 @@ import { BIZLINK_COLORS, BIZLINK_FONTS, BIZLINK_ON_INK } from '../../lib/theme';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../lib/useAuth';
 import { useSession } from '../../lib/session-store';
-import { setManagerTrack } from '../../lib/manager-data';
 import { withTimeout } from '../../lib/with-timeout';
 import { wipeLocalDataIfAccountChanged } from '../../lib/wipe-local-data';
 import type { UserRole } from '../../types';
@@ -75,11 +74,6 @@ export default function LoginScreen() {
       await wipeLocalDataIfAccountChanged(profile.id);
 
       const role = profile.role as UserRole;
-      // Track (Sales vs RSR) is keyed off team_id, not role — ADR-017: there
-      // is only one sales_manager role, no separate rsr_manager.
-      if (role === 'sales_manager') {
-        setManagerTrack(profile.team_id);
-      }
       signIn(role, profile.team_id, profile.id, profile.full_name ?? null);
       // No manual navigation — RootNavigator's Stack.Protected guards
       // (app/_layout.tsx) switch to the matching route group as soon as
@@ -105,23 +99,13 @@ export default function LoginScreen() {
       >
         <YStack backgroundColor={BIZLINK_COLORS.ink}>
           <YStack alignItems="center" marginBottom="$5">
-            <View
-              width={96}
-              height={96}
-              borderRadius={48}
-              backgroundColor={BIZLINK_ON_INK.circleFill}
-              borderWidth={2}
-              borderColor={BIZLINK_ON_INK.circleBorder}
-              alignItems="center"
-              justifyContent="center"
-              marginBottom="$3.5"
-            >
-              <Text fontSize={34} fontFamily={BIZLINK_FONTS.bold} color={BIZLINK_COLORS.card} letterSpacing={-1}>
-                OS
-              </Text>
-            </View>
+            <Image
+              source={require('../../assets/oracle-logo.png')}
+              resizeMode="contain"
+              style={{ width: 96, height: 96, marginBottom: 14 }}
+            />
             <Text fontSize={26} fontFamily={BIZLINK_FONTS.semibold} letterSpacing={-0.6} color={BIZLINK_COLORS.card}>
-              Oracle Sales
+              Sales App
             </Text>
             <Text
               fontSize={13}

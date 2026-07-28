@@ -8,7 +8,6 @@ import { avatarPaletteFor } from '../../../lib/avatar-palette';
 import { useGate } from '../../../lib/gate-context';
 import { SecurityGate } from '../../../components/security/SecurityGate';
 import { BizTopBar } from '../../../components/bizlink/BizTopBar';
-import { BizLockButton } from '../../../components/bizlink/BizLockButton';
 import { BizSectionHeader } from '../../../components/bizlink/BizSectionHeader';
 import { BizButton } from '../../../components/bizlink/BizButton';
 import { Avatar } from '../../../components/ui/Avatar';
@@ -53,14 +52,14 @@ export default function ExecutiveManagerDetailScreen() {
 
   return (
     <YStack flex={1} backgroundColor={BIZLINK_COLORS.canvas} paddingTop={insets.top}>
-      <BizTopBar title={manager.name.split(' ')[0]} right={<BizLockButton />} />
+      <BizTopBar title={manager.name.split(' ')[0]} />
       <ScrollView contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 24 }}>
         <XStack alignItems="center" gap="$3.5" backgroundColor={BIZLINK_COLORS.card} borderRadius={24} padding={18}>
           <Avatar initials={manager.initials} size="lg" background={managerColor.background} color={managerColor.color} />
           <YStack>
             <Text fontFamily={BIZLINK_FONTS.semibold} fontSize={17} color={BIZLINK_COLORS.text}>{manager.name}</Text>
             <Text fontSize={13} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted}>
-              {manager.track === 'rsr' ? 'RSR Manager' : 'Sales Manager'}
+              Manager
             </Text>
           </YStack>
         </XStack>

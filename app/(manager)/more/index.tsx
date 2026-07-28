@@ -29,8 +29,8 @@ export default function ManagerMoreScreen() {
             </Text>
           </XStack>
           <Text fontSize={12} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} lineHeight={17}>
-            Iisang Sales Manager role lang — walang hiwalay na RSR Manager (tinanggal 2026-07-14, ADR-017). Ang
-            track na nakikita mo (Sales o RSR) ay depende sa team_id mo ({teamId ?? '—'}), hindi sa role.
+            Iisang Sales Manager role lang — walang hiwalay na RSR Manager (tinanggal 2026-07-14, ADR-017). Naka-scope
+            ang app sa sarili mong team ({teamId ?? '—'}) — hindi na hiwalay ang Sales at RSR teams (tinanggal 2026-07-23).
           </Text>
         </YStack>
 

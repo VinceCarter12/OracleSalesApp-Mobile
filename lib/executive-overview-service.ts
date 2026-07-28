@@ -10,7 +10,7 @@ import {
 } from './team-remote-mappers';
 import { fromRemoteStatus } from './remote-client-mapping';
 import { avatarPaletteFor } from './avatar-palette';
-import { isRsrTeam, PRESENTATION_AGENDA } from '../types';
+import { PRESENTATION_AGENDA } from '../types';
 import type { ExecAgent, ExecClient, ExecManager, ExecMeeting } from '../types';
 
 // B-054 Phase 2: the first real (non-mock) Executive company-wide read path —
@@ -108,7 +108,6 @@ function buildExecManagers(
       meetings: managerMeetings.length,
       clients: managerClients.length,
       agentCount: teamAgentIds.size,
-      track: isRsrTeam(m.team_id) ? 'rsr' : 'sales',
     };
   });
 }
@@ -127,13 +126,25 @@ function buildExecAgents(
     now
   );
   const teamIdByAgentId = new Map(agentProfiles.map((p) => [p.id, p.team_id]));
+  const roleByAgentId = new Map(agentProfiles.map((p) => [p.id, p.role as ExecAgent['role']]));
   return baseAgents.map((agent) => {
     const teamId = teamIdByAgentId.get(agent.id) ?? null;
+    const role = roleByAgentId.get(agent.id);
+    if (!role) {
+      // baseAgents is derived 1:1 from agentProfiles (same array feeds both
+      // maps above) — a miss here means that invariant broke, and silently
+      // defaulting would mislabel a real RSR agent as Sales Specialist with
+      // no trace. Fail loud instead.
+      throw new Error(`[executive-overview-service] no role found for agent ${agent.id}`);
+    }
     return {
       id: agent.id,
       managerId: (teamId && managerIdByTeamId.get(teamId)) ?? null,
       name: agent.name,
       initials: agent.initials,
+      // 2026-07-23: role comes directly from the agent's own profile, never
+      // guessed from the manager's team (team-level "track" is retired).
+      role,
       avatar: avatarPaletteFor(agent.id),
       meetings: agent.meetingsThisMonth,
       clients: agent.activeClients,

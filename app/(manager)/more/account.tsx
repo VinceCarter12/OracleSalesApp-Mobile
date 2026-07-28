@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { Image, ScrollView } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router, useFocusEffect } from 'expo-router';
-import { ImagePlus, Key, Lock } from 'lucide-react-native';
+import { ImagePlus, Key } from 'lucide-react-native';
 import { Text, View, XStack, YStack } from 'tamagui';
 import { BIZLINK_COLORS, BIZLINK_FONTS } from '../../../lib/theme';
 import { useManagerDashboard } from '../../../lib/useManagerDashboard';
@@ -39,7 +39,7 @@ const SECURITY_ITEMS: SecurityItem[] = [
   },
   {
     key: 'client-info-protection',
-    icon: <Lock size={16} color={BIZLINK_COLORS.text} strokeWidth={1.75} />,
+    icon: null,
     label: 'Client info protection',
     sublabel: 'Fingerprint / passcode required to view',
   },
@@ -107,7 +107,7 @@ export default function ManagerAccountScreen() {
           </View>
           <YStack>
             <Text fontFamily={BIZLINK_FONTS.semibold} fontSize={17} color={BIZLINK_COLORS.text}>{fullName ?? '—'}</Text>
-            {/* ADR-017: a single `sales_manager` role — track shown by team_id, not a separate title. */}
+            {/* ADR-017: a single `sales_manager` role. Team-level Sales-vs-RSR "track" retired 2026-07-23 — teams are now mixed, team_id no longer implies a track. */}
             <Text fontSize={13} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted}>Sales Manager · {teamId ?? '—'}</Text>
           </YStack>
         </BizCard>
@@ -146,7 +146,6 @@ export default function ManagerAccountScreen() {
 
         <BizCard flat marginTop="$4">
           <XStack alignItems="center" gap="$2">
-            <Lock size={13} color={BIZLINK_COLORS.text} strokeWidth={1.75} />
             <Text fontSize={12.5} fontFamily={BIZLINK_FONTS.semibold} color={BIZLINK_COLORS.text}>Session policy</Text>
           </XStack>
           <Text fontSize={13} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} marginTop="$1" lineHeight={18}>
