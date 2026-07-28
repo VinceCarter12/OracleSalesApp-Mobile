@@ -4,7 +4,14 @@
 // domain types (`CustomerType`/`SalesChannel`/`ClientStatus` in `./index`),
 // which use different names/casing for different concepts. See ADR-018's
 // 2026-07-15 revision and lib/remote-client-mapping.ts for the translation.
-export type RemoteCustomerType = 'existing' | 'new' | 'prospect';
+// ADR-042 (Migration 038, applied live 2026-07-27): four-stage lifecycle
+// widens the `clients_customer_type_check` CHECK constraint to
+// `('prospect','in_progress','new','existing')`. Mobile never WRITES
+// 'in_progress' itself (server-authoritative transitions only, see
+// `lib/remote-client-mapping.ts::toRemoteCustomerType()`) — this widening is
+// so the app can correctly READ/display a client the server has already
+// advanced into that stage.
+export type RemoteCustomerType = 'existing' | 'new' | 'in_progress' | 'prospect';
 export type RemoteSalesChannel = 'distributor' | 'dealer' | 'end_user' | 'private_label';
 export type RemoteClientStatus = 'active' | 'inactive' | 'lost' | 'deleted';
 

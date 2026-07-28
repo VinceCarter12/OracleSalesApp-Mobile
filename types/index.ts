@@ -52,7 +52,12 @@ export const MEETING_OUTCOMES = [
 // revised 2026-07-21): new/existing → photo-only fast path (info's already
 // complete, ADR-027); prospect → full form. 'inactive' is server-side
 // lifecycle only (Sprint.md T-001 notes) — never chosen by an agent.
-export const CLIENT_STATUSES = ['prospect', 'new', 'existing', 'inactive'] as const;
+// ADR-042 (2026-07-27): 'in_progress' is a real, server-reachable stage as of
+// Migrations 038/040/043 (applied live) — the prospect->in_progress->new
+// transitions are 100% server-authoritative (mobile never writes this value,
+// see lib/remote-client-mapping.ts::toRemoteCustomerType()); it only needs to
+// be representable here so the app can display it correctly.
+export const CLIENT_STATUSES = ['prospect', 'in_progress', 'new', 'existing', 'inactive'] as const;
 
 // ADR-012: online meetings bind GPS to the agent's own location, flagged so
 // reporting never misreads them as client-site visits.

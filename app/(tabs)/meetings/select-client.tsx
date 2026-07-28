@@ -15,6 +15,18 @@ import type { Client, ClientStatus } from '../../../types';
 // aRecordPickerFilter/aRenderRecordPicker) — defaults to 'existing' per the
 // wireframe. Pure UI filter/hint over the already-loaded client list; routing
 // logic (openRecordFlow) is untouched.
+//
+// ADR-042 (2026-07-27) note: the wireframe's own `aRecordPickerFilter`
+// `statuses` array DOES include an 'in_progress' chip, and its stage-aware
+// agenda flow means in_progress clients should get the SAME full-form path as
+// 'prospect' (`Wireframe-Sales-BizLink.html:1592`), not the new/existing
+// photo-only fast path. `openRecordFlow`/`ClientRow`'s hint below still use
+// the pre-ADR-042 binary `status !== 'prospect'` branch (predates the
+// four-stage lifecycle) — adding an 'in_progress' filter chip here today
+// would let a user select an in_progress client and get misrouted into the
+// fast path. Deliberately left out of this PR (scope is display-only per
+// Batch 3 PR 1) — wiring the stage-aware record flow (likely via
+// `lib/policies/stage-policy.ts`) is a separate, larger follow-up.
 type RecordPickerFilter = ClientStatus | 'all';
 const RECORD_PICKER_FILTERS: Array<{ value: RecordPickerFilter; label: string }> = [
   { value: 'existing', label: 'Existing' },
@@ -35,6 +47,10 @@ const RECORD_PICKER_FILTERS: Array<{ value: RecordPickerFilter; label: string }>
  * the full form. Meeting-first (quick-create inline on the record form) was
  * removed 2026-07-15 — a brand-new company is created via Create Client
  * first, then shows up here under Prospect.
+ *
+ * NOT YET UPDATED for ADR-042's 'in_progress' stage (see filter comment
+ * above) — an in_progress client can only reach this screen via the 'all'
+ * filter today, and would currently be misrouted to the fast path below.
  */
 function openRecordFlow(client: Client): void {
   const status = getClientStatus(client);

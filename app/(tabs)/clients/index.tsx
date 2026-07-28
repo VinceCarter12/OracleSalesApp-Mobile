@@ -20,13 +20,16 @@ import { BizChip } from '../../../components/bizlink/BizChip';
 import type { OutboxStatus } from '../../../lib/sync/outbox-status';
 import type { Client, ClientStatus, Meeting } from '../../../types';
 
-// Wireframe #a-clients' filter row is exactly All/Prospect/New/Existing — no
-// "Inactive" chip (that status is server-side lifecycle only, never agent-
-// facing, per types/index.ts's CLIENT_STATUSES comment).
+// Wireframe #a-clients' filter row is exactly All/Prospect/In Progress/New/
+// Existing (ADR-042 four-stage lifecycle, Wireframe-Sales-BizLink.html
+// `aRenderClientsFiltered`'s `statuses` array) — no "Inactive" chip (that
+// status is server-side lifecycle only, never agent-facing, per
+// types/index.ts's CLIENT_STATUSES comment).
 type StatusFilter = ClientStatus | 'all';
 const STATUS_FILTERS: Array<{ value: StatusFilter; label: string }> = [
   { value: 'all', label: 'All' },
   { value: 'prospect', label: 'Prospect' },
+  { value: 'in_progress', label: 'In Progress' },
   { value: 'new', label: 'New' },
   { value: 'existing', label: 'Existing' },
 ];

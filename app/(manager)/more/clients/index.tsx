@@ -14,9 +14,18 @@ import { BizChip } from '../../../../components/bizlink/BizChip';
 import { BizButton } from '../../../../components/bizlink/BizButton';
 import { StatusBadge } from '../../../../components/ui/StatusBadge';
 import { Avatar } from '../../../../components/ui/Avatar';
-import { CLIENT_STATUSES, type ClientStatus, type TeamAgent, type TeamClient, type TeamMeeting } from '../../../../types';
+import { type ClientStatus, type TeamAgent, type TeamClient, type TeamMeeting } from '../../../../types';
 
 type StatusFilter = ClientStatus | 'all';
+
+// Wireframe-Manager-BizLink.html's `renderClients()` `clientStatusFilter`
+// chip row is exactly `[all, prospect, new, existing, inactive]` — it does
+// NOT include 'in_progress' (unlike the sales agent's My Clients filter or
+// the manager's own Record-Meeting picker, both of which do). Kept as an
+// explicit list rather than deriving from `CLIENT_STATUSES` (ADR-042 added
+// 'in_progress' to that shared array) so this screen doesn't silently gain a
+// filter chip the wireframe doesn't have.
+const CLIENT_STATUS_FILTER_ORDER: readonly ClientStatus[] = ['prospect', 'new', 'existing', 'inactive'];
 
 /** Wireframe s-clients — filter by agent + status, team-wide view (manager's own clients live in the separate `(manager)/clients` tab, F-205). Real data (B-054 Phase 1). */
 export default function ManagerClientsScreen() {
@@ -79,7 +88,7 @@ export default function ManagerClientsScreen() {
         <ScrollView horizontal showsHorizontalScrollIndicator={false}>
           <XStack gap="$2">
             <BizChip label="All" selected={statusFilter === 'all'} onPress={() => setStatusFilter('all')} />
-            {CLIENT_STATUSES.map((s) => (
+            {CLIENT_STATUS_FILTER_ORDER.map((s) => (
               <BizChip key={s} label={CLIENT_STATUS_BADGES[s].label} selected={statusFilter === s} onPress={() => setStatusFilter(s)} />
             ))}
           </XStack>

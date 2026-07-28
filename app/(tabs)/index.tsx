@@ -223,7 +223,10 @@ export default function AgentHomeScreen() {
               tone="white"
               value={nonProspects.length}
               label="Clients ko"
-              caption="new + existing"
+              // ADR-042: `nonProspects` is everything !== 'prospect', which
+              // now also includes 'in_progress' — caption updated so it
+              // stays accurate rather than silently going stale.
+              caption="in progress + new + existing"
               onPress={() => router.push('/(tabs)/clients')}
             />
           </YStack>

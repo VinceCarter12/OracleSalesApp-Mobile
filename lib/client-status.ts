@@ -10,12 +10,22 @@ export function getClientStatus(client: Pick<Client, 'status'>): ClientStatus {
   return client.status ?? 'prospect';
 }
 
-/** Mirrors .b-prospect/.b-new/.b-existing in Wireframe-Agent-Executive.html (ADR-010/011). */
+/**
+ * Mirrors .b-prospect/.b-new/.b-existing in Wireframe-Agent-Executive.html
+ * (ADR-010/011). `in_progress` added for ADR-042's four-stage lifecycle
+ * (2026-07-27) — matches `.b-progress{background:var(--amber-soft);
+ * color:#8A5A06}` / Manager wireframe's equivalent `.b-follow` class
+ * (Wireframe-Sales-BizLink.html / Wireframe-Manager-BizLink.html) by reusing
+ * the app's existing amber/orange "in-progress-ish" pairing already
+ * established for `WAITING_MANAGER_APPROVAL_BADGE` and the 'Follow-up
+ * Required' outcome badge, rather than inventing a new hex value.
+ */
 export const CLIENT_STATUS_BADGES: Record<
   ClientStatus,
   { label: string; background: string; color: string }
 > = {
   prospect: { label: 'PROSPECT', background: COLORS.blueSoft, color: COLORS.blue },
+  in_progress: { label: 'IN PROGRESS', background: COLORS.amberSoft, color: COLORS.orange },
   new: { label: 'NEW', background: COLORS.greenSoft, color: COLORS.ledgeGreen },
   existing: { label: 'EXISTING', background: COLORS.polar, color: COLORS.wolf },
   inactive: { label: 'INACTIVE', background: COLORS.swan, color: COLORS.wolf },

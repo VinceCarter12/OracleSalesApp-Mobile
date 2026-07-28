@@ -172,9 +172,20 @@ function buildChecklist(row: ClientRow): TeamClientChecklist {
   };
 }
 
-/** "Prospect"/"New"/"Existing"/"Inactive" — display label for a client's lifecycle status, used as `TeamMeeting.custType`. */
+// "Prospect"/"In Progress"/"New"/"Existing"/"Inactive" — display label for a
+// client's lifecycle status, used as `TeamMeeting.custType`. A naive
+// charAt-capitalize doesn't work once 'in_progress' (ADR-042) is a reachable
+// value — it would render "In_progress" — so this is an explicit map instead.
+const CLIENT_STATUS_LABELS: Record<ClientStatus, string> = {
+  prospect: 'Prospect',
+  in_progress: 'In Progress',
+  new: 'New',
+  existing: 'Existing',
+  inactive: 'Inactive',
+};
+
 export function clientStatusLabel(status: ClientStatus): string {
-  return status.charAt(0).toUpperCase() + status.slice(1);
+  return CLIENT_STATUS_LABELS[status];
 }
 
 export function mapClientRowToTeamClient(row: ClientRow, now: Date): TeamClient {

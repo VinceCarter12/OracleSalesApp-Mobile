@@ -217,7 +217,14 @@ export default function ClientDetailScreen() {
             Record Meeting is hidden here once status !== 'prospect' (revised
             2026-07-21 — 'new' now shares 'existing's fast path, ADR-015) —
             those clients log visits solely through My Meetings (2026-07-15
-            wireframe note), so there is only one entry point instead of two. */}
+            wireframe note), so there is only one entry point instead of two.
+            ADR-042 (2026-07-27) note: this predates the four-stage lifecycle
+            and doesn't yet special-case 'in_progress' — an in_progress
+            client also loses the Record Meeting entry point here today, even
+            though the wireframe's stage-aware agenda flow implies it should
+            behave like 'prospect' (full form via My Meetings' record picker),
+            not like 'new'/'existing'. Left unchanged in this display-only PR;
+            see select-client.tsx's matching note for the same open item. */}
         <XStack gap="$2.5" marginTop="$3.5">
           <YStack flex={1}>
             <BizButton
