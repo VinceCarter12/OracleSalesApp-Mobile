@@ -100,8 +100,9 @@ export async function upsertSyncedClient(
       (id, company_name, normalized_name, contact_person, position, contact_number, address_line1,
        address_line2, landmark, province, city, customer_type, sales_channel, status,
        agent_id, details_deadline_at, details_completed_at, inactive_reason,
-       created_at, updated_at, cycle_id, in_progress_at, sync_status, local_updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'synced', ?)
+       created_at, updated_at, cycle_id, in_progress_at,
+       office_lat, office_lng, office_pin_updated_at, office_pin_source, sync_status, local_updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'synced', ?)
      ON CONFLICT(id) DO UPDATE SET
        company_name = excluded.company_name, normalized_name = excluded.normalized_name,
        contact_person = excluded.contact_person, position = excluded.position,
@@ -112,6 +113,8 @@ export async function upsertSyncedClient(
        details_deadline_at = excluded.details_deadline_at, details_completed_at = excluded.details_completed_at,
        inactive_reason = excluded.inactive_reason, created_at = excluded.created_at,
        updated_at = excluded.updated_at, cycle_id = excluded.cycle_id, in_progress_at = excluded.in_progress_at,
+       office_lat = excluded.office_lat, office_lng = excluded.office_lng,
+       office_pin_updated_at = excluded.office_pin_updated_at, office_pin_source = excluded.office_pin_source,
        sync_status = 'synced', sync_error = NULL, local_updated_at = excluded.local_updated_at
      WHERE clients.sync_status = 'synced'`,
     [
@@ -143,6 +146,14 @@ export async function upsertSyncedClient(
       // name; local column is shortened to `cycle_id` (lib/db.ts v14).
       (row.current_cycle_id as string) ?? null,
       (row.in_progress_at as string) ?? null,
+      // Batch 4: permanent office pin, additive Supabase columns — see
+      // [[Office-Location-Spec-2026-07-29]]. Never written by mobile except
+      // through lib/office-pin-service.ts; this sync-down path only mirrors
+      // whatever the server currently has.
+      (row.office_lat as number) ?? null,
+      (row.office_lng as number) ?? null,
+      (row.office_pin_updated_at as string) ?? null,
+      (row.office_pin_source as string) ?? null,
       now,
     ]
   );

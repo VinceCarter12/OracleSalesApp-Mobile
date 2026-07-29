@@ -10,6 +10,7 @@ import { insertMeetingCompanionRequests, type CompanionSelection } from './tag-a
 import { insertAcceptedMeetingCompanions } from './tag-along-manager-service';
 import { computeMeetingValidityStatusOnCreate } from './policies/tag-along-validity-policy';
 import { captureAndSubmitPoEvidence } from './po-confirmation-service';
+import { writeOfficePinLocal } from './office-pin-service';
 import type { MeetingMode, MeetingOutcome } from '../types';
 
 export { buildMeetingPhotoStoragePath, uploadMeetingPhoto, enqueueMeetingPhotoUrlUpdate, MEETING_PHOTO_BUCKET, PHOTO_UPLOAD_TIMEOUT_MS } from './meeting-photo-service';
@@ -98,6 +99,8 @@ export interface NewMeetingRecord {
   companionsPreAccepted?: boolean;
   /** ADR-044/046 point 7 (Batch 3, Slice 5): PO evidence for an In Progress client's 'Close deal' agenda. `cycleId` is `Client.cycle_id` (required NOT NULL by `po_confirmation_requests`); `userId` is the Auth uid, same split as `photoToQueue.userId`. Omitted when not applicable. */
   poEvidence?: { localPhotoUri: string; cycleId: string; userId: string } | null;
+  /** Batch 4: true only for a 'Client Office' in-person meeting ([[Office-Location-Spec-2026-07-29]]). A boolean, not coordinates — the office pin comes only from THIS meeting's own start GPS above, never a second capture. Online/Others must never set this true. */
+  captureOfficePin?: boolean;
 }
 
 /**
@@ -229,6 +232,21 @@ export async function createMeeting(record: NewMeetingRecord): Promise<string> {
         requesterId: record.agent_id,
         companions: record.companions,
         createdOnline,
+      });
+    }
+    // Batch 4: Client Office meetings auto-capture the office pin from THIS
+    // meeting's own start GPS ([[Office-Location-Spec-2026-07-29]]) —
+    // local-only, so it stays inside this transaction (unlike the
+    // network-I/O poEvidence block below). Reuses the same `db` transaction
+    // handle — expo-sqlite can't nest `withTransactionAsync`.
+    if (record.captureOfficePin && record.client_id) {
+      await writeOfficePinLocal(db, {
+        clientId: record.client_id,
+        agentId: record.agent_id,
+        lat: record.gps_lat,
+        lng: record.gps_lng,
+        source: 'client_office_meeting',
+        capturedAt: record.logged_at,
       });
     }
   });

@@ -13,6 +13,7 @@ export default function ClientsStackLayout() {
       <Stack.Screen name="index" />
       <Stack.Screen name="create" />
       <Stack.Screen name="complete" />
+      <Stack.Screen name="office-location" />
       <Stack.Screen name="[id]" />
     </Stack>
   );
