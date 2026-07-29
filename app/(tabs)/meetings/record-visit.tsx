@@ -207,7 +207,7 @@ export default function RecordVisitScreen() {
         end_gps_lat: endPhoto.gpsLat,
         end_gps_lng: endPhoto.gpsLng,
         logged_at: start.capturedAt,
-        // B-0xx (Office Location Spec follow-up, 2026-07-29): this fast path
+        // B-085 (Office Location Spec follow-up, 2026-07-29): this fast path
         // never passed `locationType` at all, so
         // `toRemoteLocationType()` (lib/remote-meeting-mapping.ts) silently
         // defaulted every visit's remote `location_type` to 'client_office'
