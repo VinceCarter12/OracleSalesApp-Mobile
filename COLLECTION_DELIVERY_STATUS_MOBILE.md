@@ -6,9 +6,11 @@
 > **TL;DR:** the mobile sync is live. Read is verified on-device; the write path
 > (collect / deliver / fail / reschedule / **claim**) reaches the live DB —
 > confirmed by seeing `claimed_by` land on a `collection_visits` row after a
-> phone claim. **The one thing waiting on web now: the admin board doesn't
-> display claims yet** (see "Where web picks up"). Photos + remittances are the
-> remaining mobile work.
+> phone claim. **Proof photos now upload** (Phase 2b, 2026-07-29): all 5 camera
+> captures ride a generalized `pending_uploads` lane and patch their row's photo
+> column. **The one thing waiting on web now: the admin board doesn't display
+> claims yet** (see "Where web picks up"). Remittances are the remaining mobile
+> work (+ the in-memory receiver signature, which needs an image-export step).
 
 ## Where we are
 
@@ -20,8 +22,9 @@
 | **Phase 2 — WRITE outcome** (collect / deliver / fail / reschedule) | ✅ Built + **write path verified landing in DB** (same outbox path as the claim write below) |
 | **Claiming / "On the way"** (write) | ✅ Built + **verified** — a phone claim writes `claimed_by`/`claimed_at`/`claimed_by_name` to the row |
 | Real GPS (captured with the photo) | ✅ Built (`captureGps()` on payment/proof/backload photo) |
-| Photos upload (`pending_uploads`) | ⬜ Not started |
-| Remittances (`remittances` / `cod_remittances`) | ⬜ Not started |
+| Photos upload (`pending_uploads`) | ✅ Built — payment, delivery-receipt, proof, COD, backload upload to `collection-proofs`/`delivery-proofs` and patch the row's `*_url` column. |
+| Receiver signature (delivery) | ✅ Built — the signature pad renders to a JPEG and rides the deferred lane to `purchase_orders.receiver_signature_url`. |
+| Remittances (`remittances` / `cod_remittances`) | ✅ Built — collection remit (office/bayad_center/bank_deposit) + COD remit (office). Uploads signed-proof/signature, INSERTs the row (online-only: no UPDATE RLS policy, so URLs go in the insert), and flags covered POs `cod_remitted`. Real "on hand" totals computed from synced local rows, excluding already-remitted. |
 
 ## 👉 Where the WEB dev picks up (immediate)
 
@@ -62,14 +65,42 @@ should reflect those with no change.
 
 ## What mobile still owes
 
-- **Photos** — upload payment / delivery-receipt / proof / backload / COD /
-  receiver-signature images to the `collection-proofs` / `delivery-proofs`
-  buckets. Needs the shared `pending_uploads` lane generalised (it's meeting-only
-  today) for the 6 new kinds. Outcome rows currently land with **null photo
-  URLs** (schema allows it; web shows "missing proof"). This is the structural
-  piece flagged in web's doc §5b.
-- **Remittances** — submit `remittances` / `cod_remittances`, and wire the Remit
-  screens off mock totals onto the real collected/COD figures.
+- Nothing structural on the field-app write side — collect, deliver, fail,
+  claim, all photos, both remittances, and signatures now reach the live DB.
+  Remaining items are polish: a "your claim didn't stick" (23505) surface, and a
+  remittance history view.
+
+## 👉 Where the WEB dev picks up (remittances)
+
+- The admin board should show submitted `remittances` / `cod_remittances` and
+  reconcile them (the `status` column supports `submitted`→`reconciled`/
+  `variance`). Mobile submits with `status='submitted'` and never updates them
+  after (there's no field-role UPDATE policy, by design).
+
+## ✅ Done since last update (Phase 2c — signatures + remittances, 2026-07-29)
+
+- **SignaturePad** now renders the drawn strokes to a JPEG (`Svg.toDataURL` →
+  PNG → transcode), exposed via an imperative `captureToFile()` the screens call
+  at submit. Fixed white bg + dark ink so it's clean in both themes.
+- **Remittances** are a full sync entity now: local mirror tables (SQLite v19),
+  appliers, registry entries (own-rows pull by collector_id/driver_id), and
+  remote-upsert insert cases. Write is online-only (upload photos → INSERT via
+  outbox) because the remittance tables have INSERT+SELECT RLS but no UPDATE, so
+  photo URLs must be in the insert, not patched later (same shape as PO
+  confirmation). Verified column/RLS facts against migrations 043/044:
+  `remittances.destination` ∈ office|bayad_center|bank_deposit; `cod_remittances`
+  is office-only with no signed_proof_url and a NOT NULL receiver_name.
+
+## ✅ Done earlier (Phase 2b — photos + GPS, 2026-07-29)
+
+- **Photos upload** — the meeting-only `pending_uploads` lane was generalized to
+  a cross-entity queue: each row now carries `parent_table` + `parent_id` (SQLite
+  v18) and a kind→{bucket, column} registry (`lib/sync/photo-upload-registry.ts`).
+  Collect/Deliver/Fail queue their captures right after the outcome's outbox row;
+  a dependency guard holds each upload until the outcome row has synced, then the
+  public URL patches the row's `*_url` column via the parent's existing outbox
+  lane. Column names verified against migrations 043/044 (note: `proof_url`, and
+  `cod_photo_url` is on `purchase_orders` — the §5b summary was wrong).
 
 ## Known limitations / notes
 

@@ -244,7 +244,8 @@ export async function createMeeting(record: NewMeetingRecord): Promise<string> {
     const storagePath = buildMeetingPhotoStoragePath(userId, id, kind);
     try {
       await enqueuePendingUpload(db, {
-        meetingId: id,
+        parentTable: 'meetings',
+        parentId: id,
         agentId: record.agent_id,
         kind,
         localUri,

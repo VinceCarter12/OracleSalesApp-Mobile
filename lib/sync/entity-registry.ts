@@ -1,8 +1,10 @@
 import {
   upsertSyncedClient,
+  upsertSyncedCodRemittance,
   upsertSyncedCollectionVisit,
   upsertSyncedMeeting,
   upsertSyncedPurchaseOrder,
+  upsertSyncedRemittance,
   upsertSyncedTagAlongRequest,
 } from './entity-appliers';
 import type { SQLiteDatabase } from 'expo-sqlite';
@@ -17,7 +19,9 @@ export type EntityTableName =
   | 'meetings'
   | 'tag_along_requests'
   | 'collection_visits'
-  | 'purchase_orders';
+  | 'purchase_orders'
+  | 'remittances'
+  | 'cod_remittances';
 
 /**
  * Structural constraint for `SyncEntityConfig.applyScope` (ADR-030): matches
@@ -117,6 +121,24 @@ export const ENTITY_REGISTRY: Record<EntityTableName, SyncEntityConfig> = {
     onConflict: 'id',
     applyRemoteRow: upsertSyncedPurchaseOrder,
     applyScope: (query) => query,
+  },
+  // F-007 remittances (web 043/044). Unlike the day lists above, these ARE
+  // per-agent — a collector/driver only ever reads back their OWN remittances
+  // (RLS SELECT), so they scope the pull by collector_id/driver_id. Priority is
+  // after the visits/POs they reference so a same-pass sync stays sensible.
+  remittances: {
+    remoteTable: 'remittances',
+    priority: 60,
+    onConflict: 'id',
+    applyRemoteRow: upsertSyncedRemittance,
+    applyScope: (query, agentId) => query.eq('collector_id', agentId),
+  },
+  cod_remittances: {
+    remoteTable: 'cod_remittances',
+    priority: 70,
+    onConflict: 'id',
+    applyRemoteRow: upsertSyncedCodRemittance,
+    applyScope: (query, agentId) => query.eq('driver_id', agentId),
   },
 };
 
