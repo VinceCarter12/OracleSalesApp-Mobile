@@ -26,15 +26,20 @@ export const CUSTOMER_TYPES = [
 // `lib/policies/agenda.ts::getCanonicalAgenda()` normalizes any legacy
 // 'Closed deal' value found in old stored/queued data at read time — it is
 // never rewritten in place.
+//
+// B-083 fix (2026-07-29): 'Collection' and 'Complaint resolution' removed —
+// ADR-045 retired them from the live 7-item v1 agenda_catalog seed
+// (Migration-038-Report.md lines 223-230) and Vince approved the actual
+// picker removal on 2026-07-29 (previously the label list still had 9 items
+// despite the ADR decision). The remaining 7 match `agenda_catalog.display_label`
+// verbatim.
 export const MEETING_AGENDAS = [
   'New business opportunity',
   'Product / company presentation',
   'Price negotiation / quotation',
   'Terms & limit negotiation',
-  'Collection',
-  'Technical support',
-  'Complaint resolution',
   'Relationship building',
+  'Technical support',
   'Close deal',
 ] as const;
 
@@ -46,7 +51,9 @@ export const PRESENTATION_AGENDA: (typeof MEETING_AGENDAS)[number] =
 // in Wireframe-Sales-BizLink.html) — not the stable `close_deal` agenda id
 // from `lib/policies/agenda-policy.ts`, since the Record Meeting UI still
 // selects agendas by label (that module's stage-aware picker is not yet
-// wired into record.tsx — separate, not-yet-scheduled track).
+// wired into record.tsx — separate, not-yet-scheduled track). B-083 fix:
+// `lib/meeting-service.ts::createMeeting()` now maps these labels to their
+// canonical `agenda_id`s before save, but the picker itself is unchanged.
 export const CLOSE_DEAL_AGENDA: (typeof MEETING_AGENDAS)[number] = 'Close deal';
 
 export const MEETING_OUTCOMES = [

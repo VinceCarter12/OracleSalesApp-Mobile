@@ -5,11 +5,13 @@ import { enqueueOutboxRow } from './sync/entity-registry';
 import { enqueuePendingUpload, type PhotoKind } from './sync/photo-uploads';
 import { buildMeetingPhotoStoragePath } from './meeting-photo-service';
 import { isLikelyOnline } from './sync/connectivity';
-import { toRemoteLocationType, toRemoteMeetingType, toRemoteOutcome } from './remote-meeting-mapping';
 import { insertMeetingCompanionRequests, type CompanionSelection } from './tag-along-service';
 import { insertAcceptedMeetingCompanions } from './tag-along-manager-service';
 import { computeMeetingValidityStatusOnCreate } from './policies/tag-along-validity-policy';
 import { captureAndSubmitPoEvidence } from './po-confirmation-service';
+import { getCurrentAgendaCatalog } from './meeting-agenda-catalog-source';
+import { mapAgendaLabelsToIds } from './policies/agenda-label-mapping';
+import { buildRemoteMeetingPayload } from './remote-meeting-payload';
 import type { MeetingMode, MeetingOutcome } from '../types';
 
 export { buildMeetingPhotoStoragePath, uploadMeetingPhoto, enqueueMeetingPhotoUrlUpdate, MEETING_PHOTO_BUCKET, PHOTO_UPLOAD_TIMEOUT_MS } from './meeting-photo-service';
@@ -36,18 +38,6 @@ export { buildMeetingPhotoStoragePath, uploadMeetingPhoto, enqueueMeetingPhotoUr
 // is assumed fine) and `client_office` (fast-path visits are, by
 // definition, a visit to that client). Flag to Vince if either assumption
 // is wrong — these are inferred, not confirmed business rules.
-
-/**
- * ADR-026 P1 (interim offline-save fix): a screen falls back to the local
- * `file://` photo URI when `uploadMeetingPhoto()` fails offline, so the
- * meeting is never lost — but that local path is meaningless to Supabase.
- * The remote payload must only ever carry a URL the Storage upload actually
- * produced; anything else (or absent) stays null until Phase C's queued
- * upload retries it.
- */
-function remoteMediaUrl(url: string | null | undefined): string | null {
-  return url && url.startsWith('http') ? url : null;
-}
 
 export interface NewMeetingRecord {
   client_id: string | null;
@@ -128,37 +118,12 @@ export async function createMeeting(record: NewMeetingRecord): Promise<string> {
   const outboxId = uuidv4();
   const now = new Date().toISOString();
 
-  const remotePayload = {
-    id,
-    client_id: record.client_id,
-    agent_id: record.agent_id,
-    // Tag-along (F-004) and online-meeting (ADR-012) columns — not collected
-    // by either mobile flow yet, left null rather than guessed at.
-    recorded_by: null,
-    online_platform: null,
-    gps_lat: record.gps_lat,
-    gps_lng: record.gps_lng,
-    meeting_type: toRemoteMeetingType(record.meeting_mode),
-    agenda: record.agendas,
-    outcome: toRemoteOutcome(record.outcome),
-    photo_url: remoteMediaUrl(record.selfie_url),
-    // Existing-client fast path no longer captures a start photo (2026-07-16
-    // revision) — the column stays for the remote schema shape, just unset.
-    start_photo_url: null,
-    start_captured_at: record.start_captured_at ?? null,
-    end_photo_url: remoteMediaUrl(record.end_photo_url),
-    end_captured_at: record.end_captured_at ?? null,
-    end_gps_lat: record.end_gps_lat ?? null,
-    end_gps_lng: record.end_gps_lng ?? null,
-    meeting_date: record.logged_at,
-    // NOT NULL remotely — empty string, never null (matches clients'
-    // established pattern in client-service.ts).
-    contact_person: record.contactPerson?.trim() || '',
-    contact_position: record.contactPosition ?? null,
-    location_type: toRemoteLocationType(record.locationType),
-    location_name: record.locationName ?? null,
-    remarks: record.remarks ?? null,
-  };
+  // B-083 fix: map the selected display labels to canonical agenda_ids so
+  // `advance_prospect_to_in_progress()` (Migration 043) can actually match
+  // them — see lib/meeting-agenda-catalog-source.ts for the fallback rule.
+  const { catalog: agendaCatalog } = await getCurrentAgendaCatalog(db);
+  const agendaIds = mapAgendaLabelsToIds(agendaCatalog, record.agendas);
+  const remotePayload = buildRemoteMeetingPayload(id, record, agendaIds);
 
   const createdOnline = await isLikelyOnline();
 
@@ -174,11 +139,11 @@ export async function createMeeting(record: NewMeetingRecord): Promise<string> {
   await db.withTransactionAsync(async () => {
     await db.runAsync(
       `INSERT INTO meetings
-        (id, client_id, agent_id, gps_lat, gps_lng, selfie_url, agendas, outcome, meeting_mode,
+        (id, client_id, agent_id, gps_lat, gps_lng, selfie_url, agendas, agenda_ids, outcome, meeting_mode,
          start_photo_url, start_captured_at, end_photo_url, end_captured_at, end_gps_lat, end_gps_lng,
          logged_at, created_at, contact_person, contact_position, location_type, location_name, remarks,
          validity_status, sync_status, local_updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?)`,
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?)`,
       [
         id,
         record.client_id,
@@ -187,6 +152,7 @@ export async function createMeeting(record: NewMeetingRecord): Promise<string> {
         record.gps_lng,
         record.selfie_url ?? null,
         JSON.stringify(record.agendas),
+        JSON.stringify(agendaIds),
         record.outcome,
         record.meeting_mode,
         null,
