@@ -254,6 +254,11 @@ export default function RecordMeetingScreen() {
           poPhotoUri && client?.cycle_id && isCloseDealPoEligible(client?.status, outcome, selectedAgendas)
             ? { localPhotoUri: poPhotoUri, cycleId: client.cycle_id, userId: session.user.id }
             : null,
+        // Office Location Spec (2026-07-29): only an in-person 'Client
+        // Office' meeting auto-captures the permanent office pin; Online and
+        // Others must never touch it (agent may set it explicitly instead,
+        // via Client Detail's Set/Update Office Location).
+        captureOfficePin: mode === 'in_person' && meetingLocation === 'Client Office',
       });
       const connectivity = await checkConnectivity();
       router.replace(routes.celebrate(connectivity === 'online', meetingId));

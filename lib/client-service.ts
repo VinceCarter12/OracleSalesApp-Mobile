@@ -236,3 +236,15 @@ export async function getClientById(clientId: string): Promise<Client | null> {
 // T-014 (ADR-022 #12): non-blocking duplicate-name/phone warnings live in
 // lib/client-similarity.ts — split out to stay under the 300-line limit.
 export { checkSimilarCompanyWarnings, type SimilarCompanyWarnings } from './client-similarity';
+
+// Batch 4 (2026-07-29): permanent client office pin write path lives in
+// lib/office-pin-service.ts — split out to stay under the 300-line limit,
+// same reason as the two re-exports above. Re-exported here for existing
+// consumers (app/(tabs)/clients/office-location.tsx).
+export {
+  writeOfficePinLocal,
+  setOfficeLocation,
+  hasOfficePin,
+  type OfficePinSource,
+  type SetOfficeLocationInput,
+} from './office-pin-service';

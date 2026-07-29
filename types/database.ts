@@ -128,6 +128,15 @@ export type Database = {
           // Mobile never writes this (server-authoritative), same rule as
           // `customer_type` itself — see `RemoteCustomerType`'s doc comment.
           in_progress_at: string | null;
+          // Batch 4 (2026-07-29): permanent client office pin, additive
+          // columns on the shared web+mobile `clients` table — see
+          // [[Office-Location-Spec-2026-07-29]]. Distinct from any
+          // meeting's own GPS evidence (`meetings.gps_lat`/`gps_lng`).
+          // Written only via `lib/office-pin-service.ts`.
+          office_lat: number | null;
+          office_lng: number | null;
+          office_pin_updated_at: string | null;
+          office_pin_source: 'manual' | 'client_office_meeting' | null;
           created_at: string;
           updated_at: string;
         };

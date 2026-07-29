@@ -241,6 +241,13 @@ export default function RecordVisitScreen() {
         end_gps_lat: endPhoto.gpsLat,
         end_gps_lng: endPhoto.gpsLng,
         logged_at: start.capturedAt,
+        // B-085 (Office Location Spec follow-up, 2026-07-29): this fast path
+        // never passed `locationType` at all, so
+        // `toRemoteLocationType()` (lib/remote-meeting-mapping.ts) silently
+        // defaulted every visit's remote `location_type` to 'client_office'
+        // even for an Online visit. Fixed at this call site only — see
+        // Bugs.md's dated entry.
+        locationType: mode === 'online' ? 'Others' : 'Client Office',
         photoToQueue: { kind: 'end', localUri: endPhoto.uri, userId: session.user.id },
         companions: selectedCompanions.map((entry) => ({
           profileId: entry.profileId,
@@ -254,6 +261,11 @@ export default function RecordVisitScreen() {
         // counterpart able to approve them. Role-based so it stays correct
         // regardless of which route renders this shared screen.
         companionsPreAccepted: role === 'sales_manager',
+        // Office Location Spec (2026-07-29): fast-path gate is `mode ===
+        // 'in_person'` alone (no separate location chip exists on this
+        // screen — every in-person fast-path visit IS a Client Office
+        // visit, matching the `locationType` fix above).
+        captureOfficePin: mode === 'in_person',
       });
       // The draft must never survive past a successful save (ADR-026 P1 item
       // 3) — best-effort: a cleanup failure here shouldn't surface as a save

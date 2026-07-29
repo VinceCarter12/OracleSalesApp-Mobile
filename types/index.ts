@@ -115,6 +115,16 @@ export interface Client {
   // no open cycle (e.g. never synced down since entering a cycle, or a
   // pre-Batch-3 local row).
   cycle_id?: string | null;
+  // Batch 4 (2026-07-29, SQLite v20): permanent client office pin — distinct
+  // from meeting GPS evidence, see [[Office-Location-Spec-2026-07-29]]. Set
+  // via lib/office-pin-service.ts either explicitly (Client Detail's
+  // Set/Update Office Location, `'manual'`) or automatically when a Client
+  // Office meeting is recorded (`'client_office_meeting'`). Null until the
+  // first pin is captured.
+  office_lat?: number | null;
+  office_lng?: number | null;
+  office_pin_updated_at?: string | null;
+  office_pin_source?: 'manual' | 'client_office_meeting' | null;
 }
 
 export interface Meeting {

@@ -2,9 +2,9 @@ import { useCallback, useEffect, useState } from 'react';
 import { Pressable, ScrollView } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
-import { Check, ClipboardList, Handshake, Pencil } from 'lucide-react-native';
+import { Check, ClipboardList, Handshake, MapPin, Pencil } from 'lucide-react-native';
 import { Spinner, Text, View, XStack, YStack } from 'tamagui';
-import { getClientById } from '../../../lib/client-service';
+import { getClientById, hasOfficePin } from '../../../lib/client-service';
 import { useSession } from '../../../lib/session-store';
 import {
   getClientCompanionRequests,
@@ -213,23 +213,20 @@ export default function ClientDetailScreen() {
           ))}
         </BizCard>
 
-        {/* Two primary actions side-by-side (Wireframe a-detail, line 602-606).
-            `a-qualifyBtn`'s gate, verified directly against the wireframe
-            source (Wireframe-Sales-BizLink.html:1837):
-            `qualifyBtn.style.display = c.status==='prospect' &&
-            !aClientInfoComplete(c) ? 'flex' : 'none';` — prospect-only, AND
-            only while info is still incomplete; label "Qualify Opportunity"
-            with a handshake icon (line 604: `<button ... id="a-qualifyBtn"
-            onclick="aStartRecordFor(currentAClientId)"><i data-lucide=
-            "handshake"></i> Qualify Opportunity</button>`).
-            No other action button appears for 'in_progress' in this section
-            of the wireframe — the only other conditional button here is
-            `a-officePinBtn` (prospect office-pin flow, unrelated), so
-            'in_progress' clients correctly show only the Edit/Complete Info
-            button, matching ADR-046 point 2 (In Progress meetings start
-            solely from My Meetings -> Select Client, not from Client Detail). */}
-        <XStack gap="$2.5" marginTop="$3.5">
-          <YStack flex={1}>
+        {/* Two/three primary actions side-by-side (Wireframe a-detail, line
+            602-606). `a-qualifyBtn` gate confirmed at Wireframe-Sales-
+            BizLink.html:1837 (`c.status==='prospect' &&
+            !aClientInfoComplete(c)`, matches ADR-046 point 2: In Progress
+            meetings start only from My Meetings -> Select Client).
+            `a-officePinBtn` (line 605) is the Office Location button, gated
+            `c.status==='new'||c.status==='existing'` (line 1846), label
+            flips "Set"/"Update office location" on pin existence (line
+            1848) — Batch 4 (2026-07-29). Manager gets full parity on this
+            shared screen (decision 2, [[Sprint#Batch 4 - Office Location
+            Core (2026-07-29 Pre-Implementation Vault Update)]]) even though
+            the Manager wireframe shows neither button. */}
+        <XStack gap="$2.5" marginTop="$3.5" flexWrap="wrap">
+          <YStack flex={1} minWidth={140}>
             <BizButton
               label={isInfoComplete(client) ? 'Edit info' : 'Complete info'}
               variant="white"
@@ -240,11 +237,21 @@ export default function ClientDetailScreen() {
             />
           </YStack>
           {status === 'prospect' && !isInfoComplete(client) ? (
-            <YStack flex={1}>
+            <YStack flex={1} minWidth={140}>
               <BizButton
                 label="Qualify Opportunity"
                 icon={<Handshake size={15} color={BIZLINK_COLORS.card} strokeWidth={1.75} />}
                 onPress={() => router.push(routes.recordMeeting(client.id))}
+              />
+            </YStack>
+          ) : null}
+          {status === 'new' || status === 'existing' ? (
+            <YStack flex={1} minWidth={140}>
+              <BizButton
+                label={hasOfficePin(client.office_lat, client.office_lng) ? 'Update office location' : 'Set office location'}
+                variant="white"
+                icon={<MapPin size={15} color={BIZLINK_COLORS.text} strokeWidth={1.75} />}
+                onPress={() => router.push(routes.officeLocation(client.id))}
               />
             </YStack>
           ) : null}

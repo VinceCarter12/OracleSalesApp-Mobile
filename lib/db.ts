@@ -12,7 +12,7 @@ export const DATABASE_NAME = 'oracle-sales-app.db';
 
 // Bump this and add a new `case` below whenever the schema changes — never
 // edit an already-shipped case, since devices may have already run it.
-const LATEST_SCHEMA_VERSION = 19;
+const LATEST_SCHEMA_VERSION = 20;
 
 /**
  * Runs once per app launch via `SQLiteProvider`'s `onInit` (see app/_layout.tsx).
@@ -835,6 +835,26 @@ export async function migrateDbIfNeeded(db: SQLiteDatabase): Promise<void> {
       CREATE INDEX idx_cod_remittances_sync_status ON cod_remittances (sync_status);
     `);
     currentVersion = 19;
+  }
+
+  // Batch 4 Office Location Core (2026-07-29, SQLite v20): permanent client
+  // office pin is distinct from meeting GPS evidence (see
+  // [[Office-Location-Spec-2026-07-29]]) — plain additive
+  // `ALTER TABLE ADD COLUMN`s, same precedent as the `validity_status`
+  // column above (currentVersion===15 block): a straight addition needs no
+  // create/copy/drop rebuild. `office_pin_source` distinguishes an explicit
+  // Set/Update Office Location save ('manual') from an automatic Client
+  // Office meeting capture ('client_office_meeting') — both write through
+  // `lib/office-pin-service.ts`, never a direct UPDATE elsewhere.
+  if (currentVersion === 19) {
+    await db.execAsync(`
+      ALTER TABLE clients ADD COLUMN office_lat REAL;
+      ALTER TABLE clients ADD COLUMN office_lng REAL;
+      ALTER TABLE clients ADD COLUMN office_pin_updated_at TEXT;
+      ALTER TABLE clients ADD COLUMN office_pin_source TEXT
+        CHECK (office_pin_source IS NULL OR office_pin_source IN ('manual','client_office_meeting'));
+    `);
+    currentVersion = 20;
   }
 
   await db.execAsync(`PRAGMA user_version = ${currentVersion}`);
