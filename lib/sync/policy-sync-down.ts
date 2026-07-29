@@ -111,21 +111,23 @@ export async function pullAgendaStageRules(db: SQLiteDatabase, now: string): Pro
 /**
  * ADR-041 / Migration 035: `client_cycles`.
  *
- * ⚠️ Known live-RLS gap, flagged to Vince rather than silently worked around:
- * the only SELECT policy on this table is admin-only
- * (`public.is_admin()`, Migration-035-Report.md line 58). No mobile role
- * (sales_manager/sales_specialist/rsr) can currently read a row here, even
- * one they own — so for every non-admin caller this pull will succeed with
- * zero rows every time (RLS filters rows, it doesn't error), and
- * `client_cycles_snapshot` will simply stay empty. That is NOT the same
- * failure mode as an offline/network error — see the wholesale-rebuild
- * comment below for why a genuine fetch error must not wipe existing data,
- * whereas an RLS-filtered empty success legitimately does.
+ * B-080 RESOLVED 2026-07-29 (Migration 048, `Migration-048-Report.md`):
+ * non-admin SELECT RLS policies added ("Agents read own client cycles",
+ * "Managers read team client cycles"). Device-verified — a sales_specialist
+ * session correctly pulled exactly their own owned rows, a sales_manager
+ * session correctly pulled their team's rows. Prior to this fix, the only
+ * SELECT policy was admin-only, so this pull silently succeeded with zero
+ * rows for every non-admin caller (RLS filters rows, it doesn't error) —
+ * that failure mode is NOT the same as an offline/network error, see the
+ * wholesale-rebuild comment below for why a genuine fetch error must not
+ * wipe existing data, whereas an RLS-filtered empty success legitimately
+ * does.
  *
- * Scoped to `owner_id = agentId` so the shape is correct the moment a
- * scoped policy (e.g. "owner reads own open cycle") is added server-side —
- * no mobile-side change would then be needed beyond this file already
- * existing.
+ * Scoped to `owner_id = agentId`, matching the "Agents read own" policy —
+ * a manager's own pull only ever surfaces their own rows this way; team
+ * rows are visible via the separate "Managers read team" policy but this
+ * mobile-side scoping doesn't fetch them (no manager-team read model exists
+ * yet, tracked separately from B-080).
  */
 export async function pullClientCycles(db: SQLiteDatabase, agentId: string, now: string): Promise<void> {
   try {
