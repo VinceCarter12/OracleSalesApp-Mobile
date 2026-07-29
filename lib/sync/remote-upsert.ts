@@ -23,6 +23,8 @@ type RemoteTableName =
   | 'tag_along_requests'
   | 'collection_visits'
   | 'purchase_orders'
+  | 'remittances'
+  | 'cod_remittances'
   | typeof AUDIT_REMOTE_TABLE;
 
 /**
@@ -39,6 +41,8 @@ type AnyRemoteInsertPayload =
   | Database['public']['Tables']['tag_along_requests']['Insert']
   | Database['public']['Tables']['collection_visits']['Insert']
   | Database['public']['Tables']['purchase_orders']['Insert']
+  | Database['public']['Tables']['remittances']['Insert']
+  | Database['public']['Tables']['cod_remittances']['Insert']
   | Database['public']['Tables']['sync_audit_log']['Insert'];
 
 export interface PushTarget {
@@ -81,6 +85,17 @@ function upsertOne(remoteTable: RemoteTableName, payload: AnyRemoteInsertPayload
       return supabase
         .from('purchase_orders')
         .upsert(payload as Database['public']['Tables']['purchase_orders']['Insert'], { onConflict });
+    case 'remittances':
+      // F-007: the collector submits a remittance — a fresh INSERT (mobile
+      // never updates one; the row carries its photo URLs at insert time since
+      // there's no UPDATE RLS policy). Upsert-on-id keeps a retried push idempotent.
+      return supabase
+        .from('remittances')
+        .upsert(payload as Database['public']['Tables']['remittances']['Insert'], { onConflict });
+    case 'cod_remittances':
+      return supabase
+        .from('cod_remittances')
+        .upsert(payload as Database['public']['Tables']['cod_remittances']['Insert'], { onConflict });
     case AUDIT_REMOTE_TABLE:
       // Plain INSERT, not `.upsert()` — confirmed via a manual SQL Editor
       // simulation (2026-07-16, same auth context/values) that a bare
@@ -167,6 +182,14 @@ function upsertMany(remoteTable: RemoteTableName, payloads: AnyRemoteInsertPaylo
       return supabase
         .from('purchase_orders')
         .upsert(payloads as Database['public']['Tables']['purchase_orders']['Insert'][], { onConflict });
+    case 'remittances':
+      return supabase
+        .from('remittances')
+        .upsert(payloads as Database['public']['Tables']['remittances']['Insert'][], { onConflict });
+    case 'cod_remittances':
+      return supabase
+        .from('cod_remittances')
+        .upsert(payloads as Database['public']['Tables']['cod_remittances']['Insert'][], { onConflict });
     case AUDIT_REMOTE_TABLE:
       // Plain INSERT — see the matching comment in upsertOne() above.
       return supabase

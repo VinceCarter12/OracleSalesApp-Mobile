@@ -2,6 +2,7 @@ import { getDb } from './db';
 import { AUDIT_OUTBOX_TABLE_NAME } from './sync/audit-log';
 import { RLS_PERMISSION_DENIED_CODE } from './sync/outbox-status';
 import type { FailureClass, OutboxStatus } from './sync/outbox-status';
+import type { PhotoKind } from './sync/photo-upload-registry';
 
 // More > Sync History (Wireframe `id="a-synchistory"`, `aRenderSyncHistory()`):
 // per-record terminal-outcome log. `sync_audit_log` (Sprint.md T-016) is a
@@ -47,7 +48,7 @@ interface OutboxHistoryRow {
 
 interface PendingUploadHistoryRow {
   id: string;
-  kind: 'selfie' | 'start' | 'end';
+  kind: PhotoKind;
   status: OutboxStatus;
   created_at: string;
   last_error: string | null;
@@ -55,10 +56,16 @@ interface PendingUploadHistoryRow {
   failure_class: FailureClass | null;
 }
 
-const UPLOAD_KIND_LABEL: Record<PendingUploadHistoryRow['kind'], string> = {
+const UPLOAD_KIND_LABEL: Record<PhotoKind, string> = {
   selfie: 'Meeting selfie photo',
   start: 'Meeting start photo',
   end: 'Meeting end photo',
+  payment: 'Collection payment photo',
+  delivery_receipt: 'Collection delivery receipt',
+  proof: 'Delivery proof photo',
+  backload: 'Backload photo',
+  cod: 'COD payment photo',
+  signature: 'Receiver signature',
 };
 
 function labelFor(tableName: string, payload: string): string {

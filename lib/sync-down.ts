@@ -18,7 +18,14 @@ const SYNC_TIMEOUT_MS = 15000;
 // are a config addition, not a type-union edit) — `.from()` needs a literal
 // key from Database['public']['Tables'], so this single-level cast is the
 // dispatch boundary, same pattern as lib/mappers.ts/lib/remote-client-mapping.ts.
-type RemoteTableName = 'clients' | 'meetings' | 'tag_along_requests' | 'collection_visits' | 'purchase_orders';
+type RemoteTableName =
+  | 'clients'
+  | 'meetings'
+  | 'tag_along_requests'
+  | 'collection_visits'
+  | 'purchase_orders'
+  | 'remittances'
+  | 'cod_remittances';
 
 // Remote column is `assigned_agent_id` on `clients` — confirmed via
 // PostgREST introspection (2026-07-15); `meetings.agent_id` is correct
@@ -34,6 +41,11 @@ const AGENT_SCOPED_COLUMN: Record<EntityTableName, string> = {
   // to keep the Record exhaustive, same as tag_along_requests.
   collection_visits: 'collector_id',
   purchase_orders: 'driver_id',
+  // remittances/cod_remittances supply their own `applyScope` (own-rows pull by
+  // collector_id/driver_id), so these are unused — present to keep the Record
+  // exhaustive, same as the entries above.
+  remittances: 'collector_id',
+  cod_remittances: 'driver_id',
 };
 
 async function pullEntity(db: SQLiteDatabase, agentId: string, tableName: EntityTableName): Promise<void> {
@@ -111,6 +123,21 @@ export async function syncDown(agentId: string, teamId?: string | null): Promise
     await pullEntity(db, agentId, 'purchase_orders');
   } catch (err) {
     console.error('[sync-down] purchase_orders pull failed:', err);
+  }
+
+  // F-007 remittances — a collector/driver reads back their OWN (RLS-scoped by
+  // collector_id/driver_id via the registry's applyScope). Needed so the Remit
+  // screens can exclude already-remitted visits/POs from "on hand". Best-effort
+  // and role-gated: a collector gets zero cod_remittances and vice versa.
+  try {
+    await pullEntity(db, agentId, 'remittances');
+  } catch (err) {
+    console.error('[sync-down] remittances pull failed:', err);
+  }
+  try {
+    await pullEntity(db, agentId, 'cod_remittances');
+  } catch (err) {
+    console.error('[sync-down] cod_remittances pull failed:', err);
   }
 
   // No owner info in the snapshot (privacy decision, T-005) — just enough to

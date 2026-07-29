@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { Alert, Pressable, ScrollView, TextInput } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router, useLocalSearchParams } from 'expo-router';
@@ -13,7 +13,7 @@ import { BizTopBar } from '../../components/bizlink/BizTopBar';
 import { BizSectionHeader } from '../../components/bizlink/BizSectionHeader';
 import { BizButton } from '../../components/bizlink/BizButton';
 import { PhotoSlot } from '../../components/collection-delivery/PhotoSlot';
-import { SignaturePad } from '../../components/collection-delivery/SignaturePad';
+import { SignaturePad, type SignaturePadHandle } from '../../components/collection-delivery/SignaturePad';
 import { formatPeso, type CodMethod } from '../../lib/collection-delivery-data';
 import { claimStop, deliverPo, failPo, releaseStop } from '../../lib/collection-delivery-write';
 import { useDeliveryPo } from '../../lib/use-collection-delivery';
@@ -26,7 +26,10 @@ import { useDeliveryPo } from '../../lib/use-collection-delivery';
  *   • Delivered
  *   • Failed = backload (one outcome, not two) — requires the backload photo;
  *     the goods ride back. No 3-day follow-up window.
- * Mock only — the outcome mutates the in-memory PO; nothing persists/syncs yet.
+ * The outcome WRITE goes through collection-delivery-write.ts (local update +
+ * outbox push); proof / COD / backload photos ride the shared pending_uploads
+ * lane (Phase 2b). The receiver signature is drawn in-memory only (SignaturePad
+ * emits no file yet), so receiver_signature_url is not uploaded — a follow-up.
  */
 
 // COD methods are lowercase and have no 'counter' (web 044). CodMode == CodMethod.
@@ -85,6 +88,7 @@ export default function DeliverPoScreen() {
   const [proofUri, setProofUri] = useState<string | null>(null);
   const [receiver, setReceiver] = useState('');
   const [signed, setSigned] = useState(false);
+  const sigRef = useRef<SignaturePadHandle>(null);
   const [scrollEnabled, setScrollEnabled] = useState(true);
   const [codMode, setCodMode] = useState<CodMode>('cash');
   const [codPhotoUri, setCodPhotoUri] = useState<string | null>(null);
@@ -125,14 +129,33 @@ export default function DeliverPoScreen() {
     refresh();
   }
 
+  // The proof/backload capture kicks off a GPS read, but the driver may confirm
+  // before it resolves (or it may have failed) — make one solid attempt so a
+  // completed stop isn't saved with a null pin.
+  async function resolveGps(): Promise<GpsFix | null> {
+    if (gps) return gps;
+    try {
+      return await captureGps();
+    } catch {
+      return null; // No fix available → save without a pin.
+    }
+  }
+
   async function confirmDeliver(): Promise<void> {
     if (!profileId) return;
+    const fix = await resolveGps();
+    // Render the drawn signature to a JPEG (null if the customer didn't sign —
+    // it's optional). It rides the deferred upload lane to receiver_signature_url.
+    const signatureUri = (await sigRef.current?.captureToFile()) ?? undefined;
     await deliverPo(db, poId, profileId, {
       plate: plate.trim(),
       receiver,
       signed,
-      gps: gps ?? undefined,
+      gps: fix ?? undefined,
       cod: isCod ? { amount: codAmountValue, method: codMode } : undefined,
+      proofUri: proofUri ?? undefined,
+      codPhotoUri: codPhotoUri ?? undefined,
+      signatureUri,
     });
     router.replace('/(delivery)/celebrate');
   }
@@ -145,7 +168,8 @@ export default function DeliverPoScreen() {
       return;
     }
     if (!profileId) return;
-    await failPo(db, poId, profileId, { gps: gps ?? undefined });
+    const fix = await resolveGps();
+    await failPo(db, poId, profileId, { gps: fix ?? undefined, backloadUri: backloadUri ?? undefined });
     Alert.alert('Failed / backload logged', 'Walang natanggap — bumalik ang goods. Hihintayin ang manual na aksyon ng dispatcher/admin.');
     router.back();
   }
@@ -254,6 +278,7 @@ export default function DeliverPoScreen() {
         {/* Receiver signature (optional) */}
         <BizSectionHeader title="Receiver signature" helper="· opsyonal" />
         <SignaturePad
+          ref={sigRef}
           onSignedChange={setSigned}
           onDrawingChange={(d) => setScrollEnabled(!d)}
           hint="Pumirma dito ang tumanggap (opsyonal)"

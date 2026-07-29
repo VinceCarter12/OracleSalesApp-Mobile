@@ -417,3 +417,84 @@ export async function upsertSyncedPurchaseOrder(
     ]
   );
 }
+
+/** Serializes a remote UUID[] (PostgREST returns a JS array) to the JSON text the local mirror stores. Defensive against a null/non-array. */
+function toIdJson(value: unknown): string {
+  return JSON.stringify(Array.isArray(value) ? value : []);
+}
+
+/** F-007 (web 043): LWW-safe upsert of a synced-down `remittances` row. The collector reads back their own (RLS); `visit_ids` (UUID[]) is stored as JSON text. See upsertSyncedCollectionVisit for the overwrite-if-synced guard. */
+export async function upsertSyncedRemittance(
+  db: SQLiteDatabase,
+  row: Record<string, unknown>,
+  now: string,
+  agentId: string
+): Promise<void> {
+  void agentId;
+  await db.runAsync(
+    `INSERT INTO remittances
+      (id, collector_id, destination, amount_remitted, amount_collected, status,
+       receiver_name, signed_proof_url, receiver_signature_url, visit_ids,
+       submitted_at, created_at, sync_status, local_updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'synced', ?)
+     ON CONFLICT(id) DO UPDATE SET
+       collector_id = excluded.collector_id, destination = excluded.destination,
+       amount_remitted = excluded.amount_remitted, amount_collected = excluded.amount_collected,
+       status = excluded.status, receiver_name = excluded.receiver_name,
+       signed_proof_url = excluded.signed_proof_url, receiver_signature_url = excluded.receiver_signature_url,
+       visit_ids = excluded.visit_ids, submitted_at = excluded.submitted_at, created_at = excluded.created_at,
+       sync_status = 'synced', sync_error = NULL, local_updated_at = excluded.local_updated_at
+     WHERE remittances.sync_status = 'synced'`,
+    [
+      row.id as string,
+      (row.collector_id as string) ?? null,
+      (row.destination as string) ?? 'office',
+      (row.amount_remitted as number) ?? 0,
+      (row.amount_collected as number) ?? 0,
+      (row.status as string) ?? 'submitted',
+      (row.receiver_name as string) ?? null,
+      (row.signed_proof_url as string) ?? null,
+      (row.receiver_signature_url as string) ?? null,
+      toIdJson(row.visit_ids),
+      (row.submitted_at as string) ?? null,
+      (row.created_at as string) ?? null,
+      now,
+    ]
+  );
+}
+
+/** F-007 (web 044): LWW-safe upsert of a synced-down `cod_remittances` row. `po_ids` (UUID[]) stored as JSON text. */
+export async function upsertSyncedCodRemittance(
+  db: SQLiteDatabase,
+  row: Record<string, unknown>,
+  now: string,
+  agentId: string
+): Promise<void> {
+  void agentId;
+  await db.runAsync(
+    `INSERT INTO cod_remittances
+      (id, driver_id, amount_remitted, amount_collected, status, receiver_name,
+       receiver_signature_url, po_ids, submitted_at, created_at, sync_status, local_updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'synced', ?)
+     ON CONFLICT(id) DO UPDATE SET
+       driver_id = excluded.driver_id, amount_remitted = excluded.amount_remitted,
+       amount_collected = excluded.amount_collected, status = excluded.status,
+       receiver_name = excluded.receiver_name, receiver_signature_url = excluded.receiver_signature_url,
+       po_ids = excluded.po_ids, submitted_at = excluded.submitted_at, created_at = excluded.created_at,
+       sync_status = 'synced', sync_error = NULL, local_updated_at = excluded.local_updated_at
+     WHERE cod_remittances.sync_status = 'synced'`,
+    [
+      row.id as string,
+      (row.driver_id as string) ?? null,
+      (row.amount_remitted as number) ?? 0,
+      (row.amount_collected as number) ?? 0,
+      (row.status as string) ?? 'submitted',
+      (row.receiver_name as string) ?? null,
+      (row.receiver_signature_url as string) ?? null,
+      toIdJson(row.po_ids),
+      (row.submitted_at as string) ?? null,
+      (row.created_at as string) ?? null,
+      now,
+    ]
+  );
+}

@@ -29,13 +29,13 @@ import { claimStop, collectPayment, releaseStop, rescheduleVisit } from '../../l
 import { useCollectionStore } from '../../lib/use-collection-delivery';
 
 /**
- * F-007 first draft (2026-07-25): Collect Payment — wireframe `c-visit`.
- * Opened from a pending row in Today's List. Auto-captures GPS + timestamp
- * (mocked here), takes a payment-method + payment photo + amount + delivery-
- * receipt photo, then marks the store collected. The "✓ Collected" button
- * unlocks only when amount > 0 AND both photos are captured (wireframe
- * cCheckCollectForm). No F-007 schema yet — the collect mutates the in-memory
- * mock store and nothing persists/syncs (Database.md "Planned schema notes").
+ * F-007 Collect Payment — wireframe `c-visit`. Opened from a pending row in
+ * Today's List. Auto-captures GPS + timestamp, takes a payment-method +
+ * payment photo + amount + delivery-receipt photo, then marks the store
+ * collected. The "✓ Collected" button unlocks only when amount > 0 AND both
+ * photos are captured (wireframe cCheckCollectForm). The collect WRITE goes
+ * through collection-delivery-write.ts (local update + outbox push); both
+ * captured photos ride the shared pending_uploads lane (Phase 2b).
  *
  * Amount entry deliberately shows NO target/expected amount (2026-07-25
  * anchoring-bias decision) — the collector types the actual amount received.
@@ -137,11 +137,24 @@ export default function CollectPaymentScreen() {
 
   async function confirmCollect(): Promise<void> {
     if (!profileId) return;
+    // The payment-photo capture kicks off a GPS read, but the collector may tap
+    // Collected before it resolves (or it may have failed) — make one solid
+    // attempt here so a completed collection isn't saved with a null pin.
+    let fix = gps;
+    if (!fix) {
+      try {
+        fix = await captureGps();
+      } catch {
+        // No fix available (offline / indoors / denied) → save without a pin.
+      }
+    }
     await collectPayment(db, storeId, profileId, {
       method: payMode,
       amount: amountValue,
-      gps: gps ?? undefined,
+      gps: fix ?? undefined,
       remarks,
+      paymentPhotoUri: payPhotoUri ?? undefined,
+      receiptPhotoUri: receiptPhotoUri ?? undefined,
     });
     router.replace('/(collection)/celebrate');
   }

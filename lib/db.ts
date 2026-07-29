@@ -12,7 +12,7 @@ export const DATABASE_NAME = 'oracle-sales-app.db';
 
 // Bump this and add a new `case` below whenever the schema changes — never
 // edit an already-shipped case, since devices may have already run it.
-const LATEST_SCHEMA_VERSION = 17;
+const LATEST_SCHEMA_VERSION = 19;
 
 /**
  * Runs once per app launch via `SQLiteProvider`'s `onInit` (see app/_layout.tsx).
@@ -723,6 +723,118 @@ export async function migrateDbIfNeeded(db: SQLiteDatabase): Promise<void> {
       CREATE INDEX idx_po_confirmation_client ON po_confirmation_requests (client_id);
     `);
     currentVersion = 17;
+  }
+
+  // F-007 Phase 2b (2026-07-29, SQLite v18): generalize the meeting-only
+  // `pending_uploads` lane so collection & delivery proof photos share it.
+  // `meeting_id` becomes `parent_table` + `parent_id`, and the `kind` CHECK
+  // widens to the 4 new collection/delivery photo kinds (payment,
+  // delivery_receipt, proof, backload, cod — plus 'signature' headroom for the
+  // still-in-memory receiver signature). SQLite can't ALTER a CHECK or rename a
+  // column cleanly, so this uses the same create-new -> copy -> drop -> rename
+  // dance as the v13 (currentVersion===13) rebuild. Existing rows are all
+  // meeting photos, so they copy across with parent_table='meetings' and
+  // parent_id=meeting_id. `idx_pending_uploads_meeting_id` is replaced by a
+  // composite `(parent_table, parent_id)` index; the other two indexes are
+  // carried over unchanged.
+  if (currentVersion === 17) {
+    await db.execAsync(`
+      CREATE TABLE pending_uploads_new (
+        id TEXT PRIMARY KEY NOT NULL,
+        parent_table TEXT NOT NULL DEFAULT 'meetings'
+          CHECK (parent_table IN ('meetings', 'collection_visits', 'purchase_orders')),
+        parent_id TEXT NOT NULL,
+        agent_id TEXT NOT NULL,
+        kind TEXT NOT NULL CHECK (kind IN (
+          'selfie', 'start', 'end',
+          'payment', 'delivery_receipt',
+          'proof', 'backload', 'cod', 'signature'
+        )),
+        local_uri TEXT NOT NULL,
+        storage_path TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'pending'
+          CHECK (status IN ('pending', 'syncing', 'synced', 'conflict', 'failed')),
+        retry_count INTEGER NOT NULL DEFAULT 0,
+        last_error TEXT,
+        last_attempt_at TEXT,
+        next_attempt_at TEXT,
+        created_at TEXT NOT NULL,
+        synced_at TEXT,
+        failure_class TEXT
+          CHECK (failure_class IN ('validation','network','authentication','conflict','server','rate_limited','unknown'))
+      );
+
+      INSERT INTO pending_uploads_new
+        (id, parent_table, parent_id, agent_id, kind, local_uri, storage_path,
+         status, retry_count, last_error, last_attempt_at, next_attempt_at,
+         created_at, synced_at, failure_class)
+      SELECT
+        id, 'meetings', meeting_id, agent_id, kind, local_uri, storage_path,
+        status, retry_count, last_error, last_attempt_at, next_attempt_at,
+        created_at, synced_at, failure_class
+      FROM pending_uploads;
+
+      DROP TABLE pending_uploads;
+      ALTER TABLE pending_uploads_new RENAME TO pending_uploads;
+
+      CREATE INDEX idx_pending_uploads_status ON pending_uploads (status);
+      CREATE INDEX idx_pending_uploads_parent ON pending_uploads (parent_table, parent_id);
+      CREATE INDEX idx_pending_uploads_agent_status_next_attempt
+        ON pending_uploads (agent_id, status, next_attempt_at);
+    `);
+    currentVersion = 18;
+  }
+
+  // F-007 remittances (SQLite v19): local mirrors for the collection
+  // `remittances` (web 043) and delivery `cod_remittances` (web 044) tables.
+  // Field roles INSERT their own and can SELECT them back (RLS) — mobile writes
+  // via the outbox and syncs them down like any other entity. The remote UUID[]
+  // columns (`visit_ids`/`po_ids`) are stored here as JSON text (same convention
+  // as `meetings.agendas`). Photo URLs live IN the insert (no UPDATE policy
+  // remotely), so there are no separate photo columns to patch. `sync_status`
+  // defaults 'pending' — a locally-created remittance not yet pushed — and the
+  // appliers flip synced-down rows to 'synced'.
+  if (currentVersion === 18) {
+    await db.execAsync(`
+      CREATE TABLE remittances (
+        id TEXT PRIMARY KEY NOT NULL,
+        collector_id TEXT NOT NULL,
+        destination TEXT NOT NULL,
+        amount_remitted REAL NOT NULL,
+        amount_collected REAL NOT NULL,
+        status TEXT NOT NULL DEFAULT 'submitted',
+        receiver_name TEXT,
+        signed_proof_url TEXT,
+        receiver_signature_url TEXT,
+        visit_ids TEXT NOT NULL DEFAULT '[]',
+        submitted_at TEXT,
+        created_at TEXT,
+        sync_status TEXT NOT NULL DEFAULT 'pending',
+        sync_error TEXT,
+        local_updated_at TEXT NOT NULL
+      );
+      CREATE INDEX idx_remittances_collector ON remittances (collector_id);
+      CREATE INDEX idx_remittances_sync_status ON remittances (sync_status);
+
+      CREATE TABLE cod_remittances (
+        id TEXT PRIMARY KEY NOT NULL,
+        driver_id TEXT NOT NULL,
+        amount_remitted REAL NOT NULL,
+        amount_collected REAL NOT NULL,
+        status TEXT NOT NULL DEFAULT 'submitted',
+        receiver_name TEXT NOT NULL,
+        receiver_signature_url TEXT,
+        po_ids TEXT NOT NULL DEFAULT '[]',
+        submitted_at TEXT,
+        created_at TEXT,
+        sync_status TEXT NOT NULL DEFAULT 'pending',
+        sync_error TEXT,
+        local_updated_at TEXT NOT NULL
+      );
+      CREATE INDEX idx_cod_remittances_driver ON cod_remittances (driver_id);
+      CREATE INDEX idx_cod_remittances_sync_status ON cod_remittances (sync_status);
+    `);
+    currentVersion = 19;
   }
 
   await db.execAsync(`PRAGMA user_version = ${currentVersion}`);

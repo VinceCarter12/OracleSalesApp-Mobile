@@ -64,6 +64,10 @@ export type RemoteCollectionStatus = 'collected' | 'rescheduled' | 'pending';
 export type RemotePaymentMethod = 'cash' | 'check' | 'gcash' | 'counter';
 export type RemotePurchaseOrderStatus = 'pending' | 'delivered' | 'failed';
 export type RemoteCodMethod = 'cash' | 'check' | 'gcash';
+// Remittances (043 collection / 044 COD). Collection remits to office / bayad
+// center / bank; COD delivery remits to office only (no destination column).
+export type RemoteRemittanceStatus = 'submitted' | 'reconciled' | 'variance';
+export type RemoteRemitDestination = 'office' | 'bayad_center' | 'bank_deposit';
 
 /**
  * Supabase database type stubs.
@@ -455,6 +459,48 @@ export type Database = {
         };
         Insert: Partial<Database['public']['Tables']['purchase_orders']['Row']>;
         Update: Partial<Database['public']['Tables']['purchase_orders']['Row']>;
+        Relationships: [];
+      };
+      // F-007 Collection remittance (043). Collector INSERTs own; no UPDATE
+      // policy, so photo URLs (signed_proof_url/receiver_signature_url) must be
+      // present in the insert, not patched later. `visit_ids` is a UUID[] of the
+      // collection_visits this remittance covers.
+      remittances: {
+        Row: {
+          id: string;
+          collector_id: string;
+          destination: RemoteRemitDestination;
+          amount_remitted: number;
+          amount_collected: number;
+          status: RemoteRemittanceStatus;
+          receiver_name: string | null;
+          signed_proof_url: string | null;
+          receiver_signature_url: string | null;
+          visit_ids: string[];
+          submitted_at: string;
+          created_at: string;
+        };
+        Insert: Partial<Database['public']['Tables']['remittances']['Row']>;
+        Update: Partial<Database['public']['Tables']['remittances']['Row']>;
+        Relationships: [];
+      };
+      // F-007 COD delivery remittance (044). Driver INSERTs own; office-only (no
+      // destination), no signed_proof_url. `receiver_name` is NOT NULL remotely.
+      cod_remittances: {
+        Row: {
+          id: string;
+          driver_id: string;
+          amount_remitted: number;
+          amount_collected: number;
+          status: RemoteRemittanceStatus;
+          receiver_name: string;
+          receiver_signature_url: string | null;
+          po_ids: string[];
+          submitted_at: string;
+          created_at: string;
+        };
+        Insert: Partial<Database['public']['Tables']['cod_remittances']['Row']>;
+        Update: Partial<Database['public']['Tables']['cod_remittances']['Row']>;
         Relationships: [];
       };
     };

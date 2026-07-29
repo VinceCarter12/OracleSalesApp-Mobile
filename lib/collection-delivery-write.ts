@@ -5,10 +5,15 @@
 // UPDATE row, then kick a best-effort background push. The field roles only
 // ever UPDATE rows the admin published (never INSERT).
 //
-// Photos and real GPS are Phase 2b — the outcome rows land with null photo
-// URLs (schema allows it; web shows "missing proof") and mock GPS for now.
+// Phase 2b (2026-07-29): proof photos now ride the generalized `pending_uploads`
+// lane. Each captured photo is queued right after the outcome's outbox row so
+// the upload's eventual URL patch (enqueuePhotoUrlUpdate) targets a row whose
+// outcome has already synced (the queue's own dependency guard enforces this).
+// The receiver signature is NOT queued yet — SignaturePad emits no image file.
 
 import { enqueueOutboxRow } from './sync/entity-registry';
+import { enqueuePendingUpload } from './sync/photo-uploads';
+import { buildPhotoStoragePath, type PhotoKind, type PhotoParentTable } from './sync/photo-upload-registry';
 import { runSync } from './sync-engine';
 import { uuidv4 } from './uuid';
 import type { SQLiteDatabase } from 'expo-sqlite';
@@ -17,6 +22,28 @@ import type { CodMethod, PaymentMethod } from './collection-delivery-data';
 interface Gps {
   lat: number;
   lng: number;
+}
+
+/**
+ * Queues one captured proof photo onto the shared upload lane. Best-effort: a
+ * queueing failure must never undo an already-saved outcome (same discipline as
+ * meeting-service.ts's photo queue). No-op when nothing was captured.
+ */
+async function queuePhoto(
+  db: SQLiteDatabase,
+  parentTable: PhotoParentTable,
+  parentId: string,
+  agentId: string,
+  kind: PhotoKind,
+  localUri: string | undefined,
+): Promise<void> {
+  if (!localUri) return;
+  const storagePath = buildPhotoStoragePath(parentTable, agentId, parentId, kind);
+  try {
+    await enqueuePendingUpload(db, { parentTable, parentId, agentId, kind, localUri, storagePath });
+  } catch (err) {
+    console.error('[collection-delivery-write] failed to queue photo upload:', err instanceof Error ? err.message : String(err));
+  }
 }
 
 async function enqueueUpdate(
@@ -41,7 +68,14 @@ export async function collectPayment(
   db: SQLiteDatabase,
   id: string,
   collectorId: string,
-  args: { method: PaymentMethod; amount: number; gps?: Gps; remarks?: string },
+  args: {
+    method: PaymentMethod;
+    amount: number;
+    gps?: Gps;
+    remarks?: string;
+    paymentPhotoUri?: string;
+    receiptPhotoUri?: string;
+  },
 ): Promise<void> {
   const now = new Date().toISOString();
   const gpsLat = args.gps?.lat ?? null;
@@ -65,6 +99,9 @@ export async function collectPayment(
     gps_lng: gpsLng,
     remarks,
   }, now);
+
+  await queuePhoto(db, 'collection_visits', id, collectorId, 'payment', args.paymentPhotoUri);
+  await queuePhoto(db, 'collection_visits', id, collectorId, 'delivery_receipt', args.receiptPhotoUri);
 
   runSync(collectorId).catch((err) => console.error('[collection-delivery-write] collect sync failed:', err));
 }
@@ -149,7 +186,16 @@ export async function deliverPo(
   db: SQLiteDatabase,
   id: string,
   driverId: string,
-  args: { plate: string; receiver?: string; signed: boolean; gps?: Gps; cod?: { amount: number; method: CodMethod } },
+  args: {
+    plate: string;
+    receiver?: string;
+    signed: boolean;
+    gps?: Gps;
+    cod?: { amount: number; method: CodMethod };
+    proofUri?: string;
+    codPhotoUri?: string;
+    signatureUri?: string;
+  },
 ): Promise<void> {
   const now = new Date().toISOString();
   const seq = await nextSequenceNo(db, driverId);
@@ -186,15 +232,21 @@ export async function deliverPo(
   }
   await enqueueUpdate(db, 'purchase_orders', id, payload, now);
 
+  await queuePhoto(db, 'purchase_orders', id, driverId, 'proof', args.proofUri);
+  await queuePhoto(db, 'purchase_orders', id, driverId, 'signature', args.signatureUri);
+  if (args.cod) {
+    await queuePhoto(db, 'purchase_orders', id, driverId, 'cod', args.codPhotoUri);
+  }
+
   runSync(driverId).catch((err) => console.error('[collection-delivery-write] deliver sync failed:', err));
 }
 
-/** Mark a PO failed = backload (wireframe dFailedBackload). Backload photo upload is Phase 2b. */
+/** Mark a PO failed = backload (wireframe dFailedBackload). The backload photo is queued as proof the goods rode back. */
 export async function failPo(
   db: SQLiteDatabase,
   id: string,
   driverId: string,
-  args: { gps?: Gps },
+  args: { gps?: Gps; backloadUri?: string },
 ): Promise<void> {
   const now = new Date().toISOString();
   const seq = await nextSequenceNo(db, driverId);
@@ -217,6 +269,8 @@ export async function failPo(
     gps_lat: gpsLat,
     gps_lng: gpsLng,
   }, now);
+
+  await queuePhoto(db, 'purchase_orders', id, driverId, 'backload', args.backloadUri);
 
   runSync(driverId).catch((err) => console.error('[collection-delivery-write] fail sync failed:', err));
 }
