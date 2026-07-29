@@ -1,6 +1,9 @@
 import { getDb } from './db';
 import { isSameCalendarDay } from './local-day';
 import type { MeetingMode } from '../types';
+import { normalizeMeetingDraftPayload, type MeetingDraftPayload } from './policies/meeting-draft-policy';
+export { companionsForDraft, normalizeMeetingDraftPayload, restoreCompanionsFromDraft } from './policies/meeting-draft-policy';
+export type { MeetingDraftCompanion } from './policies/meeting-draft-policy';
 
 // ADR-026 P1 item 3 (Meeting Draft Recovery): local-only persistence for an
 // in-progress meeting so the fast path's Start GPS+timestamp survives an app
@@ -11,12 +14,7 @@ import type { MeetingMode } from '../types';
 // lib/meeting-service.ts.
 
 /** What's persisted on Start — deliberately just the GPS+timestamp lock, not agenda ticks (those are cheap to re-derive, GPS/time are not). */
-export interface MeetingDraftPayload {
-  mode: MeetingMode;
-  gpsLat: number;
-  gpsLng: number;
-  capturedAt: string;
-}
+export type { MeetingDraftPayload } from './policies/meeting-draft-policy';
 
 export interface MeetingDraft {
   id: string;
@@ -111,7 +109,7 @@ export async function getDraftForClient(clientId: string, agentId: string): Prom
     clientId: row.client_id,
     agentId: row.agent_id,
     flow: row.flow === 'full' ? 'full' : 'visit',
-    payload: JSON.parse(row.payload_json) as MeetingDraftPayload,
+    payload: normalizeMeetingDraftPayload(JSON.parse(row.payload_json)),
     startCapturedAt: row.start_captured_at,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
