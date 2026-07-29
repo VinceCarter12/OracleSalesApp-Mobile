@@ -7,7 +7,7 @@ import { useAuth } from '../../../lib/useAuth';
 import { useSession } from '../../../lib/session-store';
 import { getClientById } from '../../../lib/client-service';
 import { createMeeting } from '../../../lib/meeting-service';
-import { saveDraft, getDraftForClient, deleteDraft, type MeetingDraft } from '../../../lib/meeting-drafts';
+import { companionsForDraft, restoreCompanionsFromDraft, saveDraft, getDraftForClient, deleteDraft, type MeetingDraft } from '../../../lib/meeting-drafts';
 import { getCompanionRosterForViewer, getTeamRoster, inviteeKindForRole } from '../../../lib/team-roster';
 import { MAX_COMPANIONS_PER_REQUEST } from '../../../lib/tag-along-service';
 import { useElapsedTimer } from '../../../lib/use-elapsed-timer';
@@ -57,6 +57,8 @@ export default function RecordVisitScreen() {
   const [client, setClient] = useState<Client | null>(null);
   const [loading, setLoading] = useState(true);
   const [roster, setRoster] = useState<TeamRosterEntry[]>([]);
+  const [rosterLoaded, setRosterLoaded] = useState(false);
+  const [rosterLoadError, setRosterLoadError] = useState(false);
   const [selectedCompanions, setSelectedCompanions] = useState<TeamRosterEntry[]>([]);
   const [mode, setMode] = useState<MeetingMode>('in_person');
   const [starting, setStarting] = useState(false);
@@ -109,7 +111,21 @@ export default function RecordVisitScreen() {
   // path was missing it entirely, even though tag-along applies regardless
   // of client status.
   useEffect(() => {
-    getTeamRoster().then(setRoster);
+    let cancelled = false;
+    getTeamRoster()
+      .then((entries) => {
+        if (!cancelled) setRoster(entries);
+      })
+      .catch((err) => {
+        console.error('[RecordVisit] Failed to load companion roster:', err);
+        if (!cancelled) setRosterLoadError(true);
+      })
+      .finally(() => {
+        if (!cancelled) setRosterLoaded(true);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   function toggleCompanion(entry: TeamRosterEntry): void {
@@ -126,12 +142,24 @@ export default function RecordVisitScreen() {
 
   function resumeDraft(): void {
     if (!pendingDraft) return;
+    // A draft with companions must not resume until the offline roster query
+    // has settled. Otherwise the initial empty roster would permanently drop
+    // the persisted selections before the picker is available again.
+    if ((pendingDraft.payload.companions?.length ?? 0) > 0 && !rosterLoaded) {
+      showToast('Loading companion list. Please try Resume again.');
+      return;
+    }
+    if ((pendingDraft.payload.companions?.length ?? 0) > 0 && rosterLoadError) {
+      showToast('Unable to load companions. Reopen this visit and try again.');
+      return;
+    }
     setMode(pendingDraft.payload.mode);
     setStart({
       capturedAt: pendingDraft.payload.capturedAt,
       gpsLat: pendingDraft.payload.gpsLat,
       gpsLng: pendingDraft.payload.gpsLng,
     });
+    setSelectedCompanions(restoreCompanionsFromDraft(pendingDraft.payload.companions, roster));
     setPendingDraft(null);
   }
 
@@ -167,7 +195,13 @@ export default function RecordVisitScreen() {
           clientId,
           agentId: profileId,
           flow: 'visit',
-          payload: { mode, gpsLat: gps.lat, gpsLng: gps.lng, capturedAt },
+          payload: {
+            mode,
+            gpsLat: gps.lat,
+            gpsLng: gps.lng,
+            capturedAt,
+            companions: companionsForDraft(selectedCompanions),
+          },
         });
       } catch (draftErr) {
         console.error('[RecordVisit] Failed to persist meeting draft:', draftErr);
@@ -207,6 +241,13 @@ export default function RecordVisitScreen() {
         end_gps_lat: endPhoto.gpsLat,
         end_gps_lng: endPhoto.gpsLng,
         logged_at: start.capturedAt,
+        // B-085 (Office Location Spec follow-up, 2026-07-29): this fast path
+        // never passed `locationType` at all, so
+        // `toRemoteLocationType()` (lib/remote-meeting-mapping.ts) silently
+        // defaulted every visit's remote `location_type` to 'client_office'
+        // even for an Online visit. Fixed at this call site only — see
+        // Bugs.md's dated entry.
+        locationType: mode === 'online' ? 'Others' : 'Client Office',
         photoToQueue: { kind: 'end', localUri: endPhoto.uri, userId: session.user.id },
         companions: selectedCompanions.map((entry) => ({
           profileId: entry.profileId,
@@ -220,6 +261,11 @@ export default function RecordVisitScreen() {
         // counterpart able to approve them. Role-based so it stays correct
         // regardless of which route renders this shared screen.
         companionsPreAccepted: role === 'sales_manager',
+        // Office Location Spec (2026-07-29): fast-path gate is `mode ===
+        // 'in_person'` alone (no separate location chip exists on this
+        // screen — every in-person fast-path visit IS a Client Office
+        // visit, matching the `locationType` fix above).
+        captureOfficePin: mode === 'in_person',
       });
       // The draft must never survive past a successful save (ADR-026 P1 item
       // 3) — best-effort: a cleanup failure here shouldn't surface as a save

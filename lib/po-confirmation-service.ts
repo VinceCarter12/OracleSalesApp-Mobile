@@ -196,7 +196,17 @@ export async function submitPoConfirmation(
     );
     return 'submitted';
   } catch (err) {
-    console.error('[po-confirmation-service] submission failed:', err instanceof Error ? err.message : String(err));
+    const details =
+      err instanceof Error
+        ? err.message
+        : (() => {
+            try {
+              return JSON.stringify(err);
+            } catch {
+              return String(err);
+            }
+          })();
+    console.error('[po-confirmation-service] submission failed:', details);
     return 'failed';
   }
 }

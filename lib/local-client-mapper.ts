@@ -22,6 +22,13 @@ export interface LocalClientRow {
   // pre-v14 in-memory row shape (or a caller building a partial row by hand)
   // may omit it — never assume present.
   cycle_id?: string | null;
+  // Batch 4 (lib/db.ts v20): permanent client office pin, distinct from
+  // meeting GPS evidence — see [[Office-Location-Spec-2026-07-29]]. Optional
+  // for the same pre-migration-row reason as `cycle_id` above.
+  office_lat?: number | null;
+  office_lng?: number | null;
+  office_pin_updated_at?: string | null;
+  office_pin_source?: 'manual' | 'client_office_meeting' | null;
 }
 
 export function rowToClient(row: LocalClientRow): Client {
@@ -41,5 +48,9 @@ export function rowToClient(row: LocalClientRow): Client {
     details_deadline_at: row.details_deadline_at,
     sync_status: row.sync_status,
     cycle_id: row.cycle_id ?? null,
+    office_lat: row.office_lat ?? null,
+    office_lng: row.office_lng ?? null,
+    office_pin_updated_at: row.office_pin_updated_at ?? null,
+    office_pin_source: row.office_pin_source ?? null,
   };
 }

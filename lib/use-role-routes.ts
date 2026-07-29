@@ -24,6 +24,8 @@ export interface ClientFlowRoutes {
   clientDetail: (id: string) => Href;
   createClient: () => Href;
   completeInfo: (clientId: string) => Href;
+  /** Batch 4 (2026-07-29): Client Detail's Set/Update Office Location button — GPS-capture-only screen, see [[Office-Location-Spec-2026-07-29]]. */
+  officeLocation: (clientId: string) => Href;
   recordMeeting: (clientId: string) => Href;
   meetingDetail: (id: string) => Href;
   celebrate: (online: boolean, meetingId?: string) => Href;
@@ -50,6 +52,7 @@ export function useClientFlowRoutes(): ClientFlowRoutes {
     clientDetail: (id: string) => `${clientsBase}/${id}` as Href,
     createClient: () => `${clientsBase}/create` as Href,
     completeInfo: (clientId: string) => `${clientsBase}/complete?clientId=${clientId}` as Href,
+    officeLocation: (clientId: string) => `${clientsBase}/office-location?clientId=${clientId}` as Href,
     recordMeeting: (clientId: string) => `${meetingsBase}/record?clientId=${clientId}` as Href,
     meetingDetail: (id: string) => (isManager ? `${meetingsBase}/meeting/${id}` : `${meetingsBase}/${id}`) as Href,
     celebrate: (online: boolean, meetingId?: string) => `${meetingsBase}/celebrate?online=${online}${meetingId ? `&meetingId=${encodeURIComponent(meetingId)}` : ''}` as Href,
