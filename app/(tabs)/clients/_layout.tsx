@@ -1,13 +1,7 @@
 import { Stack } from 'expo-router';
-import { useGate } from '../../../lib/gate-context';
-import { SecurityGate } from '../../../components/security/SecurityGate';
 
-/** Clients carries sensitive client info — gated per ADR-007. */
+/** Clients carries sensitive client info. Per-page passcode gate removed per ADR-050 — see Batch-5-Security-Session-Replan-2026-07-30.md. */
 export default function ClientsStackLayout() {
-  const { unlocked } = useGate();
-
-  if (!unlocked) return <SecurityGate />;
-
   return (
     <Stack screenOptions={{ headerShown: false }}>
       <Stack.Screen name="index" />
