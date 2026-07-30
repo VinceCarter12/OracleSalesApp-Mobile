@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { Spinner, TamaguiProvider, Theme, View } from 'tamagui';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
@@ -20,6 +21,7 @@ import { useColdStartBootstrap } from '../lib/app-lock/cold-start-bootstrap';
 import { useSuspensionWatch } from '../lib/app-lock/use-suspension-watch';
 import { AccountSuspendedScreen } from '../components/security/AccountSuspendedScreen';
 import { useBizlinkColors } from '../lib/theme';
+import { getUnlockCapability } from '../lib/device-unlock';
 
 /**
  * Batch 5 Slice 1 (ADR-051): rendered only while session-store's `status` is
@@ -117,6 +119,23 @@ export default function RootLayout() {
     'GeneralSans-Semibold': require('../assets/fonts/GeneralSans-Semibold.otf'),
     'GeneralSans-Bold': require('../assets/fonts/GeneralSans-Bold.otf'),
   });
+
+  // TEMPORARY — Slice 0 capability probe (ADR-051), remove before Slice 3
+  // ships. Confirms what the physical test device actually supports for
+  // device-credential unlock, before Slice 3's AppLockProvider is built
+  // against it. Dev-only: never runs in a production build.
+  useEffect(() => {
+    if (!__DEV__) return;
+    getUnlockCapability()
+      .then((capability) => {
+        // eslint-disable-next-line no-console -- TEMPORARY Slice 0 dev probe, see comment above
+        console.log('[Slice 0 probe] device unlock capability:', capability);
+      })
+      .catch((error: unknown) => {
+        // eslint-disable-next-line no-console -- TEMPORARY Slice 0 dev probe, see comment above
+        console.log('[Slice 0 probe] getUnlockCapability() failed:', error);
+      });
+  }, []);
 
   if (!fontsLoaded) return null;
 
