@@ -7,6 +7,7 @@ import { useAuth } from '../../../lib/useAuth';
 import { useSession } from '../../../lib/session-store';
 import { getClientById } from '../../../lib/client-service';
 import { createMeeting } from '../../../lib/meeting-service';
+import { AccountSuspendedError } from '../../../lib/app-lock/account-status';
 import { companionsForDraft, restoreCompanionsFromDraft, saveDraft, getDraftForClient, deleteDraft, type MeetingDraft } from '../../../lib/meeting-drafts';
 import { getCompanionRosterForViewer, getTeamRoster, inviteeKindForRole } from '../../../lib/team-roster';
 import { MAX_COMPANIONS_PER_REQUEST } from '../../../lib/tag-along-service';
@@ -51,7 +52,7 @@ export default function RecordVisitScreen() {
   const insets = useSafeAreaInsets();
   const { clientId } = useLocalSearchParams<{ clientId: string }>();
   const { session } = useAuth();
-  const { profileId, role } = useSession();
+  const { profileId, role, markSuspended } = useSession();
   const routes = useClientFlowRoutes();
 
   const [client, setClient] = useState<Client | null>(null);
@@ -278,6 +279,12 @@ export default function RecordVisitScreen() {
       const connectivity = await checkConnectivity();
       router.replace(`/(tabs)/meetings/celebrate?online=${connectivity === 'online'}&meetingId=${encodeURIComponent(meetingId)}`);
     } catch (err) {
+      if (err instanceof AccountSuspendedError) {
+        // Batch 5 Slice 2 (ADR-051): route to AccountSuspendedScreen instead
+        // of showing a generic save error — never swallow this silently.
+        markSuspended();
+        return;
+      }
       console.error('[RecordVisit] Save Error:', JSON.stringify(err, null, 2));
       const message = err instanceof Error ? err.message : (err as { message?: string })?.message ?? 'Failed to save the meeting.';
       Alert.alert('Save Error', message);

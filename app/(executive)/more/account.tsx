@@ -13,6 +13,7 @@ import { BizTopBar } from '../../../components/bizlink/BizTopBar';
 import { BizCard } from '../../../components/bizlink/BizCard';
 import { BizSectionHeader } from '../../../components/bizlink/BizSectionHeader';
 import { BizButton } from '../../../components/bizlink/BizButton';
+import { clearSnapshot } from '../../../lib/app-lock/session-snapshot';
 
 // NOTE (T-014 Phase 4, ADR-024): bypasses the shared `components/account/AccountScreen.tsx`
 // shell — same precedent as Sales (Phase 2) and Manager (Phase 3), both of which
@@ -27,6 +28,9 @@ export default function ExecutiveAccountScreen() {
 
   async function handleSignOut(): Promise<void> {
     await signOutSupabase();
+    // Batch 5 Slice 1 (ADR-051): must clear on every sign-out path —
+    // otherwise the next cold start silently rehydrates this user back in.
+    await clearSnapshot();
     signOut();
     router.replace('/(auth)/login');
   }

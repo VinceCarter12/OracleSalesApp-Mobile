@@ -1,4 +1,4 @@
-import { TamaguiProvider, Theme } from 'tamagui';
+import { Spinner, TamaguiProvider, Theme, View } from 'tamagui';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
@@ -16,9 +16,32 @@ import { ThemePreferenceProvider, useThemePreference } from '../lib/theme-prefer
 import { GateProvider } from '../lib/gate-context';
 import { DATABASE_NAME, migrateDbIfNeeded } from '../lib/db';
 import { useSync } from '../lib/use-sync';
+import { useColdStartBootstrap } from '../lib/app-lock/cold-start-bootstrap';
+import { useSuspensionWatch } from '../lib/app-lock/use-suspension-watch';
+import { AccountSuspendedScreen } from '../components/security/AccountSuspendedScreen';
+import { useBizlinkColors } from '../lib/theme';
+
+/**
+ * Batch 5 Slice 1 (ADR-051): rendered only while session-store's `status` is
+ * 'bootstrapping' — replaces RootNavigator's Stack entirely for that one
+ * frame so no Stack.Protected guard evaluates against a not-yet-decided
+ * session, which would otherwise flash the login screen before a valid
+ * persisted session rehydrates.
+ */
+function BootstrapSplash() {
+  const BIZLINK_COLORS = useBizlinkColors();
+  return (
+    <View flex={1} alignItems="center" justifyContent="center" backgroundColor={BIZLINK_COLORS.canvas}>
+      <Spinner size="large" color={BIZLINK_COLORS.brand} />
+    </View>
+  );
+}
 
 function RootNavigator() {
-  const { isSignedIn, role, profileId, teamId } = useSession();
+  const { status, suspended, isSignedIn, role, profileId, teamId } = useSession();
+  useColdStartBootstrap();
+  // Batch 5 Slice 2 (ADR-051): foreground/resume + post-rehydration checks.
+  useSuspensionWatch();
   // T-002: fires an outbox push + sync-down whenever connectivity comes back,
   // for as long as a signed-in session exists. Uses `profiles.id`, not the
   // Supabase Auth uid — every clients/meetings ownership FK points at
@@ -32,6 +55,21 @@ function RootNavigator() {
   // F-007 first draft (2026-07-25): Collection & Delivery role groups.
   const isCollector = role === 'collector';
   const isDelivery = role === 'delivery';
+
+  // Batch 5 Slice 1: withhold every Stack.Protected guard until cold-start
+  // rehydration resolves — evaluating guards against a default/unrehydrated
+  // session would flash (auth) before a valid session rehydrates.
+  if (status === 'bootstrapping') {
+    return <BootstrapSplash />;
+  }
+
+  // Batch 5 Slice 2 (ADR-051) PLACEHOLDER: `suspended` is a minimal stand-in
+  // for the full lock state machine Slice 3 will add — checked before any
+  // Stack.Protected guard so a confirmed suspension always wins over normal
+  // navigation, regardless of role/route group.
+  if (suspended) {
+    return <AccountSuspendedScreen />;
+  }
 
   // Stack.Protected declares every group up front and toggles access via
   // `guard` — expo-router handles the redirect itself when a guard flips.

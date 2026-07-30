@@ -9,6 +9,7 @@ import { useAuth } from '../../lib/useAuth';
 import { useSession } from '../../lib/session-store';
 import { withTimeout } from '../../lib/with-timeout';
 import { wipeLocalDataIfAccountChanged } from '../../lib/wipe-local-data';
+import { writeSnapshot } from '../../lib/app-lock/session-snapshot';
 import type { UserRole } from '../../types';
 
 /** Maps raw Supabase/network errors to the wireframe's login-error copy (a-loginErr). */
@@ -74,6 +75,18 @@ export default function LoginScreen() {
       await wipeLocalDataIfAccountChanged(profile.id);
 
       const role = profile.role as UserRole;
+
+      // Batch 5 Slice 1 (ADR-051): persist a cold-start rehydration snapshot
+      // so a later app restart can skip the login screen when a valid
+      // Supabase session is still present. Cleared on every sign-out path.
+      await writeSnapshot({
+        userId,
+        profileId: profile.id,
+        role,
+        teamId: profile.team_id,
+        fullName: profile.full_name ?? '',
+      });
+
       signIn(role, profile.team_id, profile.id, profile.full_name ?? null);
       // No manual navigation — RootNavigator's Stack.Protected guards
       // (app/_layout.tsx) switch to the matching route group as soon as

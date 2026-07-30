@@ -7,7 +7,12 @@ import { isLikelyOnline } from './sync/connectivity';
 import { toRemoteCustomerType, toRemoteSalesChannel, toRemoteStatus } from './remote-client-mapping';
 import { rowToClient, type LocalClientRow } from './local-client-mapper';
 import { checkCompanyNameDuplicate, DuplicateCompanyNameError } from './client-duplicate-check';
+import { verifyAccountActive, AccountSuspendedError } from './app-lock/account-status';
 import type { SalesChannel, Client } from '../types';
+
+// Batch 5 Slice 2 (ADR-051): short budget so a suspension check never
+// meaningfully delays an offline field write — this must fail open fast.
+const SENSITIVE_WRITE_CHECK_TIMEOUT_MS = 2500;
 
 // T-005: single write path for client creation — both Create Client
 // (app/(tabs)/clients/create.tsx) and Record Meeting's meeting-first branch
@@ -41,6 +46,13 @@ export interface CreateClientInput {
  * (Migration 014) is the final authority at sync time either way.
  */
 export async function createClient(input: CreateClientInput): Promise<string> {
+  // Batch 5 Slice 2 (ADR-051) trigger point 2: fail-open on 'active'/
+  // 'unverified'; only a confirmed 'suspended' blocks the write.
+  const accountStatus = await verifyAccountActive(input.agentId, SENSITIVE_WRITE_CHECK_TIMEOUT_MS);
+  if (accountStatus === 'suspended') {
+    throw new AccountSuspendedError();
+  }
+
   const companyName = input.companyName.trim();
   const city = input.city.trim();
   const dupResult = await checkCompanyNameDuplicate(companyName, city);
@@ -165,6 +177,13 @@ export interface UpdateClientInfoInput {
  * pull once the trigger fires remotely.
  */
 export async function updateClientInfo(input: UpdateClientInfoInput): Promise<void> {
+  // Batch 5 Slice 2 (ADR-051) trigger point 2: fail-open on 'active'/
+  // 'unverified'; only a confirmed 'suspended' blocks the write.
+  const accountStatus = await verifyAccountActive(input.agentId, SENSITIVE_WRITE_CHECK_TIMEOUT_MS);
+  if (accountStatus === 'suspended') {
+    throw new AccountSuspendedError();
+  }
+
   const db = await getDb();
   const outboxId = uuidv4();
   const now = new Date().toISOString();

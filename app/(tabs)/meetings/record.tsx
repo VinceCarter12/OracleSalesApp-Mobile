@@ -11,6 +11,7 @@ import { captureGps } from '../../../lib/gps';
 import { checkConnectivity } from '../../../lib/sync/connectivity';
 import { BIZLINK_COLORS, BIZLINK_FONTS } from '../../../lib/theme';
 import { createMeeting } from '../../../lib/meeting-service';
+import { AccountSuspendedError } from '../../../lib/app-lock/account-status';
 import { getCompanionRosterForViewer, getTeamRoster, inviteeKindForRole } from '../../../lib/team-roster';
 import { MAX_COMPANIONS_PER_REQUEST } from '../../../lib/tag-along-service';
 import { useClientFlowRoutes } from '../../../lib/use-role-routes';
@@ -39,7 +40,7 @@ export default function RecordMeetingScreen() {
   const insets = useSafeAreaInsets();
   const { clientId } = useLocalSearchParams<{ clientId?: string }>();
   const { session } = useAuth();
-  const { profileId, role } = useSession();
+  const { profileId, role, markSuspended } = useSession();
   const routes = useClientFlowRoutes();
 
   const [client, setClient] = useState<Client | null>(null);
@@ -263,6 +264,12 @@ export default function RecordMeetingScreen() {
       const connectivity = await checkConnectivity();
       router.replace(routes.celebrate(connectivity === 'online', meetingId));
     } catch (err) {
+      if (err instanceof AccountSuspendedError) {
+        // Batch 5 Slice 2 (ADR-051): route to AccountSuspendedScreen instead
+        // of showing a generic save error — never swallow this silently.
+        markSuspended();
+        return;
+      }
       // PostgrestError isn't an Error instance — log the raw object (code/
       // details/hint) so on-device debugging isn't limited to err.message.
       console.error('[RecordMeeting] Save Error:', JSON.stringify(err, null, 2));
