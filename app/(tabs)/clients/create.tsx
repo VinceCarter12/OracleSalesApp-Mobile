@@ -6,6 +6,7 @@ import { ClipboardList, Lightbulb } from 'lucide-react-native';
 import { Spinner, Text, XStack, YStack } from 'tamagui';
 import { useSession } from '../../../lib/session-store';
 import { checkCompanyNameDuplicate, checkLocalDuplicate, createClient, DuplicateCompanyNameError } from '../../../lib/client-service';
+import { AccountSuspendedError } from '../../../lib/app-lock/account-status';
 import { BIZLINK_COLORS, BIZLINK_FONTS } from '../../../lib/theme';
 import { showToast } from '../../../lib/toast';
 import { BizTopBar } from '../../../components/bizlink/BizTopBar';
@@ -30,7 +31,7 @@ type DupState = 'idle' | 'checking' | 'duplicate' | 'available';
  */
 export default function CreateClientScreen() {
   const insets = useSafeAreaInsets();
-  const { profileId } = useSession();
+  const { profileId, markSuspended } = useSession();
   const [companyName, setCompanyName] = useState('');
   const [city, setCity] = useState('');
   const [dupState, setDupState] = useState<DupState>('idle');
@@ -83,7 +84,11 @@ export default function CreateClientScreen() {
       showToast('✓ Client created — kumpletuhin ang info within 1 month');
       router.back();
     } catch (err) {
-      if (err instanceof DuplicateCompanyNameError) {
+      if (err instanceof AccountSuspendedError) {
+        // Batch 5 Slice 2 (ADR-051): route to AccountSuspendedScreen instead
+        // of showing a generic save error — never swallow this silently.
+        markSuspended();
+      } else if (err instanceof DuplicateCompanyNameError) {
         setDupState('duplicate');
         Alert.alert('Duplicate', err.message);
       } else {

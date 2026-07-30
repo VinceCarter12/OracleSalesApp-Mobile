@@ -5,6 +5,7 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { Spinner, Text, XStack, YStack } from 'tamagui';
 import { useSession } from '../../../lib/session-store';
 import { getClientById, updateClientInfo } from '../../../lib/client-service';
+import { AccountSuspendedError } from '../../../lib/app-lock/account-status';
 import { BIZLINK_COLORS, BIZLINK_FONTS } from '../../../lib/theme';
 import { showToast } from '../../../lib/toast';
 import { isInfoComplete } from '../../../lib/client-progress';
@@ -26,7 +27,7 @@ import { SALES_CHANNELS, type Client, type SalesChannel } from '../../../types';
  */
 export default function CompleteInfoScreen() {
   const insets = useSafeAreaInsets();
-  const { profileId } = useSession();
+  const { profileId, markSuspended } = useSession();
   const { clientId } = useLocalSearchParams<{ clientId: string }>();
   const [client, setClient] = useState<Client | null>(null);
   const [loading, setLoading] = useState(true);
@@ -84,7 +85,13 @@ export default function CompleteInfoScreen() {
       );
       router.back();
     } catch (err) {
-      Alert.alert('Error', err instanceof Error ? err.message : 'Failed to save.');
+      if (err instanceof AccountSuspendedError) {
+        // Batch 5 Slice 2 (ADR-051): route to AccountSuspendedScreen instead
+        // of showing a generic save error — never swallow this silently.
+        markSuspended();
+      } else {
+        Alert.alert('Error', err instanceof Error ? err.message : 'Failed to save.');
+      }
     } finally {
       setSaving(false);
     }

@@ -17,6 +17,7 @@ import { BizTopBar } from '../../../components/bizlink/BizTopBar';
 import { BizCard } from '../../../components/bizlink/BizCard';
 import { BizSectionHeader } from '../../../components/bizlink/BizSectionHeader';
 import { BizButton } from '../../../components/bizlink/BizButton';
+import { clearSnapshot } from '../../../lib/app-lock/session-snapshot';
 
 interface SecurityItem {
   key: string;
@@ -71,6 +72,9 @@ export default function ManagerAccountScreen() {
 
   async function handleSignOut(): Promise<void> {
     await signOutSupabase();
+    // Batch 5 Slice 1 (ADR-051): must clear on every sign-out path —
+    // otherwise the next cold start silently rehydrates this user back in.
+    await clearSnapshot();
     signOut();
     router.replace('/(auth)/login');
   }

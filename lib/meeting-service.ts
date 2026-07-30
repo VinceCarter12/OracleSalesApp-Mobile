@@ -13,7 +13,12 @@ import { writeOfficePinLocal } from './office-pin-service';
 import { getCurrentAgendaCatalog } from './meeting-agenda-catalog-source';
 import { mapAgendaLabelsToIds } from './policies/agenda-label-mapping';
 import { buildRemoteMeetingPayload } from './remote-meeting-payload';
+import { verifyAccountActive, AccountSuspendedError } from './app-lock/account-status';
 import type { MeetingMode, MeetingOutcome } from '../types';
+
+// Batch 5 Slice 2 (ADR-051): short budget so a suspension check never
+// meaningfully delays an offline field write — this must fail open fast.
+const SENSITIVE_WRITE_CHECK_TIMEOUT_MS = 2500;
 
 export { buildMeetingPhotoStoragePath, uploadMeetingPhoto, enqueueMeetingPhotoUrlUpdate, MEETING_PHOTO_BUCKET, PHOTO_UPLOAD_TIMEOUT_MS } from './meeting-photo-service';
 
@@ -116,6 +121,15 @@ export interface NewMeetingRecord {
  * (agendas, meeting_mode, selfie_url, logged_at), same split as clients.
  */
 export async function createMeeting(record: NewMeetingRecord): Promise<string> {
+  // Batch 5 Slice 2 (ADR-051) trigger point 2: fail-open on 'active'/
+  // 'unverified' (offline agents must keep working); only a confirmed
+  // 'suspended' blocks the write, via a typed error the calling UI must
+  // catch and route to AccountSuspendedScreen.
+  const accountStatus = await verifyAccountActive(record.agent_id, SENSITIVE_WRITE_CHECK_TIMEOUT_MS);
+  if (accountStatus === 'suspended') {
+    throw new AccountSuspendedError();
+  }
+
   const db = await getDb();
   const id = uuidv4();
   const outboxId = uuidv4();

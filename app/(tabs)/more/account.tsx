@@ -17,6 +17,7 @@ import { BizSectionHeader } from '../../../components/bizlink/BizSectionHeader';
 import { BizChip } from '../../../components/bizlink/BizChip';
 import { BizButton } from '../../../components/bizlink/BizButton';
 import { ChangePasscodeSheet } from '../../../components/security/ChangePasscodeSheet';
+import { clearSnapshot } from '../../../lib/app-lock/session-snapshot';
 
 const APPEARANCE_OPTIONS: Array<{ value: ThemePreference; label: string }> = [
   { value: 'system', label: 'System' },
@@ -74,6 +75,10 @@ export default function AgentAccountScreen() {
         style: 'destructive',
         onPress: async () => {
           await signOutSupabase();
+          // Batch 5 Slice 1 (ADR-051): the cold-start snapshot MUST be
+          // cleared on every sign-out path — otherwise the next cold start
+          // silently rehydrates the signed-out user back in.
+          await clearSnapshot();
           signOut();
           router.replace('/(auth)/login');
         },
