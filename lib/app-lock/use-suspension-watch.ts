@@ -1,7 +1,8 @@
 import { useEffect, useRef } from 'react';
 import { AppState, type AppStateStatus } from 'react-native';
 import { useSession } from '../session-store';
-import { verifyAccountActive } from './account-status';
+import { verifyAccountActiveWithProfile } from './account-status';
+import { writeSnapshot } from './session-snapshot';
 
 /**
  * Batch 5 Slice 2 (ADR-051): two of the three suspension-check trigger
@@ -40,8 +41,16 @@ export function useSuspensionWatch(): void {
 }
 
 async function checkAndMaybeSuspend(profileId: string, markSuspended: () => void): Promise<void> {
-  // 'active'/'unverified' are both no-ops here — Slice 3 will refresh the
-  // snapshot on 'active'; 'unverified' fails open by design (ADR-051).
-  const result = await verifyAccountActive(profileId);
-  if (result === 'suspended') markSuspended();
+  // 'unverified' is a no-op and fails open by design (ADR-051). 'active'
+  // refreshes the cold-start SecureStore snapshot (Slice 3) so a live
+  // server-side role/team reassignment propagates to the next cold start —
+  // 'suspended' routes to AccountSuspendedScreen via markSuspended().
+  const { status, profile } = await verifyAccountActiveWithProfile(profileId);
+  if (status === 'suspended') {
+    markSuspended();
+    return;
+  }
+  if (status === 'active' && profile) {
+    await writeSnapshot({ profileId, ...profile });
+  }
 }

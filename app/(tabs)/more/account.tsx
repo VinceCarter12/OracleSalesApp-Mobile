@@ -17,6 +17,7 @@ import { BizSectionHeader } from '../../../components/bizlink/BizSectionHeader';
 import { BizChip } from '../../../components/bizlink/BizChip';
 import { BizButton } from '../../../components/bizlink/BizButton';
 import { ChangePasscodeSheet } from '../../../components/security/ChangePasscodeSheet';
+import { LockToggleRow } from '../../../components/security/LockToggleRow';
 import { clearSnapshot } from '../../../lib/app-lock/session-snapshot';
 
 const APPEARANCE_OPTIONS: Array<{ value: ThemePreference; label: string }> = [
@@ -147,6 +148,10 @@ export default function AgentAccountScreen() {
               {item.onPress ? <Text color={BIZLINK_COLORS.muted}>›</Text> : null}
             </XStack>
           ))}
+          {/* Batch 5 Slice 3 refinement (ADR-051): per-user app-root-lock
+              toggle, matching Wireframe-Sales-BizLink.html's "Fingerprint
+              unlock … On" row (~line 1002). */}
+          <LockToggleRow withTopBorder />
         </BizCard>
 
         <BizSectionHeader title="Appearance" />

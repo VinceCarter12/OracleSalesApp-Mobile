@@ -59,7 +59,8 @@
         }
       ],
       "expo-font",
-      "expo-sqlite"
+      "expo-sqlite",
+      "expo-local-authentication"
     ],
     "experiments": {
       "typedRoutes": true

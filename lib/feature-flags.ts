@@ -11,6 +11,10 @@ export const FEATURE_FLAGS = [
   'quota_policy_engine',
   'edit_approval_gates',
   'telemetry_capture',
+  // Batch 5 Slice 0 (ADR-051): reserved for Slice 3's lock-screen UI. Not
+  // consumed anywhere yet — suspension enforcement (Slice 2) ships
+  // unflagged since a security feature defaulting off would fail open.
+  'app_root_lock',
 ] as const;
 
 export type FeatureFlag = (typeof FEATURE_FLAGS)[number];

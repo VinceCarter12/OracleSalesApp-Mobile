@@ -5,21 +5,16 @@ import { Spinner, Text, XStack, YStack } from 'tamagui';
 import { BIZLINK_COLORS, BIZLINK_FONTS } from '../../../lib/theme';
 import { useExecutiveOverview } from '../../../lib/use-executive-overview';
 import { avatarPaletteFor } from '../../../lib/avatar-palette';
-import { useGate } from '../../../lib/gate-context';
-import { SecurityGate } from '../../../components/security/SecurityGate';
 import { BizTopBar } from '../../../components/bizlink/BizTopBar';
 import { BizSectionHeader } from '../../../components/bizlink/BizSectionHeader';
 import { BizButton } from '../../../components/bizlink/BizButton';
 import { Avatar } from '../../../components/ui/Avatar';
 
-/** Wireframe x-managerdetail — gated (ADR-007), view-only: one manager's team stats + agent list. B-054 Phase 2: real data. */
+/** Wireframe x-managerdetail — gated by the root `LockGate` (Batch 5 Slice 3, ADR-051), view-only: one manager's team stats + agent list. B-054 Phase 2: real data. */
 export default function ExecutiveManagerDetailScreen() {
   const insets = useSafeAreaInsets();
-  const { unlocked } = useGate();
   const { managerId } = useLocalSearchParams<{ managerId: string }>();
   const { overview, loading, error, reload } = useExecutiveOverview();
-
-  if (!unlocked) return <SecurityGate />;
 
   if (loading) {
     return (

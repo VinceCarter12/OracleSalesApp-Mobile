@@ -13,12 +13,13 @@ import {
 import tamaguiConfig from '../tamagui.config';
 import { SessionProvider, useSession } from '../lib/session-store';
 import { ThemePreferenceProvider, useThemePreference } from '../lib/theme-preference';
-import { GateProvider } from '../lib/gate-context';
+import { AppLockProvider } from '../lib/app-lock/lock-provider';
 import { DATABASE_NAME, migrateDbIfNeeded } from '../lib/db';
 import { useSync } from '../lib/use-sync';
 import { useColdStartBootstrap } from '../lib/app-lock/cold-start-bootstrap';
 import { useSuspensionWatch } from '../lib/app-lock/use-suspension-watch';
 import { AccountSuspendedScreen } from '../components/security/AccountSuspendedScreen';
+import { LockGate } from '../components/security/LockGate';
 import { useBizlinkColors } from '../lib/theme';
 
 /**
@@ -63,10 +64,13 @@ function RootNavigator() {
     return <BootstrapSplash />;
   }
 
-  // Batch 5 Slice 2 (ADR-051) PLACEHOLDER: `suspended` is a minimal stand-in
-  // for the full lock state machine Slice 3 will add — checked before any
-  // Stack.Protected guard so a confirmed suspension always wins over normal
-  // navigation, regardless of role/route group.
+  // Batch 5 Slice 2 (ADR-051): `suspended` is session-store's own flag,
+  // intentionally not duplicated into AppLockProvider (Slice 3) — checked
+  // before any Stack.Protected guard so a confirmed suspension always wins
+  // over normal navigation, regardless of role/route group. `LockGate`
+  // (wrapping this whole component) separately checks this same flag to
+  // suppress its lock overlay here, so AccountSuspendedScreen is never
+  // hidden behind it.
   if (suspended) {
     return <AccountSuspendedScreen />;
   }
@@ -150,9 +154,11 @@ function ThemedApp() {
     <Theme name={resolvedTheme}>
       <StatusBar style={resolvedTheme === 'dark' ? 'light' : 'dark'} />
       <SessionProvider>
-        <GateProvider>
-          <RootNavigator />
-        </GateProvider>
+        <AppLockProvider>
+          <LockGate>
+            <RootNavigator />
+          </LockGate>
+        </AppLockProvider>
       </SessionProvider>
     </Theme>
   );

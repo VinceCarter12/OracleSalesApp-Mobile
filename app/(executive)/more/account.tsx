@@ -13,6 +13,7 @@ import { BizTopBar } from '../../../components/bizlink/BizTopBar';
 import { BizCard } from '../../../components/bizlink/BizCard';
 import { BizSectionHeader } from '../../../components/bizlink/BizSectionHeader';
 import { BizButton } from '../../../components/bizlink/BizButton';
+import { LockToggleRow } from '../../../components/security/LockToggleRow';
 import { clearSnapshot } from '../../../lib/app-lock/session-snapshot';
 
 // NOTE (T-014 Phase 4, ADR-024): bypasses the shared `components/account/AccountScreen.tsx`
@@ -80,6 +81,11 @@ export default function ExecutiveAccountScreen() {
             </YStack>
             <Text color={BIZLINK_COLORS.muted}>›</Text>
           </XStack>
+          {/* Batch 5 Slice 3 refinement (ADR-051): per-user app-root-lock
+              toggle. Executive's wireframe has no equivalent row yet (Q4,
+              open — see LockToggleRow.tsx's header comment); reused here as
+              the closest matching security-row pattern. */}
+          <LockToggleRow withTopBorder />
         </BizCard>
 
         <YStack marginTop="$5">
