@@ -17,6 +17,7 @@ import { BizTopBar } from '../../../components/bizlink/BizTopBar';
 import { BizCard } from '../../../components/bizlink/BizCard';
 import { BizSectionHeader } from '../../../components/bizlink/BizSectionHeader';
 import { BizButton } from '../../../components/bizlink/BizButton';
+import { LockToggleRow } from '../../../components/security/LockToggleRow';
 import { clearSnapshot } from '../../../lib/app-lock/session-snapshot';
 
 interface SecurityItem {
@@ -146,6 +147,11 @@ export default function ManagerAccountScreen() {
               {item.onPress ? <Text color={BIZLINK_COLORS.muted}>›</Text> : null}
             </XStack>
           ))}
+          {/* Batch 5 Slice 3 refinement (ADR-051): per-user app-root-lock
+              toggle. Manager's wireframe has no equivalent row yet (Q4,
+              open — see LockToggleRow.tsx's header comment); reused here as
+              the closest matching security-row pattern. */}
+          <LockToggleRow withTopBorder />
         </BizCard>
 
         <BizCard flat marginTop="$4">

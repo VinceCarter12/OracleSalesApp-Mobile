@@ -5,26 +5,22 @@ import { Spinner, Text, XStack, YStack } from 'tamagui';
 import { BIZLINK_COLORS, BIZLINK_FONTS } from '../../../lib/theme';
 import { useExecutiveOverview } from '../../../lib/use-executive-overview';
 import { avatarPaletteFor } from '../../../lib/avatar-palette';
-import { useGate } from '../../../lib/gate-context';
-import { SecurityGate } from '../../../components/security/SecurityGate';
 import { BizButton } from '../../../components/bizlink/BizButton';
 import { Avatar } from '../../../components/ui/Avatar';
 import { StatusBadge } from '../../../components/ui/StatusBadge';
 
 /**
- * Wireframe x-teams — ALL managers company-wide (ADR-014). Gated (ADR-007) —
- * the Manager-only 2026-07-17 amendment does NOT extend to Executive;
- * Executive keeps the passcode gate. B-054 Phase 2: real data via
+ * Wireframe x-teams — ALL managers company-wide (ADR-014). Gated by the root
+ * `LockGate` (Batch 5 Slice 3, ADR-051) — Executive is in scope for the
+ * app-root lock, replacing this screen's former inline `useGate()`/
+ * `SecurityGate` passcode gate. B-054 Phase 2: real data via
  * lib/use-executive-overview.ts. 2026-07-23: the Sales-vs-RSR team-level
  * "track" concept (ADR-017) is retired — teams are mixed, no longer shown
  * as separate tracks.
  */
 export default function ExecutiveTeamsScreen() {
   const insets = useSafeAreaInsets();
-  const { unlocked } = useGate();
   const { overview, loading, error, reload } = useExecutiveOverview();
-
-  if (!unlocked) return <SecurityGate />;
 
   return (
     <YStack flex={1} backgroundColor={BIZLINK_COLORS.canvas} paddingTop={insets.top}>

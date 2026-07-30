@@ -8,8 +8,6 @@ import { BIZLINK_COLORS, BIZLINK_FONTS } from '../../../lib/theme';
 import { CLIENT_STATUS_BADGES } from '../../../lib/client-status';
 import { useExecutiveOverview } from '../../../lib/use-executive-overview';
 import { avatarPaletteFor } from '../../../lib/avatar-palette';
-import { useGate } from '../../../lib/gate-context';
-import { SecurityGate } from '../../../components/security/SecurityGate';
 import { BizChip } from '../../../components/bizlink/BizChip';
 import { BizButton } from '../../../components/bizlink/BizButton';
 import { Avatar } from '../../../components/ui/Avatar';
@@ -22,10 +20,9 @@ type StatusFilter = Extract<ClientStatus, 'prospect' | 'in_progress' | 'new' | '
 // (all, prospect, in_progress, new, existing) — ADR-046 point 6.
 const STATUS_FILTERS: StatusFilter[] = ['all', 'prospect', 'in_progress', 'new', 'existing'];
 
-/** Wireframe x-clients — gated (ADR-007), view-only: ALL clients company-wide, filter by manager + status. B-054 Phase 2: real data. */
+/** Wireframe x-clients — gated by the root `LockGate` (Batch 5 Slice 3, ADR-051), view-only: ALL clients company-wide, filter by manager + status. B-054 Phase 2: real data. */
 export default function ExecutiveClientsScreen() {
   const insets = useSafeAreaInsets();
-  const { unlocked } = useGate();
   const { overview, loading, error, reload } = useExecutiveOverview();
   const [search, setSearch] = useState('');
   const [managerFilter, setManagerFilter] = useState<string | 'all'>('all');
@@ -44,8 +41,6 @@ export default function ExecutiveClientsScreen() {
       return true;
     });
   }, [overview, search, managerFilter, statusFilter]);
-
-  if (!unlocked) return <SecurityGate />;
 
   return (
     <YStack flex={1} backgroundColor={BIZLINK_COLORS.canvas} paddingTop={insets.top}>

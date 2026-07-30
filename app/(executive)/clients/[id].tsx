@@ -7,8 +7,6 @@ import { BIZLINK_COLORS, BIZLINK_FONTS } from '../../../lib/theme';
 import { CLIENT_STATUS_BADGES } from '../../../lib/client-status';
 import { useExecutiveOverview } from '../../../lib/use-executive-overview';
 import { computeExecClientProgress } from '../../../lib/executive-overview-service';
-import { useGate } from '../../../lib/gate-context';
-import { SecurityGate } from '../../../components/security/SecurityGate';
 import { BizTopBar } from '../../../components/bizlink/BizTopBar';
 import { BizCard } from '../../../components/bizlink/BizCard';
 import { BizSectionHeader } from '../../../components/bizlink/BizSectionHeader';
@@ -25,14 +23,11 @@ const CHECKLIST_ITEMS: Array<[keyof ExecClientChecklist, string]> = [
   ['channel', 'Sales channel'],
 ];
 
-/** Wireframe x-detail — gated (ADR-007), view-only client detail: progress % (B-001), checklist, meeting history. B-054 Phase 2: real data. */
+/** Wireframe x-detail — gated by the root `LockGate` (Batch 5 Slice 3, ADR-051), view-only client detail: progress % (B-001), checklist, meeting history. B-054 Phase 2: real data. */
 export default function ExecutiveClientDetailScreen() {
   const insets = useSafeAreaInsets();
-  const { unlocked } = useGate();
   const { id } = useLocalSearchParams<{ id: string }>();
   const { overview, loading, error, reload } = useExecutiveOverview();
-
-  if (!unlocked) return <SecurityGate />;
 
   if (loading) {
     return (
