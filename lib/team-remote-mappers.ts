@@ -107,9 +107,8 @@ interface TeamAgentMeetingInput {
 /**
  * Extracted from `lib/manager-dashboard-service.ts`'s previously-inline
  * builder (2026-07-16) — same logic, now shared with `lib/manager-team-service.ts`.
- * Keyed strictly by whatever `id` the caller supplies per profile row — the
- * dashboard service intentionally still passes its own `user_id` value here
- * (a known separate issue, B-055, not silently fixed by this dedup pass).
+ * Keyed strictly by `profiles.id` (ADR-023 canonical ownership identity) —
+ * both callers now pass `profiles.id` consistently (B-055 fixed 2026-08-01).
  */
 export function buildTeamAgents(
   profiles: TeamAgentProfileInput[],
