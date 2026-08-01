@@ -56,11 +56,11 @@ export default function DeliveryRemitScreen() {
       });
 
       if (result === 'offline') {
-        Alert.alert('Walang internet', 'Kailangan ng koneksyon para mag-remit (ina-upload ang signature). Subukan ulit kapag online.');
+        Alert.alert('No internet', 'You need a connection to remit (the signature has to upload). Please try again when you’re online.');
         return;
       }
       if (result === 'failed') {
-        Alert.alert('Hindi na-submit', 'May problema sa pag-submit ng COD remittance. Pakisubukan ulit.');
+        Alert.alert('Not submitted', 'Something went wrong submitting the COD remittance. Please try again.');
         return;
       }
       Alert.alert('Remittance recorded', `${formatPeso(summary.total)} — Office`);
@@ -80,7 +80,7 @@ export default function DeliveryRemitScreen() {
       <ScrollView contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 40 }} scrollEnabled={scrollEnabled}>
         <YStack backgroundColor={BIZLINK_COLORS.ink} borderRadius={24} padding={18} marginTop={6} alignItems="center">
           <Text fontSize={12} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_ON_INK.textMuted}>
-            Hawak mong COD ngayon
+            COD you’re holding now
           </Text>
           <Text fontSize={42} fontFamily={BIZLINK_FONTS.semibold} letterSpacing={-1.5} color={BIZLINK_ON_INK.solid} marginTop={6}>
             {formatPeso(summary.total)}
@@ -92,7 +92,7 @@ export default function DeliveryRemitScreen() {
           </XStack>
         </YStack>
 
-        <BizSectionHeader title="Saan irere-remit?" helper="· Office lang para sa delivery COD" />
+        <BizSectionHeader title="Where to remit?" helper="· Office only for delivery COD" />
         <XStack>
           <XStack
             alignItems="center"
@@ -110,21 +110,20 @@ export default function DeliveryRemitScreen() {
         <BizSectionHeader title="Assigned receiver" />
         <ReceiverPicker selectedId={receiver?.id ?? null} onSelect={setReceiver} />
 
-        <BizSectionHeader title="Signed proof" helper="· photo ng pirmadong resibo" />
+        <BizSectionHeader title="Signed proof" helper="· photo of the signed receipt" />
         <PhotoSlot
-          title="Kuhanan ang signed acknowledgment"
+          title="Take a photo of the signed acknowledgment"
           subtitle="Receiver signature required"
           uri={proofUri}
           onCaptured={setProofUri}
         />
 
-        <BizSectionHeader title="Receiver digital signature" helper="· pipirma sa phone" />
+        <BizSectionHeader title="Receiver digital signature" helper="· sign on the phone" />
         <SignaturePad ref={sigRef} key={sigPadKey} onSignedChange={setSigned} onDrawingChange={(d) => setScrollEnabled(!d)} />
 
-        <BizButton label={submitting ? 'Nagsa-submit…' : 'Submit Remittance'} variant="brand" onPress={submit} disabled={!canSubmit} style={{ marginTop: 20 }} />
+        <BizButton label={submitting ? 'Submitting…' : 'Submit Remittance'} variant="brand" onPress={submit} disabled={!canSubmit} style={{ marginTop: 20 }} />
         <Text fontSize={12.5} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} textAlign="center" marginTop={10} lineHeight={18}>
-          Office lang ang remit option para sa delivery COD (2026-07-25 correction) — hindi tulad ng Collection na may
-          7-11/bank option din.
+          Office is the only remit option for delivery COD — unlike Collection, which also has 7-11 and bank options.
         </Text>
       </ScrollView>
     </YStack>

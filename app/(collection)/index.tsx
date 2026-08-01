@@ -50,7 +50,7 @@ function RemittanceHero({ amount, visitedPct, onPress }: { amount: number; visit
         alignSelf="flex-end"
       >
         <Text fontSize={10.5} fontFamily={BIZLINK_FONTS.semibold} color={BIZLINK_ON_INK.solid}>
-          hindi pa nare-remit
+          not yet remitted
         </Text>
       </View>
       <Text fontSize={42} fontFamily={BIZLINK_FONTS.semibold} letterSpacing={-1.5} color={BIZLINK_ON_INK.solid} marginTop={10}>
@@ -133,7 +133,7 @@ export default function CollectionDashboardScreen() {
         <Avatar initials={initialsFromName(fullName)} background={BIZLINK_COLORS.tintA} color={BIZLINK_COLORS.ink} />
         <YStack gap="$1">
           <Text fontFamily={BIZLINK_FONTS.semibold} fontSize={15.5} color={BIZLINK_COLORS.text}>
-            Kamusta, {greetingName}!
+            Hello, {greetingName}!
           </Text>
           <StatusBadge label="Collection Officer" background={COLORS.greenTint} color={COLORS.ledgeGreen} />
         </YStack>
@@ -199,10 +199,10 @@ export default function CollectionDashboardScreen() {
           />
         </XStack>
 
-        <BizSectionHeader title="Today's route" actionLabel="Tingnan lahat" onAction={() => router.push('/(collection)/today')} />
+        <BizSectionHeader title="Today's route" actionLabel="View all" onAction={() => router.push('/(collection)/today')} />
         {routePreview.length === 0 ? (
           <Text fontSize={13} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} paddingVertical="$3">
-            Tapos na ang lahat ng visits ngayong araw!
+            All of today’s visits are done!
           </Text>
         ) : (
           routePreview.map((store) => (
@@ -214,8 +214,8 @@ export default function CollectionDashboardScreen() {
           <BizDashboardAlert
             tone="amber"
             icon={<Hourglass size={18} color={BIZLINK_COLORS.orange} strokeWidth={1.75} />}
-            title={`${summary.pendingCount} stores na hindi pa nabibisita ngayong araw`}
-            caption="I-reschedule ang hindi aabutin — huwag iwanang blanko"
+            title={`${summary.pendingCount} stores not yet visited today`}
+            caption="Reschedule the ones you can’t reach — don’t leave them blank"
             onPress={() => router.push('/(collection)/today')}
           />
         ) : null}

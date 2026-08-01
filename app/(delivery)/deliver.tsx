@@ -36,9 +36,9 @@ import { useDeliveryPo } from '../../lib/use-collection-delivery';
 type CodMode = CodMethod;
 
 const COD_LABELS: Record<CodMode, string> = {
-  cash: 'Kuhanan ang cash',
-  check: 'Kuhanan ang check',
-  gcash: 'Kuhanan ang GCash confirmation screen',
+  cash: 'Take a photo of the cash',
+  check: 'Take a photo of the check',
+  gcash: 'Take a photo of the GCash confirmation screen',
 };
 
 function PayTile({
@@ -72,6 +72,37 @@ function PayTile({
   );
 }
 
+function OutcomeTab({
+  icon,
+  label,
+  selected,
+  onPress,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  selected: boolean;
+  onPress: () => void;
+}) {
+  const BIZLINK_COLORS = useBizlinkColors();
+  return (
+    <Pressable onPress={onPress} style={{ flex: 1 }}>
+      <XStack
+        alignItems="center"
+        justifyContent="center"
+        gap="$1.5"
+        backgroundColor={selected ? BIZLINK_COLORS.card : 'transparent'}
+        borderRadius={20}
+        paddingVertical={11}
+      >
+        {icon}
+        <Text fontSize={13} fontFamily={BIZLINK_FONTS.semibold} color={selected ? BIZLINK_COLORS.text : BIZLINK_COLORS.muted}>
+          {label}
+        </Text>
+      </XStack>
+    </Pressable>
+  );
+}
+
 export default function DeliverPoScreen() {
   const BIZLINK_COLORS = useBizlinkColors();
   const insets = useSafeAreaInsets();
@@ -84,6 +115,9 @@ export default function DeliverPoScreen() {
   // goes through collection-delivery-write.ts (local update + outbox push).
   const { po, loading, refresh } = useDeliveryPo(poId);
 
+  // Outcome is chosen up-front via tabs (not two buttons at the end): the
+  // driver picks Deliver or Failed / Backload first, then only sees that path.
+  const [mode, setMode] = useState<'deliver' | 'failed'>('deliver');
   const [plate, setPlate] = useState('');
   const [proofUri, setProofUri] = useState<string | null>(null);
   const [receiver, setReceiver] = useState('');
@@ -164,13 +198,13 @@ export default function DeliverPoScreen() {
   // goods rode back — required before we accept a failed stop.
   async function failedBackload(): Promise<void> {
     if (!backloadUri) {
-      Alert.alert('Backload proof needed', 'Kailangan muna ng photo ng mga na-backload na items.');
+      Alert.alert('Backload proof needed', 'Please take a photo of the backloaded items first.');
       return;
     }
     if (!profileId) return;
     const fix = await resolveGps();
     await failPo(db, poId, profileId, { gps: fix ?? undefined, backloadUri: backloadUri ?? undefined });
-    Alert.alert('Failed / backload logged', 'Walang natanggap — bumalik ang goods. Hihintayin ang manual na aksyon ng dispatcher/admin.');
+    Alert.alert('Failed / backload logged', 'Nothing was received — the goods came back. Waiting for the dispatcher or admin to take action.');
     router.back();
   }
 
@@ -180,7 +214,7 @@ export default function DeliverPoScreen() {
         <BizTopBar title="Deliver PO" />
         <YStack flex={1} alignItems="center" justifyContent="center" paddingHorizontal="$6">
           <Text fontSize={13} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} textAlign="center">
-            {loading ? 'Naglo-load…' : 'Hindi mahanap ang PO na ito.'}
+            {loading ? 'Loading…' : 'This PO could not be found.'}
           </Text>
         </YStack>
       </YStack>
@@ -209,21 +243,44 @@ export default function DeliverPoScreen() {
             <XStack alignItems="center" gap="$2.5" backgroundColor={BIZLINK_COLORS.tintB} borderRadius={16} paddingHorizontal={14} paddingVertical={12} marginTop={10}>
               <Lock size={16} color={COLORS.ledgeRed} strokeWidth={1.75} />
               <Text flex={1} fontSize={12} fontFamily={BIZLINK_FONTS.medium} color={COLORS.ledgeRed} lineHeight={16}>
-                On the way na si {po.claimedBy} — hindi mo ito pwedeng kunin.
+                {po.claimedBy} is on the way — you can’t take this one.
               </Text>
             </XStack>
           ) : claimedByMe ? (
             <XStack alignItems="center" gap="$2.5" backgroundColor={BIZLINK_COLORS.tintA} borderRadius={16} paddingHorizontal={14} paddingVertical={10} marginTop={10}>
               <Footprints size={16} color={BIZLINK_COLORS.ink} strokeWidth={1.75} />
-              <Text flex={1} fontSize={12} fontFamily={BIZLINK_FONTS.semibold} color={BIZLINK_COLORS.ink}>On the way ka na papunta rito.</Text>
+              <Text flex={1} fontSize={12} fontFamily={BIZLINK_FONTS.semibold} color={BIZLINK_COLORS.ink}>You’re on the way here.</Text>
               <Pressable onPress={release} hitSlop={6}>
                 <Text fontSize={12} fontFamily={BIZLINK_FONTS.semibold} color={BIZLINK_COLORS.brand}>Release</Text>
               </Pressable>
             </XStack>
           ) : (
-            <BizButton label="Claim — On the way na ako" variant="white" onPress={claim} icon={<Footprints size={16} color={BIZLINK_COLORS.text} strokeWidth={1.75} />} style={{ marginTop: 10 }} />
+            <BizButton label="Claim — I’m on the way" variant="white" onPress={claim} icon={<Footprints size={16} color={BIZLINK_COLORS.text} strokeWidth={1.75} />} style={{ marginTop: 10 }} />
           )
         ) : null}
+
+        {/* Outcome tabs — pick Deliver or Failed / Backload up-front (web 044). */}
+        <XStack
+          backgroundColor={BIZLINK_COLORS.soft}
+          borderRadius={24}
+          padding={4}
+          marginTop={16}
+          gap="$1"
+          overflow="hidden"
+        >
+          <OutcomeTab
+            icon={<Check size={16} color={mode === 'deliver' ? BIZLINK_COLORS.text : BIZLINK_COLORS.muted} strokeWidth={2} />}
+            label="Deliver"
+            selected={mode === 'deliver'}
+            onPress={() => setMode('deliver')}
+          />
+          <OutcomeTab
+            icon={<PackageX size={16} color={mode === 'failed' ? BIZLINK_COLORS.text : BIZLINK_COLORS.muted} strokeWidth={1.75} />}
+            label="Failed / Backload"
+            selected={mode === 'failed'}
+            onPress={() => setMode('failed')}
+          />
+        </XStack>
 
         {/* Auto-captured (dark card) — GPS rides with the proof/backload photo (web 044). */}
         <Text fontSize={10.5} fontFamily={BIZLINK_FONTS.semibold} letterSpacing={0.5} color={BIZLINK_COLORS.muted} marginTop={16} marginBottom={6}>
@@ -239,18 +296,20 @@ export default function DeliverPoScreen() {
             <Text fontSize={12.5} fontFamily={BIZLINK_FONTS.semibold} color={gps ? '#8FD7B4' : BIZLINK_ON_INK.textMuted}>{gps ? '✓' : '…'}</Text>
             <Text fontSize={12.5} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_ON_INK.solid}>GPS pinpoint</Text>
             <Text fontSize={11} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_ON_INK.textMuted}>
-              {gps ? `${gps.lat.toFixed(4)}° N, ${gps.lng.toFixed(4)}° E` : 'kukunin kasabay ng proof photo'}
+              {gps ? `${gps.lat.toFixed(4)}° N, ${gps.lng.toFixed(4)}° E` : 'captured with the proof photo'}
             </Text>
           </XStack>
         </YStack>
 
+        {mode === 'deliver' ? (
+          <>
         {/* Truck plate */}
         <BizSectionHeader title="Truck plate number *" />
         <TextInput
           value={plate}
           onChangeText={setPlate}
           autoCapitalize="characters"
-          placeholder="hal. ABC 1234"
+          placeholder="e.g. ABC 1234"
           placeholderTextColor={BIZLINK_COLORS.muted}
           style={{
             height: 52,
@@ -263,33 +322,33 @@ export default function DeliverPoScreen() {
           }}
         />
         <Text fontSize={12.5} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} marginTop={4} lineHeight={18}>
-          Per-trip reference, kasabay ng customer name sa trip ticket (2026-07-25 decision).
+          Per-trip reference, shown with the customer name on the trip ticket.
         </Text>
 
         {/* Proof of delivery */}
         <BizSectionHeader title="Proof of delivery" helper="· camera only" />
         <PhotoSlot
-          title="Kuhanan ang delivered items"
-          subtitle="Compressed ≤3MB · naka-save locally"
+          title="Take a photo of the delivered items"
+          subtitle="Compressed ≤3MB · saved on your phone"
           uri={proofUri}
           onCaptured={(uri) => captureWithGps(setProofUri, uri)}
         />
 
         {/* Receiver signature (optional) */}
-        <BizSectionHeader title="Receiver signature" helper="· opsyonal" />
+        <BizSectionHeader title="Receiver signature" helper="· optional" />
         <SignaturePad
           ref={sigRef}
           onSignedChange={setSigned}
           onDrawingChange={(d) => setScrollEnabled(!d)}
-          hint="Pumirma dito ang tumanggap (opsyonal)"
+          hint="Have the receiver sign here (optional)"
         />
 
         {/* Received by (optional) */}
-        <BizSectionHeader title="Received by" helper="· opsyonal" />
+        <BizSectionHeader title="Received by" helper="· optional" />
         <TextInput
           value={receiver}
           onChangeText={setReceiver}
-          placeholder="Pangalan ng tumanggap (kung willing magbigay)"
+          placeholder="Receiver’s name (if they’re willing to give it)"
           placeholderTextColor={BIZLINK_COLORS.muted}
           style={{
             height: 52,
@@ -312,10 +371,10 @@ export default function DeliverPoScreen() {
               <PayTile icon={<Smartphone size={14} color={codIconColor('gcash')} strokeWidth={1.75} />} label="GCash" selected={codMode === 'gcash'} onPress={() => setCodMode('gcash')} />
             </XStack>
 
-            <BizSectionHeader title="Photo ng bayad" helper="· camera only" />
+            <BizSectionHeader title="Payment photo" helper="· camera only" />
             <PhotoSlot
               title={COD_LABELS[codMode]}
-              subtitle="Compressed ≤3MB · naka-save locally"
+              subtitle="Compressed ≤3MB · saved on your phone"
               uri={codPhotoUri}
               onCaptured={setCodPhotoUri}
             />
@@ -339,10 +398,50 @@ export default function DeliverPoScreen() {
               }}
             />
             <Text fontSize={12.5} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} marginTop={6} lineHeight={18}>
-              Same payment step ng Collection module — reused para sa COD na deliveries (2026-07-25 decision).
+              Same payment step as the Collection module — reused for COD deliveries.
             </Text>
           </>
         ) : null}
+
+        {/* Remarks */}
+        <BizSectionHeader title="Remarks" />
+        <TextInput
+          placeholder="Notes / comments…"
+          placeholderTextColor={BIZLINK_COLORS.muted}
+          multiline
+          style={{
+            minHeight: 74,
+            borderRadius: 16,
+            paddingHorizontal: 16,
+            paddingVertical: 14,
+            backgroundColor: BIZLINK_COLORS.card,
+            fontFamily: BIZLINK_FONTS.medium,
+            fontSize: 14.5,
+            color: BIZLINK_COLORS.text,
+            textAlignVertical: 'top',
+          }}
+        />
+
+        {/* Deliver outcome */}
+        <BizButton
+          label="Delivered"
+          variant="brand"
+          onPress={confirmDeliver}
+          disabled={!canDeliver}
+          icon={<Check size={17} color={BIZLINK_ON_INK.solid} strokeWidth={2} />}
+          style={{ marginTop: 20 }}
+        />
+          </>
+        ) : (
+          <>
+        {/* Backload proof — required to log a failed (= backload) stop */}
+        <BizSectionHeader title="Backload proof" helper="· camera only" />
+        <PhotoSlot
+          title="Take a photo of the backloaded items"
+          subtitle="Compressed ≤3MB · saved on your phone"
+          uri={backloadUri}
+          onCaptured={(uri) => captureWithGps(setBackloadUri, uri)}
+        />
 
         {/* Remarks */}
         <BizSectionHeader title="Remarks" />
@@ -363,36 +462,21 @@ export default function DeliverPoScreen() {
           }}
         />
 
-        {/* Backload proof — required to log a failed (= backload) stop */}
-        <BizSectionHeader title="Backload proof" helper="· camera only, kapag failed" />
-        <PhotoSlot
-          title="Kuhanan ang mga na-backload na items"
-          subtitle="Compressed ≤3MB · naka-save locally"
-          uri={backloadUri}
-          onCaptured={(uri) => captureWithGps(setBackloadUri, uri)}
-        />
-
-        {/* Actions — two outcomes: Delivered, or Failed (= backload). */}
-        <BizButton
-          label="Delivered"
-          variant="brand"
-          onPress={confirmDeliver}
-          disabled={!canDeliver}
-          icon={<Check size={17} color={BIZLINK_ON_INK.solid} strokeWidth={2} />}
-          style={{ marginTop: 20 }}
-        />
+        {/* Failed outcome */}
         <BizButton
           label="Failed / Backload"
-          variant="white"
+          variant="red"
           onPress={failedBackload}
           disabled={claimedByOther}
-          icon={<PackageX size={16} color={BIZLINK_COLORS.text} strokeWidth={1.75} />}
-          style={{ marginTop: 10 }}
+          icon={<PackageX size={16} color={BIZLINK_ON_INK.solid} strokeWidth={1.75} />}
+          style={{ marginTop: 20, backgroundColor: COLORS.ledgeRed }}
         />
         <Text fontSize={12.5} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} textAlign="center" marginTop={10} lineHeight={18}>
-          Isang araw, isang resulta. Failed = walang natanggap, bumalik ang goods (= backload) — kailangan ng backload
-          photo bago ma-log.
+          One day, one result. Failed = nothing received and the goods come back (= backload) — a backload photo is
+          required before you can log it.
         </Text>
+          </>
+        )}
       </ScrollView>
     </YStack>
   );

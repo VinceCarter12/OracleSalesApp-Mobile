@@ -99,7 +99,7 @@ export default function DeliveryDashboardScreen() {
         <Avatar initials={initialsFromName(fullName)} background={BIZLINK_COLORS.tintA} color={BIZLINK_COLORS.ink} />
         <YStack gap="$1">
           <Text fontFamily={BIZLINK_FONTS.semibold} fontSize={15.5} color={BIZLINK_COLORS.text}>
-            Kamusta, {greetingName}!
+            Hello, {greetingName}!
           </Text>
           <StatusBadge label="Delivery" background={COLORS.greenTint} color={COLORS.ledgeGreen} />
         </YStack>
@@ -124,7 +124,7 @@ export default function DeliveryDashboardScreen() {
         >
           <TriangleAlert size={16} color={BIZLINK_COLORS.orange} strokeWidth={1.75} />
           <Text flex={1} fontSize={12} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.orange} lineHeight={17}>
-            Mock data pa — nakabatay na sa web&apos;s authoritative model (043/044). Hindi pa naka-wire sa backend.
+            Still mock data — based on the web’s authoritative model (043/044). Not yet wired to the backend.
           </Text>
         </XStack>
 
@@ -134,7 +134,7 @@ export default function DeliveryDashboardScreen() {
               tone="tintA"
               value={summary.pendingCount}
               label="POs to deliver"
-              caption="assigned sa'yo"
+              caption="assigned to you"
               onPress={() => router.push('/(delivery)/pos')}
             />
           </YStack>
@@ -143,7 +143,7 @@ export default function DeliveryDashboardScreen() {
               tone="tintB"
               value={summary.backloadCount}
               label="Backloads"
-              caption="goods na bumalik"
+              caption="goods that came back"
               onPress={() => router.push('/(delivery)/pos')}
             />
           </YStack>
@@ -152,7 +152,7 @@ export default function DeliveryDashboardScreen() {
         <BizHeroCard
           value={formatPeso(summary.codOnHand)}
           label="COD for remittance"
-          caption="hindi pa nare-remit"
+          caption="not yet remitted"
           onPress={() => router.push('/(delivery)/remit')}
         />
 
@@ -183,10 +183,10 @@ export default function DeliveryDashboardScreen() {
           />
         </XStack>
 
-        <BizSectionHeader title="Today's deliveries" actionLabel="Tingnan lahat" onAction={() => router.push('/(delivery)/pos')} />
+        <BizSectionHeader title="Today's deliveries" actionLabel="View all" onAction={() => router.push('/(delivery)/pos')} />
         {preview.length === 0 ? (
           <Text fontSize={13} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} paddingVertical="$3">
-            Tapos na ang lahat ng deliveries!
+            All deliveries are done!
           </Text>
         ) : (
           preview.map((po) => <PoPreviewRow key={po.id} po={po} onPress={() => openDeliver(po.id)} />)
@@ -196,8 +196,8 @@ export default function DeliveryDashboardScreen() {
           <BizDashboardAlert
             tone="amber"
             icon={<PackageX size={18} color={BIZLINK_COLORS.orange} strokeWidth={1.75} />}
-            title={`${summary.backloadCount} PO na-backload ngayong araw`}
-            caption="Goods na bumalik — hihintayin ang manual na aksyon ng dispatcher/admin"
+            title={`${summary.backloadCount} POs backloaded today`}
+            caption="Goods came back — waiting for the dispatcher or admin to take action"
             onPress={() => router.push('/(delivery)/pos')}
           />
         ) : null}

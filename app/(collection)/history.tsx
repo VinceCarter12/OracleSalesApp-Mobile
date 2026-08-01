@@ -22,7 +22,7 @@ import {
 type HistFilter = 'all' | CollectionHistoryResult;
 
 const FILTERS: { key: HistFilter; label: string }[] = [
-  { key: 'all', label: 'Lahat' },
+  { key: 'all', label: 'All' },
   { key: 'collected', label: 'Collected' },
   { key: 'resched', label: 'Rescheduled' },
   { key: 'remitted', label: 'Remitted' },
@@ -113,7 +113,7 @@ export default function CollectionHistoryScreen() {
 
         {list.length === 0 ? (
           <Text fontSize={13} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} textAlign="center" paddingVertical="$6">
-            Walang laman ang filter na ito.
+            Nothing matches this filter.
           </Text>
         ) : (
           list.map((entry, i) => <HistoryRow key={`${entry.store}-${i}`} entry={entry} />)

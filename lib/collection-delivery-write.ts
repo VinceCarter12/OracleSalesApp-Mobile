@@ -75,6 +75,15 @@ export async function collectPayment(
     remarks?: string;
     paymentPhotoUri?: string;
     receiptPhotoUri?: string;
+    /**
+     * Customer acknowledgment signature (JPEG). Captured for every payment
+     * method, but NOT yet persisted: `collection_visits` has no signature
+     * column (web 043) and the upload registry has no collection-signature kind.
+     * Wiring it requires a web `signature_url` column + a local column + a
+     * registry entry — a cross-repo follow-up. Accepted here so the screen's
+     * plumbing is complete and this becomes a one-line queuePhoto once ready.
+     */
+    signatureUri?: string;
   },
 ): Promise<void> {
   const now = new Date().toISOString();

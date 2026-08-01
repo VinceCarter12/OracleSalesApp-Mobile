@@ -57,7 +57,7 @@ function StoreRow({ store, onPress }: { store: CollectionStore; onPress?: () => 
           <XStack alignItems="center" gap="$1.5" marginTop={2}>
             <Footprints size={12} color={COLORS.orange} strokeWidth={1.75} />
             <Text fontSize={10.5} fontFamily={BIZLINK_FONTS.semibold} color={COLORS.orange}>
-              Kinukuha na ni {store.claimedBy}
+              {store.claimedBy} is collecting it
             </Text>
           </XStack>
         ) : null}
@@ -90,13 +90,13 @@ export default function CollectionTodayScreen() {
       <ScrollView contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 40 }}>
         <YStack backgroundColor={BIZLINK_COLORS.tintA} borderRadius={24} padding={16} marginBottom={12}>
           <Text fontSize={13} fontFamily={BIZLINK_FONTS.semibold} color={BIZLINK_COLORS.text}>
-            {summary.pendingCount} stores na lang
+            {summary.pendingCount} stores left
           </Text>
           <View height={6} borderRadius={99} backgroundColor="rgba(255,255,255,0.6)" overflow="hidden" marginTop={10}>
             <View height="100%" borderRadius={99} backgroundColor={BIZLINK_COLORS.brand} width={`${summary.visitedPct}%`} />
           </View>
           <Text fontSize={11} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} marginTop={8}>
-            Nagde-decrement habang nabibisita — ang natapos ay naka-cross-out sa ibaba.
+            The count goes down as you visit — finished stores are crossed out below.
           </Text>
         </YStack>
         {stores.map((store) => (
@@ -111,7 +111,7 @@ export default function CollectionTodayScreen() {
           />
         ))}
         <Text fontSize={12.5} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} textAlign="center" marginTop={14}>
-          Bawat store visit ay may GPS pinpoint + timestamp.{'\n'}Walang route-line drawing — pinpoint lang per visit.
+          Every store visit has a GPS pinpoint + timestamp.{'\n'}No route line is drawn — just a pinpoint per visit.
         </Text>
       </ScrollView>
     </YStack>

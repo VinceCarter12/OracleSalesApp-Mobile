@@ -21,10 +21,10 @@ export default function DeliveryHistoryScreen() {
         <YStack alignItems="center" gap="$3">
           <History size={40} color={BIZLINK_COLORS.muted} strokeWidth={1.5} />
           <Text fontFamily={BIZLINK_FONTS.semibold} fontSize={14} color={BIZLINK_COLORS.text} textAlign="center">
-            Hindi pa final ang feature na ito
+            This feature isn’t final yet
           </Text>
           <Text fontSize={13} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} textAlign="center" lineHeight={19}>
-            Ang delivery history ay bahagi ng susunod na OQ-5 spec pass — draft pa ang buong delivery module.
+            Delivery history is part of the next OQ-5 spec pass — the whole delivery module is still a draft.
           </Text>
           <YStack flexDirection="row" alignItems="center" gap="$1.5" marginTop="$1">
             <Hourglass size={14} color={BIZLINK_COLORS.orange} strokeWidth={1.75} />

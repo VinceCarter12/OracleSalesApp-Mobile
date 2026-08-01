@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { Alert, Pressable, ScrollView, TextInput } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router, useLocalSearchParams } from 'expo-router';
@@ -7,6 +7,7 @@ import {
   CalendarClock,
   Check,
   FileCheck,
+  FileText,
   Footprints,
   Lightbulb,
   Lock,
@@ -24,6 +25,7 @@ import { BizTopBar } from '../../components/bizlink/BizTopBar';
 import { BizSectionHeader } from '../../components/bizlink/BizSectionHeader';
 import { BizButton } from '../../components/bizlink/BizButton';
 import { PhotoSlot } from '../../components/collection-delivery/PhotoSlot';
+import { SignaturePad, type SignaturePadHandle } from '../../components/collection-delivery/SignaturePad';
 import { type PaymentMethod } from '../../lib/collection-delivery-data';
 import { claimStop, collectPayment, releaseStop, rescheduleVisit } from '../../lib/collection-delivery-write';
 import { useCollectionStore } from '../../lib/use-collection-delivery';
@@ -46,11 +48,16 @@ import { useCollectionStore } from '../../lib/use-collection-delivery';
 type PayMode = PaymentMethod;
 
 const PAY_LABELS: Record<PayMode, string> = {
-  cash: 'Kuhanan ang cash',
-  check: 'Kuhanan ang check',
-  gcash: 'Kuhanan ang GCash confirmation screen',
-  counter: 'Kuhanan ang counter receipt',
+  cash: 'Take a photo of the cash',
+  check: 'Take a photo of the check',
+  gcash: 'Take a photo of the GCash confirmation screen',
+  counter: 'Take a photo of the counter receipt',
+  delivery_receipt: 'Take a photo of the delivery receipt',
 };
+
+// Amount collected is only entered for cash/check/gcash. For counter and
+// delivery-receipt payments no cash changes hands here, so no amount is typed.
+const METHODS_WITH_AMOUNT: PayMode[] = ['cash', 'check', 'gcash'];
 
 function PayTile({
   icon,
@@ -100,15 +107,31 @@ export default function CollectPaymentScreen() {
   const [receiptPhotoUri, setReceiptPhotoUri] = useState<string | null>(null);
   const [amount, setAmount] = useState('');
   const [remarks, setRemarks] = useState('');
+  // Customer acknowledgment signature — captured for every payment method.
+  const [signed, setSigned] = useState(false);
+  const [scrollEnabled, setScrollEnabled] = useState(true);
+  const sigRef = useRef<SignaturePadHandle>(null);
   // GPS captured at the moment the payment photo is taken (web rule: the fix
   // rides with the photo). Null = "no pin" — never synthesized.
   const [gps, setGps] = useState<GpsFix | null>(null);
 
+  const showAmount = METHODS_WITH_AMOUNT.includes(payMode);
+  // Delivery-receipt payments are the delivery receipt itself — just the one
+  // photo + remarks, no separate receipt slot.
+  const isDeliveryReceipt = payMode === 'delivery_receipt';
+  // The separate delivery-receipt photo is only for cash/check/gcash. Counter
+  // takes no receipt slot, and delivery-receipt is its own receipt already.
+  const showReceiptPhoto = payMode !== 'counter' && !isDeliveryReceipt;
   const amountValue = parseFloat((amount || '').replace(/[^\d.]/g, ''));
   const amountValid = amountValue > 0;
   const claimedByMe = !!store?.claimedById && store.claimedById === profileId;
   const claimedByOther = !!store?.claimedById && !claimedByMe;
-  const canCollect = amountValid && !!payPhotoUri && !!receiptPhotoUri && !claimedByOther;
+  const canCollect =
+    !!payPhotoUri &&
+    signed &&
+    (showAmount ? amountValid : true) &&
+    (showReceiptPhoto ? !!receiptPhotoUri : true) &&
+    !claimedByOther;
 
   function iconColor(mode: PayMode) {
     return payMode === mode ? BIZLINK_ON_INK.solid : BIZLINK_COLORS.muted;
@@ -148,13 +171,17 @@ export default function CollectPaymentScreen() {
         // No fix available (offline / indoors / denied) → save without a pin.
       }
     }
+    // Render the customer signature to a JPEG so it's ready to upload once the
+    // collection_visits signature column exists (see collectPayment).
+    const signatureUri = (await sigRef.current?.captureToFile()) ?? undefined;
     await collectPayment(db, storeId, profileId, {
       method: payMode,
-      amount: amountValue,
+      amount: showAmount ? amountValue : 0,
       gps: fix ?? undefined,
       remarks,
       paymentPhotoUri: payPhotoUri ?? undefined,
-      receiptPhotoUri: receiptPhotoUri ?? undefined,
+      receiptPhotoUri: showReceiptPhoto ? receiptPhotoUri ?? undefined : undefined,
+      signatureUri,
     });
     router.replace('/(collection)/celebrate');
   }
@@ -162,11 +189,11 @@ export default function CollectPaymentScreen() {
   function reschedule(): void {
     Alert.alert(
       'Reschedule visit',
-      `${store?.name ?? 'Store'} — hindi aabutin ngayong araw?`,
+      `${store?.name ?? 'Store'} — won’t make it there today?`,
       [
         { text: 'Cancel', style: 'cancel' },
         {
-          text: 'I-reschedule bukas',
+          text: 'Reschedule to tomorrow',
           onPress: async () => {
             if (!profileId) return;
             const tomorrow = new Date(Date.now() + 86400000).toISOString();
@@ -184,7 +211,7 @@ export default function CollectPaymentScreen() {
         <BizTopBar title="Collect Payment" />
         <YStack flex={1} alignItems="center" justifyContent="center" paddingHorizontal="$6">
           <Text fontSize={13} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} textAlign="center">
-            {loading ? 'Naglo-load…' : 'Hindi mahanap ang store na ito.'}
+            {loading ? 'Loading…' : 'This store could not be found.'}
           </Text>
         </YStack>
       </YStack>
@@ -194,7 +221,7 @@ export default function CollectPaymentScreen() {
   return (
     <YStack flex={1} backgroundColor={BIZLINK_COLORS.canvas} paddingTop={insets.top}>
       <BizTopBar title="Collect Payment" />
-      <ScrollView contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 40 }}>
+      <ScrollView contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 40 }} scrollEnabled={scrollEnabled}>
         {/* Store header */}
         <XStack
           alignItems="center"
@@ -217,19 +244,19 @@ export default function CollectPaymentScreen() {
             <XStack alignItems="center" gap="$2.5" backgroundColor={BIZLINK_COLORS.tintB} borderRadius={16} paddingHorizontal={14} paddingVertical={12} marginTop={10}>
               <Lock size={16} color={COLORS.ledgeRed} strokeWidth={1.75} />
               <Text flex={1} fontSize={12} fontFamily={BIZLINK_FONTS.medium} color={COLORS.ledgeRed} lineHeight={16}>
-                On the way na si {store.claimedBy} — hindi mo ito pwedeng kunin.
+                {store.claimedBy} is on the way — you can’t take this one.
               </Text>
             </XStack>
           ) : claimedByMe ? (
             <XStack alignItems="center" gap="$2.5" backgroundColor={BIZLINK_COLORS.tintA} borderRadius={16} paddingHorizontal={14} paddingVertical={10} marginTop={10}>
               <Footprints size={16} color={BIZLINK_COLORS.ink} strokeWidth={1.75} />
-              <Text flex={1} fontSize={12} fontFamily={BIZLINK_FONTS.semibold} color={BIZLINK_COLORS.ink}>On the way ka na papunta rito.</Text>
+              <Text flex={1} fontSize={12} fontFamily={BIZLINK_FONTS.semibold} color={BIZLINK_COLORS.ink}>You’re on the way here.</Text>
               <Pressable onPress={release} hitSlop={6}>
                 <Text fontSize={12} fontFamily={BIZLINK_FONTS.semibold} color={BIZLINK_COLORS.brand}>Release</Text>
               </Pressable>
             </XStack>
           ) : (
-            <BizButton label="Claim — On the way na ako" variant="white" onPress={claim} icon={<Footprints size={16} color={BIZLINK_COLORS.text} strokeWidth={1.75} />} style={{ marginTop: 10 }} />
+            <BizButton label="Claim — I’m on the way" variant="white" onPress={claim} icon={<Footprints size={16} color={BIZLINK_COLORS.text} strokeWidth={1.75} />} style={{ marginTop: 10 }} />
           )
         ) : null}
 
@@ -242,7 +269,7 @@ export default function CollectPaymentScreen() {
             <Text fontSize={12.5} fontFamily={BIZLINK_FONTS.semibold} color={gps ? '#8FD7B4' : BIZLINK_ON_INK.textMuted}>{gps ? '✓' : '…'}</Text>
             <Text fontSize={12.5} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_ON_INK.solid}>GPS pinpoint</Text>
             <Text fontSize={11} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_ON_INK.textMuted}>
-              {gps ? `${gps.lat.toFixed(4)}° N, ${gps.lng.toFixed(4)}° E` : 'kukunin kasabay ng payment photo'}
+              {gps ? `${gps.lat.toFixed(4)}° N, ${gps.lng.toFixed(4)}° E` : 'captured with the payment photo'}
             </Text>
           </XStack>
           <XStack alignItems="center" gap="$2">
@@ -259,65 +286,76 @@ export default function CollectPaymentScreen() {
           <PayTile icon={<FileCheck size={14} color={iconColor('check')} strokeWidth={1.75} />} label="Check" selected={payMode === 'check'} onPress={() => setPayMode('check')} />
           <PayTile icon={<Smartphone size={14} color={iconColor('gcash')} strokeWidth={1.75} />} label="GCash" selected={payMode === 'gcash'} onPress={() => setPayMode('gcash')} />
           <PayTile icon={<Receipt size={14} color={iconColor('counter')} strokeWidth={1.75} />} label="Counter" selected={payMode === 'counter'} onPress={() => setPayMode('counter')} />
+          <PayTile icon={<FileText size={14} color={iconColor('delivery_receipt')} strokeWidth={1.75} />} label="Delivery Receipt" selected={payMode === 'delivery_receipt'} onPress={() => setPayMode('delivery_receipt')} />
         </XStack>
 
         {/* Payment photo */}
-        <BizSectionHeader title="Photo ng bayad" helper="· camera only" />
+        <BizSectionHeader title="Payment photo" helper="· camera only" />
         <PhotoSlot
           title={PAY_LABELS[payMode]}
-          subtitle="Compressed ≤3MB · naka-save locally"
+          subtitle="Compressed ≤3MB · saved on your phone"
           uri={payPhotoUri}
           onCaptured={onPayPhoto}
         />
 
-        {/* Amount collected — NO target shown (anchoring-bias decision) */}
-        <BizSectionHeader title="Amount collected *" />
-        <TextInput
-          value={amount}
-          onChangeText={setAmount}
-          keyboardType="numeric"
-          placeholder="₱ 0.00"
-          placeholderTextColor={BIZLINK_COLORS.muted}
-          style={{
-            height: 52,
-            borderRadius: 16,
-            paddingHorizontal: 16,
-            backgroundColor: BIZLINK_COLORS.card,
-            fontFamily: BIZLINK_FONTS.semibold,
-            fontSize: 20,
-            letterSpacing: -0.5,
-            color: BIZLINK_COLORS.text,
-          }}
-        />
-        {amountValid ? (
-          <XStack backgroundColor={COLORS.greenSoft} borderRadius={14} paddingHorizontal={13} paddingVertical={9} marginTop={8}>
-            <Text fontSize={11.5} fontFamily={BIZLINK_FONTS.medium} color={COLORS.ledgeGreen}>
-              ✓ Naka-record — itong halaga ang mapupunta sa remittance.
-            </Text>
-          </XStack>
+        {/* Amount collected — only for cash/check/gcash. Counter and delivery
+            receipt take no amount here (no cash handed over on the spot). */}
+        {showAmount ? (
+          <>
+            <BizSectionHeader title="Amount collected *" />
+            <TextInput
+              value={amount}
+              onChangeText={setAmount}
+              keyboardType="numeric"
+              placeholder="₱ 0.00"
+              placeholderTextColor={BIZLINK_COLORS.muted}
+              style={{
+                height: 52,
+                borderRadius: 16,
+                paddingHorizontal: 16,
+                backgroundColor: BIZLINK_COLORS.card,
+                fontFamily: BIZLINK_FONTS.semibold,
+                fontSize: 20,
+                letterSpacing: -0.5,
+                color: BIZLINK_COLORS.text,
+              }}
+            />
+            {amountValid ? (
+              <XStack backgroundColor={COLORS.greenSoft} borderRadius={14} paddingHorizontal={13} paddingVertical={9} marginTop={8}>
+                <Text fontSize={11.5} fontFamily={BIZLINK_FONTS.medium} color={COLORS.ledgeGreen}>
+                  ✓ Recorded — this amount will go to the remittance.
+                </Text>
+              </XStack>
+            ) : null}
+            <XStack gap="$1.5" marginTop={8} paddingRight={8}>
+              <Lightbulb size={14} color={BIZLINK_COLORS.orange} strokeWidth={1.75} />
+              <Text flex={1} fontSize={12.5} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} lineHeight={18}>
+                Type the exact amount shown in the photo — this is what gets matched against the remittance. No target
+                amount is shown ahead of time, so you enter what was actually received.
+              </Text>
+            </XStack>
+          </>
         ) : null}
-        <XStack gap="$1.5" marginTop={8} paddingRight={8}>
-          <Lightbulb size={14} color={BIZLINK_COLORS.orange} strokeWidth={1.75} />
-          <Text flex={1} fontSize={12.5} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} lineHeight={18}>
-            I-type ang eksaktong halaga na nasa photo — ito ang ibabangga sa remittance. Walang paunang target amount na
-            ipinapakita (2026-07-25 decision — iwas anchoring bias).
-          </Text>
-        </XStack>
 
-        {/* Delivery receipt photo */}
-        <BizSectionHeader title="Delivery Receipt" helper="· camera only" />
-        <PhotoSlot
-          title="Kuhanan ang delivery receipt"
-          subtitle="Compressed ≤3MB · naka-save locally"
-          uri={receiptPhotoUri}
-          onCaptured={setReceiptPhotoUri}
-        />
+        {/* Delivery receipt photo — only for cash/check/gcash. Counter takes no
+            receipt, and the delivery-receipt method's own photo IS the receipt. */}
+        {showReceiptPhoto ? (
+          <>
+            <BizSectionHeader title="Delivery Receipt" helper="· camera only" />
+            <PhotoSlot
+              title="Take a photo of the delivery receipt"
+              subtitle="Compressed ≤3MB · saved on your phone"
+              uri={receiptPhotoUri}
+              onCaptured={setReceiptPhotoUri}
+            />
+          </>
+        ) : null}
 
         {/* SMS pending banner */}
         <XStack alignItems="center" gap="$2.5" backgroundColor={BIZLINK_COLORS.amberSoft} borderRadius={20} paddingHorizontal={16} paddingVertical={13} marginTop={12}>
           <MessageSquareWarning size={16} color={BIZLINK_COLORS.orange} strokeWidth={1.75} />
           <Text flex={1} fontSize={12} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.orange} lineHeight={17}>
-            SMS confirmation sa customer — ipapadala pagka-sync. Provider/API pending — huwag i-assume.
+            SMS confirmation to the customer — sent once synced. Provider/API still pending, so don’t rely on it yet.
           </Text>
         </XStack>
 
@@ -342,6 +380,15 @@ export default function CollectPaymentScreen() {
           }}
         />
 
+        {/* Customer signature — required for every payment method. */}
+        <BizSectionHeader title="Customer signature" helper="· sign on the phone" />
+        <SignaturePad
+          ref={sigRef}
+          onSignedChange={setSigned}
+          onDrawingChange={(d) => setScrollEnabled(!d)}
+          hint="Have the customer sign here"
+        />
+
         {/* Actions */}
         <XStack gap="$2.5" marginTop={20}>
           <BizButton
@@ -362,7 +409,7 @@ export default function CollectPaymentScreen() {
           />
         </XStack>
         <Text fontSize={12.5} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} textAlign="center" marginTop={10}>
-          Gagana kahit walang signal — mase-save locally, auto-sync mamaya.
+          Works even without signal — saved on your phone and synced automatically later.
         </Text>
       </ScrollView>
     </YStack>

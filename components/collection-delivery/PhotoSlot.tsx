@@ -6,7 +6,7 @@ import { Spinner, Text, XStack, YStack } from 'tamagui';
 import { useBizlinkColors, BIZLINK_FONTS, COLORS } from '../../lib/theme';
 
 interface PhotoSlotProps {
-  /** Empty-state title, e.g. "Kuhanan ang signed acknowledgment". */
+  /** Empty-state title, e.g. "Take a photo of the signed acknowledgment". */
   title: string;
   subtitle: string;
   uri: string | null;
@@ -71,7 +71,7 @@ export function PhotoSlot({ title, subtitle, uri, onCaptured }: PhotoSlotProps) 
             {filled ? '✓ Photo captured' : title}
           </Text>
           <Text fontSize={10.5} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted}>
-            {filled ? 'Tap para kunan ulit' : subtitle}
+            {filled ? 'Tap to retake' : subtitle}
           </Text>
         </YStack>
       </XStack>

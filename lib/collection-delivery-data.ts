@@ -15,8 +15,12 @@
 // still stand in for local-DB reads — but now on the correct shapes.
 
 export type CollectionStoreStatus = 'pending' | 'collected' | 'rescheduled';
-/** Collection payment methods — lowercase; 'counter' = paid at the store's own counter. */
-export type PaymentMethod = 'cash' | 'check' | 'gcash' | 'counter';
+/**
+ * Collection payment methods — lowercase; 'counter' = paid at the store's own
+ * counter, 'delivery_receipt' = documented by the delivery receipt only (no
+ * cash handed over, so no amount is entered).
+ */
+export type PaymentMethod = 'cash' | 'check' | 'gcash' | 'counter' | 'delivery_receipt';
 /** Delivery COD methods — no 'counter' (a counter has no meaning on a delivery). */
 export type CodMethod = 'cash' | 'check' | 'gcash';
 
@@ -27,6 +31,7 @@ export function paymentMethodLabel(m: PaymentMethod | CodMethod): string {
     case 'check': return 'Check';
     case 'gcash': return 'GCash';
     case 'counter': return 'Counter';
+    case 'delivery_receipt': return 'Delivery Receipt';
   }
 }
 
