@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { Image, ScrollView } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router, useFocusEffect } from 'expo-router';
-import { ImagePlus, Key } from 'lucide-react-native';
+import { ImagePlus } from 'lucide-react-native';
 import { Text, View, XStack, YStack } from 'tamagui';
 import { BIZLINK_COLORS, BIZLINK_FONTS } from '../../../lib/theme';
 import { useManagerDashboard } from '../../../lib/useManagerDashboard';
@@ -11,7 +11,6 @@ import { useAuth } from '../../../lib/useAuth';
 import { useProfileAvatar } from '../../../lib/use-profile-avatar';
 import { getManagerOwnNewClientsCount } from '../../../lib/manager-team-service';
 import { initialsFromName } from '../../../lib/display-name';
-import { showToast } from '../../../lib/toast';
 import { Avatar } from '../../../components/ui/Avatar';
 import { BizTopBar } from '../../../components/bizlink/BizTopBar';
 import { BizCard } from '../../../components/bizlink/BizCard';
@@ -20,32 +19,10 @@ import { BizButton } from '../../../components/bizlink/BizButton';
 import { LockToggleRow } from '../../../components/security/LockToggleRow';
 import { clearSnapshot } from '../../../lib/app-lock/session-snapshot';
 
-interface SecurityItem {
-  key: string;
-  icon: React.ReactNode;
-  label: string;
-  sublabel?: string;
-  onPress?: () => void;
-}
-
 // NOTE (T-014 Phase 3, ADR-024): bypasses the shared `components/account/AccountScreen.tsx`
 // shell — same precedent as the Sales Agent account screen (Phase 2) — since that
 // shell is also consumed by `app/(executive)/more/account.tsx` (Phase 4, out of
 // scope). Builds its own BizLink-styled layout locally instead.
-const SECURITY_ITEMS: SecurityItem[] = [
-  {
-    key: 'passcode',
-    icon: <Key size={16} color={BIZLINK_COLORS.text} strokeWidth={1.75} />,
-    label: 'Change passcode',
-    onPress: () => showToast('✓ Passcode updated (demo)'),
-  },
-  {
-    key: 'client-info-protection',
-    icon: null,
-    label: 'Client info protection',
-    sublabel: 'Fingerprint / passcode required to view',
-  },
-];
 
 /** Wireframe s-account (was Profile) — ungated: this-month stats, security row, sign out. */
 export default function ManagerAccountScreen() {
@@ -126,32 +103,12 @@ export default function ManagerAccountScreen() {
 
         <BizSectionHeader title="Security" />
         <BizCard padding={0}>
-          {SECURITY_ITEMS.map((item, index) => (
-            <XStack
-              key={item.key}
-              alignItems="center"
-              gap="$2.5"
-              padding={16}
-              minHeight={44}
-              borderBottomWidth={index === SECURITY_ITEMS.length - 1 ? 0 : 1}
-              borderBottomColor={BIZLINK_COLORS.line}
-              onPress={item.onPress}
-            >
-              {item.icon}
-              <YStack flex={1}>
-                <Text fontSize={13.5} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.text}>{item.label}</Text>
-                {item.sublabel ? (
-                  <Text fontSize={11} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted}>{item.sublabel}</Text>
-                ) : null}
-              </YStack>
-              {item.onPress ? <Text color={BIZLINK_COLORS.muted}>›</Text> : null}
-            </XStack>
-          ))}
-          {/* Batch 5 Slice 3 refinement (ADR-051): per-user app-root-lock
-              toggle. Manager's wireframe has no equivalent row yet (Q4,
-              open — see LockToggleRow.tsx's header comment); reused here as
-              the closest matching security-row pattern. */}
-          <LockToggleRow withTopBorder />
+          {/* Batch 5 Slice 3/4 (ADR-051): per-user app-root-lock toggle —
+              the only Security control on this screen. Native OS
+              device-credential unlock fully replaces the old passcode row
+              (Slice 4 cleanup); Manager's wireframe now shows this same
+              "Fingerprint unlock" row (Wireframe-Manager-BizLink.html). */}
+          <LockToggleRow />
         </BizCard>
 
         <BizCard flat marginTop="$4">

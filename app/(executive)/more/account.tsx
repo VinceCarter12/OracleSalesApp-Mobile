@@ -1,13 +1,12 @@
 import { Image, ScrollView } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
-import { ImagePlus, Key } from 'lucide-react-native';
-import { Text, View, XStack, YStack } from 'tamagui';
+import { ImagePlus } from 'lucide-react-native';
+import { Text, View, YStack } from 'tamagui';
 import { BIZLINK_COLORS, BIZLINK_FONTS } from '../../../lib/theme';
 import { useSession } from '../../../lib/session-store';
 import { useAuth } from '../../../lib/useAuth';
 import { useProfileAvatar } from '../../../lib/use-profile-avatar';
-import { showToast } from '../../../lib/toast';
 import { Avatar } from '../../../components/ui/Avatar';
 import { BizTopBar } from '../../../components/bizlink/BizTopBar';
 import { BizCard } from '../../../components/bizlink/BizCard';
@@ -74,18 +73,12 @@ export default function ExecutiveAccountScreen() {
 
         <BizSectionHeader title="Security" />
         <BizCard padding={0}>
-          <XStack alignItems="center" gap="$2.5" padding={16} minHeight={44} onPress={() => showToast('✓ Passcode updated (demo)')}>
-            <Key size={16} color={BIZLINK_COLORS.text} strokeWidth={1.75} />
-            <YStack flex={1}>
-              <Text fontSize={13.5} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.text}>Change passcode</Text>
-            </YStack>
-            <Text color={BIZLINK_COLORS.muted}>›</Text>
-          </XStack>
-          {/* Batch 5 Slice 3 refinement (ADR-051): per-user app-root-lock
-              toggle. Executive's wireframe has no equivalent row yet (Q4,
-              open — see LockToggleRow.tsx's header comment); reused here as
-              the closest matching security-row pattern. */}
-          <LockToggleRow withTopBorder />
+          {/* Batch 5 Slice 3/4 (ADR-051): per-user app-root-lock toggle —
+              the only Security control on this screen. Native OS
+              device-credential unlock fully replaces the old passcode row
+              (Slice 4 cleanup); Executive's wireframe now shows this same
+              "Fingerprint unlock" row (Wireframe-Executive-BizLink.html). */}
+          <LockToggleRow />
         </BizCard>
 
         <YStack marginTop="$5">

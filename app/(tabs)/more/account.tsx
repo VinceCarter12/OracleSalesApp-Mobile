@@ -1,8 +1,7 @@
-import { useState } from 'react';
 import { Alert, Image, ScrollView } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
-import { ImagePlus, Key } from 'lucide-react-native';
+import { ImagePlus } from 'lucide-react-native';
 import { Text, View, XStack, YStack } from 'tamagui';
 import { useSession } from '../../../lib/session-store';
 import { useAuth } from '../../../lib/useAuth';
@@ -16,7 +15,6 @@ import { BizCard } from '../../../components/bizlink/BizCard';
 import { BizSectionHeader } from '../../../components/bizlink/BizSectionHeader';
 import { BizChip } from '../../../components/bizlink/BizChip';
 import { BizButton } from '../../../components/bizlink/BizButton';
-import { ChangePasscodeSheet } from '../../../components/security/ChangePasscodeSheet';
 import { LockToggleRow } from '../../../components/security/LockToggleRow';
 import { clearSnapshot } from '../../../lib/app-lock/session-snapshot';
 
@@ -25,14 +23,6 @@ const APPEARANCE_OPTIONS: Array<{ value: ThemePreference; label: string }> = [
   { value: 'light', label: 'Light' },
   { value: 'dark', label: 'Dark' },
 ];
-
-interface SecurityItem {
-  key: string;
-  icon: React.ReactNode;
-  label: string;
-  sublabel?: string;
-  onPress?: () => void;
-}
 
 // NOTE: this screen bypasses the shared `components/account/AccountScreen.tsx`
 // shell (also used by Manager/Executive, out of scope for this Phase 2 pass)
@@ -47,26 +37,6 @@ export default function AgentAccountScreen() {
   const { avatarUri, pickingAvatar, handlePickAvatar } = useProfileAvatar(session?.user.id);
   const BIZLINK_COLORS = useBizlinkColors();
   const { preference, setPreference } = useThemePreference();
-  // B-064: real passcode-change flow (components/security/ChangePasscodeSheet.tsx)
-  // replacing the toast-only stub.
-  const [passcodeSheetOpen, setPasscodeSheetOpen] = useState(false);
-
-  // Moved inside the component (was module-level) so its icon colors are
-  // theme-reactive via the hook-resolved BIZLINK_COLORS above.
-  const SECURITY_ITEMS: SecurityItem[] = [
-    {
-      key: 'passcode',
-      icon: <Key size={16} color={BIZLINK_COLORS.text} strokeWidth={1.75} />,
-      label: 'Change passcode',
-      onPress: () => setPasscodeSheetOpen(true),
-    },
-    {
-      key: 'client-info-protection',
-      icon: null,
-      label: 'Client info protection',
-      sublabel: 'Passcode required to view',
-    },
-  ];
 
   function confirmSignOut(): void {
     Alert.alert('Sign Out', 'Are you sure you want to sign out?', [
@@ -127,31 +97,13 @@ export default function AgentAccountScreen() {
 
         <BizSectionHeader title="Security" />
         <BizCard padding={0}>
-          {SECURITY_ITEMS.map((item, index) => (
-            <XStack
-              key={item.key}
-              alignItems="center"
-              gap="$2.5"
-              padding={16}
-              minHeight={44}
-              borderBottomWidth={index === SECURITY_ITEMS.length - 1 ? 0 : 1}
-              borderBottomColor={BIZLINK_COLORS.line}
-              onPress={item.onPress}
-            >
-              {item.icon}
-              <YStack flex={1}>
-                <Text fontSize={13.5} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.text}>{item.label}</Text>
-                {item.sublabel ? (
-                  <Text fontSize={11} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted}>{item.sublabel}</Text>
-                ) : null}
-              </YStack>
-              {item.onPress ? <Text color={BIZLINK_COLORS.muted}>›</Text> : null}
-            </XStack>
-          ))}
           {/* Batch 5 Slice 3 refinement (ADR-051): per-user app-root-lock
               toggle, matching Wireframe-Sales-BizLink.html's "Fingerprint
-              unlock … On" row (~line 1002). */}
-          <LockToggleRow withTopBorder />
+              unlock … On" row (~line 1002). This is now the only Security
+              control on this screen — the old passcode-based "Change
+              passcode" row was removed in Batch 5 Slice 4 (native OS
+              device-credential unlock fully replaces passcode, ADR-051). */}
+          <LockToggleRow />
         </BizCard>
 
         <BizSectionHeader title="Appearance" />
@@ -179,8 +131,6 @@ export default function AgentAccountScreen() {
           <BizButton label="Sign Out" variant="red" onPress={confirmSignOut} />
         </YStack>
       </ScrollView>
-
-      <ChangePasscodeSheet visible={passcodeSheetOpen} onClose={() => setPasscodeSheetOpen(false)} />
     </YStack>
   );
 }
