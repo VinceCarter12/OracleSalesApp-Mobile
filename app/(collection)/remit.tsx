@@ -96,11 +96,11 @@ export default function CollectionRemitScreen() {
       });
 
       if (result === 'offline') {
-        Alert.alert('Walang internet', 'Kailangan ng koneksyon para mag-remit (ina-upload ang proof/signature). Subukan ulit kapag online.');
+        Alert.alert('No internet', 'You need a connection to remit (the proof/signature has to upload). Please try again when you’re online.');
         return;
       }
       if (result === 'failed') {
-        Alert.alert('Hindi na-submit', 'May problema sa pag-submit ng remittance. Pakisubukan ulit.');
+        Alert.alert('Not submitted', 'Something went wrong submitting the remittance. Please try again.');
         return;
       }
       Alert.alert(
@@ -124,7 +124,7 @@ export default function CollectionRemitScreen() {
       <ScrollView contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 40 }} scrollEnabled={scrollEnabled}>
         <YStack backgroundColor={BIZLINK_COLORS.ink} borderRadius={24} padding={18} marginTop={6} alignItems="center">
           <Text fontSize={12} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_ON_INK.textMuted}>
-            Hawak mong collections ngayon
+            Collections you’re holding now
           </Text>
           <Text fontSize={42} fontFamily={BIZLINK_FONTS.semibold} letterSpacing={-1.5} color={BIZLINK_ON_INK.solid} marginTop={6}>
             {formatPeso(summary.total)}
@@ -136,7 +136,7 @@ export default function CollectionRemitScreen() {
           </XStack>
         </YStack>
 
-        <BizSectionHeader title="Saan irere-remit?" />
+        <BizSectionHeader title="Where to remit?" />
         <XStack gap="$2" flexWrap="wrap">
           <DestTile
             icon={<Building2 size={14} color={isOffice ? BIZLINK_ON_INK.solid : BIZLINK_COLORS.muted} strokeWidth={1.75} />}
@@ -163,36 +163,36 @@ export default function CollectionRemitScreen() {
             <BizSectionHeader title="Assigned receiver" />
             <ReceiverPicker selectedId={receiver?.id ?? null} onSelect={setReceiver} />
 
-            <BizSectionHeader title="Signed proof" helper="· photo ng pirmadong resibo" />
+            <BizSectionHeader title="Signed proof" helper="· photo of the signed receipt" />
             <PhotoSlot
-              title="Kuhanan ang signed acknowledgment"
+              title="Take a photo of the signed acknowledgment"
               subtitle="Receiver signature required"
               uri={officeProofUri}
               onCaptured={setOfficeProofUri}
             />
 
-            <BizSectionHeader title="Receiver digital signature" helper="· pipirma sa phone" />
+            <BizSectionHeader title="Receiver digital signature" helper="· sign on the phone" />
             <SignaturePad ref={sigRef} key={sigPadKey} onSignedChange={setSigned} onDrawingChange={(d) => setScrollEnabled(!d)} />
             <Text fontSize={12.5} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} marginTop={6} lineHeight={18}>
-              Ang digital signature ng receiver ang nagko-confirm na natanggap niya ang kabuuang halaga — required bago
-              ma-submit ang office remittance.
+              The receiver’s digital signature confirms they received the full amount — required before you can submit
+              an office remittance.
             </Text>
           </>
         ) : (
           <>
-            <BizSectionHeader title="Proof of remittance" helper="· hal. 7-11 receipt" />
+            <BizSectionHeader title="Proof of remittance" helper="· e.g. 7-11 receipt" />
             <PhotoSlot
-              title="Kuhanan ang resibo"
-              subtitle="Compressed ≤3MB · naka-save locally"
+              title="Take a photo of the receipt"
+              subtitle="Compressed ≤3MB · saved on your phone"
               uri={outsideProofUri}
               onCaptured={setOutsideProofUri}
             />
           </>
         )}
 
-        <BizButton label={submitting ? 'Nagsa-submit…' : 'Submit Remittance'} variant="brand" onPress={submit} disabled={!canSubmit} style={{ marginTop: 20 }} />
+        <BizButton label={submitting ? 'Submitting…' : 'Submit Remittance'} variant="brand" onPress={submit} disabled={!canSubmit} style={{ marginTop: 20 }} />
         <Text fontSize={12.5} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} textAlign="center" marginTop={10}>
-          Ang amount na irere-remit ay ibabangga sa kabuuang na-collect — dapat tugma.
+          The amount you remit is matched against the total collected — they must match.
         </Text>
       </ScrollView>
     </YStack>

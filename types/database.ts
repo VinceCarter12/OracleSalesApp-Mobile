@@ -61,7 +61,9 @@ export type RemoteApprovalRequestKind = 'po_confirmation' | 'tag_along';
 // 2026-07-28). Lowercase remote value sets — mobile's display casing
 // ('Cash'/etc.) is applied at render time (lib/collection-delivery-data.ts).
 export type RemoteCollectionStatus = 'collected' | 'rescheduled' | 'pending';
-export type RemotePaymentMethod = 'cash' | 'check' | 'gcash' | 'counter';
+// NOTE (F-007): 'delivery_receipt' requires the web DB `payment_method` CHECK
+// constraint to be widened to accept it — otherwise the outbox push is rejected.
+export type RemotePaymentMethod = 'cash' | 'check' | 'gcash' | 'counter' | 'delivery_receipt';
 export type RemotePurchaseOrderStatus = 'pending' | 'delivered' | 'failed';
 export type RemoteCodMethod = 'cash' | 'check' | 'gcash';
 // Remittances (043 collection / 044 COD). Collection remits to office / bayad

@@ -19,7 +19,7 @@ export default function DeliveryAccountScreen() {
       name={name}
       subtitle="Delivery · Bataan"
       securityItems={[]}
-      sessionPolicyText="Naka-login ka buong araw kahit offline. Auto-logout tuwing 12:00 midnight."
+      sessionPolicyText="You stay logged in all day, even offline. Automatic logout every 12:00 midnight."
       onSignOut={signOut}
     />
   );

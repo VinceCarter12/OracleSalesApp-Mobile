@@ -70,7 +70,7 @@ function PoRow({ po, onPress }: { po: DeliveryPo; onPress?: () => void }) {
           <XStack alignItems="center" gap="$1.5" marginTop={2}>
             <Truck size={12} color={COLORS.orange} strokeWidth={1.75} />
             <Text fontSize={10.5} fontFamily={BIZLINK_FONTS.semibold} color={COLORS.orange}>
-              Dinadala na ni {po.claimedBy}
+              {po.claimedBy} is bringing it
             </Text>
           </XStack>
         ) : null}
@@ -104,8 +104,8 @@ export default function DeliveryPosScreen() {
           />
         ))}
         <Text fontSize={12.5} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} textAlign="center" marginTop={14} lineHeight={18}>
-          May GPS na ang delivery — kasabay ng proof photo (walang photo, walang pin).{'\n'}
-          Isang araw, isang resulta: delivered o failed (= backload, kailangan ng photo proof).
+          Each delivery has GPS — captured with the proof photo (no photo, no pin).{'\n'}
+          One day, one result: delivered or failed (= backload, needs a photo proof).
         </Text>
       </ScrollView>
     </YStack>

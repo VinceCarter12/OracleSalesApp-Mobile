@@ -34,7 +34,7 @@ export default function CollectionAccountScreen() {
           sublabel: 'Fingerprint / passcode required to view',
         },
       ]}
-      sessionPolicyText="Naka-login ka buong araw kahit offline. Auto-logout tuwing 12:00 midnight. Kapag nawala ang phone, admin ang magde-deactivate ng account."
+      sessionPolicyText="You stay logged in all day, even offline. Automatic logout every 12:00 midnight. If the phone is lost, an admin deactivates the account."
       onSignOut={signOut}
     />
   );

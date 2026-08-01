@@ -69,7 +69,7 @@ interface SvgSnapshotRef {
  * and only a boolean was reported).
  */
 export const SignaturePad = forwardRef<SignaturePadHandle, SignaturePadProps>(function SignaturePad(
-  { onSignedChange, onDrawingChange, hint = 'Pumirma dito ang receiving officer' },
+  { onSignedChange, onDrawingChange, hint = 'Have the receiving officer sign here' },
   ref
 ) {
   const BIZLINK_COLORS = useBizlinkColors();
