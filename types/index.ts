@@ -125,6 +125,11 @@ export interface Client {
   office_lng?: number | null;
   office_pin_updated_at?: string | null;
   office_pin_source?: 'manual' | 'client_office_meeting' | null;
+  // ADR-052 (Batch 6 Phase 5, SQLite v21): approval-EXEMPT field (Manager
+  // approval NOT required for edits) — set directly via
+  // `lib/client-service.ts::updateClientInfo()`, never through a
+  // `client_edit_requests` row. No UI reads/writes this yet (Phase 8's job).
+  minor_notes?: string | null;
 }
 
 export interface Meeting {

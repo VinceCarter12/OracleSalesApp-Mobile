@@ -12,7 +12,7 @@ export const DATABASE_NAME = 'oracle-sales-app.db';
 
 // Bump this and add a new `case` below whenever the schema changes — never
 // edit an already-shipped case, since devices may have already run it.
-const LATEST_SCHEMA_VERSION = 20;
+const LATEST_SCHEMA_VERSION = 21;
 
 /**
  * Runs once per app launch via `SQLiteProvider`'s `onInit` (see app/_layout.tsx).
@@ -855,6 +855,46 @@ export async function migrateDbIfNeeded(db: SQLiteDatabase): Promise<void> {
         CHECK (office_pin_source IS NULL OR office_pin_source IN ('manual','client_office_meeting'));
     `);
     currentVersion = 20;
+  }
+
+  // Batch 6 Phase 5 (ADR-052, 2026-08-01): mobile foundation for the manager
+  // client-edit-approval flow — no UI branch lands yet (Phase 8's job), this
+  // is dead-but-safe infrastructure. `client_edit_requests` is a flat table
+  // (NOT a `*_snapshot` mirror), mirroring `po_confirmation_requests`'
+  // precedent (currentVersion===16 block above) since it's device-created
+  // with local pre-sync state, not a read-only server-published list. Unlike
+  // `po_confirmation_requests`, creation for this entity DOES queue through
+  // the outbox (ADR-052 section D) — Sales/RSR edits must survive offline —
+  // so its terminal states include a LOCAL-ONLY `'superseded'` status with no
+  // server equivalent, set by lib/sync/outbox-status.ts when a push
+  // permanently fails (403 RLS rejection / 23505 duplicate-pending) rather
+  // than retrying forever. `minor_notes` is added to `clients` in the same
+  // step (ADR-052 section C: the one CLIENT_EDITABLE_FIELDS entry that is
+  // approval-EXEMPT, so it is written directly via `updateClientInfo()`,
+  // never through a `client_edit_requests` row).
+  if (currentVersion === 20) {
+    await db.execAsync(`
+      ALTER TABLE clients ADD COLUMN minor_notes TEXT;
+
+      CREATE TABLE client_edit_requests (
+        id TEXT PRIMARY KEY,
+        client_id TEXT NOT NULL,
+        requested_by TEXT NOT NULL,
+        changes TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','approved','rejected','superseded')),
+        review_note TEXT,
+        reviewed_by TEXT,
+        reviewed_at TEXT,
+        base_updated_at TEXT NOT NULL,
+        base_assigned_agent_id TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        synced_at TEXT
+      );
+      CREATE INDEX idx_client_edit_requests_client_status ON client_edit_requests(client_id, status);
+      CREATE INDEX idx_client_edit_requests_requester_status ON client_edit_requests(requested_by, status);
+    `);
+    currentVersion = 21;
   }
 
   await db.execAsync(`PRAGMA user_version = ${currentVersion}`);

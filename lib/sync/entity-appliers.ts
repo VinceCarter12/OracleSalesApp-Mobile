@@ -101,8 +101,8 @@ export async function upsertSyncedClient(
        address_line2, landmark, province, city, customer_type, sales_channel, status,
        agent_id, details_deadline_at, details_completed_at, inactive_reason,
        created_at, updated_at, cycle_id, in_progress_at,
-       office_lat, office_lng, office_pin_updated_at, office_pin_source, sync_status, local_updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'synced', ?)
+       office_lat, office_lng, office_pin_updated_at, office_pin_source, minor_notes, sync_status, local_updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'synced', ?)
      ON CONFLICT(id) DO UPDATE SET
        company_name = excluded.company_name, normalized_name = excluded.normalized_name,
        contact_person = excluded.contact_person, position = excluded.position,
@@ -115,6 +115,7 @@ export async function upsertSyncedClient(
        updated_at = excluded.updated_at, cycle_id = excluded.cycle_id, in_progress_at = excluded.in_progress_at,
        office_lat = excluded.office_lat, office_lng = excluded.office_lng,
        office_pin_updated_at = excluded.office_pin_updated_at, office_pin_source = excluded.office_pin_source,
+       minor_notes = excluded.minor_notes,
        sync_status = 'synced', sync_error = NULL, local_updated_at = excluded.local_updated_at
      WHERE clients.sync_status = 'synced'`,
     [
@@ -154,6 +155,10 @@ export async function upsertSyncedClient(
       (row.office_lng as number) ?? null,
       (row.office_pin_updated_at as string) ?? null,
       (row.office_pin_source as string) ?? null,
+      // ADR-052 (Batch 6 Phase 5): approval-exempt free-text field, written
+      // directly (never through client_edit_requests) — plain round-trip,
+      // same as every other non-domain-translated column above.
+      (row.minor_notes as string) ?? null,
       now,
     ]
   );
@@ -299,6 +304,54 @@ export async function upsertSyncedTagAlongRequest(
   ) {
     await reconcileMeetingValidityAfterManagerTagAlong(db, row.related_meeting_id);
   }
+}
+
+/**
+ * ADR-052 (Batch 6 Phase 5): applies a synced-down `client_edit_requests`
+ * row — mostly a Manager's decision (`status`/`review_note`/`reviewed_by`/
+ * `reviewed_at`) flowing back down to the requester's own device, since
+ * `applyScope` (entity-registry.ts) restricts this pull to the requester's
+ * own rows. `WHERE status != 'superseded'` guards the one local-only
+ * terminal state (lib/sync/outbox-status.ts's non-retryable-failure
+ * classification) from ever being reopened by a stray sync-down — if the
+ * row is 'superseded' locally, the create push permanently failed and this
+ * id was never actually created server-side, so no real row should ever
+ * come back down for it in practice; the guard is defense-in-depth only.
+ * `agentId` is unused (signature uniformity, see upsertSyncedMeeting above).
+ */
+export async function upsertSyncedClientEditRequest(
+  db: SQLiteDatabase,
+  row: Record<string, unknown>,
+  now: string,
+  agentId: string
+): Promise<void> {
+  void agentId;
+  await db.runAsync(
+    `INSERT INTO client_edit_requests
+      (id, client_id, requested_by, changes, status, review_note, reviewed_by, reviewed_at,
+       base_updated_at, base_assigned_agent_id, created_at, updated_at, synced_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+     ON CONFLICT(id) DO UPDATE SET
+       status = excluded.status, review_note = excluded.review_note,
+       reviewed_by = excluded.reviewed_by, reviewed_at = excluded.reviewed_at,
+       updated_at = excluded.updated_at, synced_at = excluded.synced_at
+     WHERE client_edit_requests.status != 'superseded'`,
+    [
+      row.id as string,
+      row.client_id as string,
+      row.requested_by as string,
+      JSON.stringify(row.changes ?? {}),
+      (row.status as string) ?? 'pending',
+      (row.review_note as string) ?? null,
+      (row.reviewed_by as string) ?? null,
+      (row.reviewed_at as string) ?? null,
+      row.base_updated_at as string,
+      row.base_assigned_agent_id as string,
+      row.created_at as string,
+      row.updated_at as string,
+      now,
+    ]
+  );
 }
 
 /**
