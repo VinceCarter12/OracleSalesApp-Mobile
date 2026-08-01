@@ -32,7 +32,7 @@ import type { ManagerDashboardSummary, TeamMeetingPreview } from '../types';
 // as a known gap rather than repeating that mistake.
 
 interface ProfileRow {
-  user_id: string;
+  id: string;
   full_name: string;
 }
 
@@ -62,11 +62,13 @@ export async function fetchManagerDashboard(
 ): Promise<ManagerDashboardSummary> {
   const { data: profileRows } = await supabase
     .from('profiles')
-    .select('user_id, full_name')
+    .select('id, full_name')
     .eq('team_id', managerTeamId)
     .in('role', ['sales_specialist', 'rsr']);
   const profiles = (profileRows ?? []) as ProfileRow[];
-  const agentIds = profiles.map((p) => p.user_id);
+  // `clients.assigned_agent_id` / `meetings.agent_id` are FKs to `profiles.id`,
+  // never `profiles.user_id` (ADR-023) — B-055 fix.
+  const agentIds = profiles.map((p) => p.id);
 
   const [{ data: clientRows }, { data: meetingRows }] = agentIds.length
     ? await Promise.all([
@@ -81,16 +83,10 @@ export async function fetchManagerDashboard(
   const thisMonthMeetings = meetings.filter((m) => isSameMonth(m.meeting_date, now));
 
   // Dedup (B-054 Phase 1): shared with lib/manager-team-service.ts via
-  // lib/team-remote-mappers.ts::buildTeamAgents(). No behavior change here —
-  // this still keys agents by `p.user_id` (not `p.id`), the same identity
-  // this file always used; that's a separate known issue (B-055), not fixed
-  // as a drive-by in this dedup pass.
-  const agents = buildTeamAgents(
-    profiles.map((p) => ({ id: p.user_id, full_name: p.full_name })),
-    clients,
-    meetings,
-    now
-  );
+  // lib/team-remote-mappers.ts::buildTeamAgents(). B-055 fix: agents are now
+  // keyed by `p.id` (profiles.id, ADR-023 canonical ownership identity),
+  // matching lib/manager-team-service.ts's already-correct precedent.
+  const agents = buildTeamAgents(profiles, clients, meetings, now);
   const agentById = new Map(agents.map((a) => [a.id, a]));
   const clientNameById = new Map(clients.map((c) => [c.id, c.company_name]));
 
