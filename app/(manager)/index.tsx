@@ -21,6 +21,7 @@ import { BizScopeFilter } from '../../components/bizlink/BizScopeFilter';
 import { AvatarStatusRing } from '../../components/bizlink/AvatarStatusRing';
 import { SyncStatusChip } from '../../components/sync/SyncStatusChip';
 import { SyncCenterSheet } from '../../components/sync/SyncCenterSheet';
+import { getDashboardActionHref } from '../../lib/dashboard-action-registry';
 import type { ManagerScope } from '../../lib/manager-scope';
 import type { TeamAgent, TeamMeetingPreview } from '../../types';
 
@@ -83,7 +84,7 @@ export default function ManagerDashboardScreen() {
   // B-054 Phase 1 item 6: real "this week" trend numbers for the two stat
   // captions below.
   const { overview } = useTeamOverview(scope);
-  const { fullName, profileId } = useSession();
+  const { fullName, profileId, role } = useSession();
   const [syncSheetOpen, setSyncSheetOpen] = useState(false);
   // B-023: see app/(tabs)/index.tsx's twin — remounts the chip on sheet-close.
   const [syncChipKey, setSyncChipKey] = useState(0);
@@ -202,28 +203,28 @@ export default function ManagerDashboardScreen() {
           <BizQuickAction
             icon={<PenLine size={20} color={BIZLINK_COLORS.ink} strokeWidth={1.75} />}
             label="Approvals"
-            onPress={() => router.push('/(manager)/approvals')}
+            onPress={() => router.push(getDashboardActionHref('manager-approvals', role))}
           />
           <BizQuickAction
             icon={<Users size={20} color={BIZLINK_COLORS.ink} strokeWidth={1.75} />}
             label="Tag-Along"
             badgeCount={pendingTagAlongCount}
-            onPress={() => router.push('/(manager)/tag-along')}
+            onPress={() => router.push(getDashboardActionHref('manager-tag-along', role))}
           />
           <BizQuickAction
             icon={<History size={20} color={BIZLINK_COLORS.ink} strokeWidth={1.75} />}
             label="Sales History"
-            onPress={() => router.push('/(manager)/more/meetings')}
+            onPress={() => router.push(getDashboardActionHref('manager-sales-history', role))}
           />
           <BizQuickAction
             icon={<Building2 size={20} color={BIZLINK_COLORS.ink} strokeWidth={1.75} />}
             label="Clients"
-            onPress={() => router.push('/(manager)/more/clients')}
+            onPress={() => router.push(getDashboardActionHref('manager-clients', role))}
           />
           <BizQuickAction
             icon={<Ellipsis size={20} color={BIZLINK_COLORS.ink} strokeWidth={1.75} />}
             label="More"
-            onPress={() => router.push('/(manager)/more')}
+            onPress={() => router.push(getDashboardActionHref('manager-more', role))}
           />
         </XStack>
 

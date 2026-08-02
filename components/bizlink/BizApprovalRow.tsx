@@ -18,6 +18,9 @@ const STATUS_BADGE_LABEL: Record<BizBadgeDecisionStatusVariant, string> = {
   pending: 'Pending',
   approved: 'Approved',
   rejected: 'Rejected',
+  accepted: 'Approved',
+  declined: 'Rejected',
+  cancelled: 'Cancelled',
 };
 
 function formatDate(iso: string): string {

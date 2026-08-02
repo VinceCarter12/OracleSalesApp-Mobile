@@ -1,0 +1,265 @@
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { Alert } from 'react-native';
+import { getClientById } from './client-service';
+import { useSession } from './session-store';
+import { captureGps } from './gps';
+import { useElapsedTimer } from './use-elapsed-timer';
+import { showToast } from './toast';
+import { getCompanionRosterForViewer, getTeamRoster, inviteeKindForRole } from './team-roster';
+import { MAX_COMPANIONS_PER_REQUEST, type CompanionSelection } from './tag-along-service';
+import {
+  companionsForDraft,
+  restoreCompanionsFromDraft,
+  saveDraft,
+  getDraftForClient,
+  deleteDraft,
+  type MeetingDraft,
+} from './meeting-drafts';
+import type { Client, MeetingMode, TeamRosterEntry } from '../types';
+
+export interface MeetingStartCapture {
+  capturedAt: string;
+  gpsLat: number;
+  gpsLng: number;
+}
+
+export type MeetingRecordingFlow = 'full' | 'visit';
+
+export interface UseMeetingRecordingControllerInput {
+  clientId: string | undefined;
+  /** Which screen owns this session — persisted onto the draft row and drives the resume-disclosure copy (lib/policies/meeting-draft-resume-policy.ts). */
+  flow: MeetingRecordingFlow;
+}
+
+/**
+ * Step B: the shared controller both `record.tsx` (full form) and
+ * `record-visit.tsx` (fast path) use for their common behavioral logic —
+ * client + roster loading, the Start confirm-dialog + GPS/timestamp lock,
+ * the elapsed-meeting timer, companion toggle/limit, the F-205
+ * `companionsPreAccepted` rule, and (new, both flows now) same-day draft
+ * crash-recovery via `lib/meeting-drafts.ts`. The two screens' visually
+ * distinct component trees (AutoCapturedPanel/MeetingWrapUpSection/
+ * PoEvidenceCard vs PhotoCapture/VisitStartPanel/VisitInProgressPanel,
+ * ADR-015) are untouched — only this shared logic layer moved.
+ */
+export function useMeetingRecordingController({ clientId, flow }: UseMeetingRecordingControllerInput) {
+  const { profileId, role, markSuspended } = useSession();
+
+  const [client, setClient] = useState<Client | null>(null);
+  const [clientLoading, setClientLoading] = useState(true);
+
+  const [roster, setRoster] = useState<TeamRosterEntry[]>([]);
+  const [rosterLoaded, setRosterLoaded] = useState(false);
+  const [rosterLoadError, setRosterLoadError] = useState(false);
+  const [selectedCompanions, setSelectedCompanions] = useState<TeamRosterEntry[]>([]);
+
+  const [mode, setMode] = useState<MeetingMode>('in_person');
+  const [start, setStart] = useState<MeetingStartCapture | null>(null);
+  const [starting, setStarting] = useState(false);
+  const [startConfirmOpen, setStartConfirmOpen] = useState(false);
+
+  const [pendingDraft, setPendingDraft] = useState<MeetingDraft | null>(null);
+
+  const elapsedSeconds = useElapsedTimer(start?.capturedAt ?? null);
+
+  // Companions selected so far, kept in a ref so confirmStartMeeting()'s
+  // draft write always sees the latest selection without needing it in its
+  // own dependency array (it's an event handler, not an effect).
+  const selectedCompanionsRef = useRef(selectedCompanions);
+  selectedCompanionsRef.current = selectedCompanions;
+
+  // Client + same-day draft lookup (standardized on record-visit.tsx's
+  // stricter behavior, 2026-08-02): a client that no longer exists locally
+  // now alerts AND discards any orphaned draft, in BOTH flows — record.tsx
+  // previously silently no-op'd here.
+  useEffect(() => {
+    if (!clientId) {
+      setClientLoading(false);
+      return;
+    }
+    let cancelled = false;
+    setClientLoading(true);
+    (async () => {
+      const foundClient = await getClientById(clientId);
+      if (cancelled) return;
+      if (!foundClient) {
+        Alert.alert('Error', 'Client not found.');
+        await deleteDraft(clientId).catch((err) =>
+          console.error('[useMeetingRecordingController] Failed to discard orphaned draft:', err)
+        );
+        setClientLoading(false);
+        return;
+      }
+      setClient(foundClient);
+      if (profileId) {
+        const draft = await getDraftForClient(clientId, profileId);
+        if (!cancelled) setPendingDraft(draft);
+      }
+      setClientLoading(false);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [clientId, profileId]);
+
+  useEffect(() => {
+    let cancelled = false;
+    getTeamRoster()
+      .then((entries) => {
+        if (!cancelled) setRoster(entries);
+      })
+      .catch((err) => {
+        console.error('[useMeetingRecordingController] Failed to load companion roster:', err);
+        if (!cancelled) setRosterLoadError(true);
+      })
+      .finally(() => {
+        if (!cancelled) setRosterLoaded(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const toggleCompanion = useCallback((entry: TeamRosterEntry): void => {
+    setSelectedCompanions((prev) => {
+      const alreadySelected = prev.some((p) => p.profileId === entry.profileId);
+      if (alreadySelected) return prev.filter((p) => p.profileId !== entry.profileId);
+      if (prev.length >= MAX_COMPANIONS_PER_REQUEST) {
+        showToast('Hanggang 2 kasama lang ang pwede');
+        return prev;
+      }
+      return [...prev, entry];
+    });
+  }, []);
+
+  const requestStartMeeting = useCallback((): void => {
+    setStartConfirmOpen(true);
+  }, []);
+
+  const cancelStartMeeting = useCallback((): void => {
+    setStartConfirmOpen(false);
+  }, []);
+
+  /**
+   * GPS is captured on Start (matches the wireframe's
+   * `aRequestRecordStart`/`aRecordConfirmStart`) — the actual GPS fetch only
+   * happens after "Yes, start". A best-effort draft write follows (ADR-026
+   * P1 item 3, extended to the full form 2026-08-02): a failure here logs
+   * but never blocks the meeting from starting, matching the fast path's
+   * existing behavior exactly.
+   */
+  const confirmStartMeeting = useCallback(async (): Promise<void> => {
+    setStartConfirmOpen(false);
+    if (!clientId || !profileId) return;
+    setStarting(true);
+    try {
+      const gps = await captureGps();
+      const capturedAt = new Date().toISOString();
+      setStart({ capturedAt, gpsLat: gps.lat, gpsLng: gps.lng });
+      try {
+        await saveDraft({
+          clientId,
+          agentId: profileId,
+          flow,
+          payload: {
+            mode,
+            gpsLat: gps.lat,
+            gpsLng: gps.lng,
+            capturedAt,
+            companions: companionsForDraft(selectedCompanionsRef.current),
+          },
+        });
+      } catch (draftErr) {
+        console.error('[useMeetingRecordingController] Failed to persist meeting draft:', draftErr);
+      }
+    } catch (err) {
+      Alert.alert('Location Error', err instanceof Error ? err.message : 'Failed to get GPS location.');
+    } finally {
+      setStarting(false);
+    }
+  }, [clientId, profileId, flow, mode]);
+
+  /** For the full form's post-Start GPS retry (AutoCapturedPanel's onRetryLocation) — updates only the fix, never the locked-in start timestamp. */
+  const updateStartGps = useCallback((gps: { lat: number; lng: number }): void => {
+    setStart((prev) => (prev ? { ...prev, gpsLat: gps.lat, gpsLng: gps.lng } : prev));
+  }, []);
+
+  const resumeDraft = useCallback((): void => {
+    if (!pendingDraft) return;
+    // A draft with companions must not resume until the offline roster query
+    // has settled — otherwise the initial empty roster would permanently
+    // drop the persisted selections before the picker is available again.
+    if ((pendingDraft.payload.companions?.length ?? 0) > 0 && !rosterLoaded) {
+      showToast('Loading companion list. Please try Resume again.');
+      return;
+    }
+    if ((pendingDraft.payload.companions?.length ?? 0) > 0 && rosterLoadError) {
+      showToast('Unable to load companions. Reopen this meeting and try again.');
+      return;
+    }
+    setMode(pendingDraft.payload.mode);
+    setStart({
+      capturedAt: pendingDraft.payload.capturedAt,
+      gpsLat: pendingDraft.payload.gpsLat,
+      gpsLng: pendingDraft.payload.gpsLng,
+    });
+    setSelectedCompanions(restoreCompanionsFromDraft(pendingDraft.payload.companions, roster));
+    setPendingDraft(null);
+  }, [pendingDraft, rosterLoaded, rosterLoadError, roster]);
+
+  const discardDraft = useCallback(async (): Promise<void> => {
+    if (!clientId) return;
+    await deleteDraft(clientId);
+    setPendingDraft(null);
+  }, [clientId]);
+
+  /** Called after a successful save — the draft must never survive past it (ADR-026 P1 item 3). Best-effort: a cleanup failure must never surface as a save error. */
+  const clearDraft = useCallback(async (): Promise<void> => {
+    if (!clientId) return;
+    await deleteDraft(clientId).catch((err) =>
+      console.error('[useMeetingRecordingController] Failed to clear meeting draft:', err)
+    );
+  }, [clientId]);
+
+  const companionSelections: CompanionSelection[] = selectedCompanions.map((entry) => ({
+    profileId: entry.profileId,
+    kind: inviteeKindForRole(entry.role),
+  }));
+
+  // F-205 decision 2: a manager requesting companions on their OWN meeting
+  // has no counterpart to approve it — those rows insert pre-accepted
+  // instead of pending. Role-based (not route-based) so this stays correct
+  // regardless of which route group renders the screen (see
+  // app/(manager)/clients/record.tsx's re-export).
+  const companionsPreAccepted = role === 'sales_manager';
+
+  return {
+    client,
+    clientLoading,
+    profileId,
+    role,
+    markSuspended,
+    roster,
+    rosterLoaded,
+    rosterLoadError,
+    visibleRoster: getCompanionRosterForViewer(roster, role),
+    selectedCompanions,
+    toggleCompanion,
+    companionSelections,
+    companionsPreAccepted,
+    mode,
+    setMode,
+    start,
+    starting,
+    elapsedSeconds,
+    startConfirmOpen,
+    requestStartMeeting,
+    cancelStartMeeting,
+    confirmStartMeeting,
+    updateStartGps,
+    pendingDraft,
+    resumeDraft,
+    discardDraft,
+    clearDraft,
+  };
+}

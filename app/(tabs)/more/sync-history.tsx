@@ -3,64 +3,11 @@ import { ScrollView } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect } from 'expo-router';
 import { History } from 'lucide-react-native';
-import { Spinner, Text, XStack, YStack } from 'tamagui';
+import { Spinner, Text, YStack } from 'tamagui';
 import { BIZLINK_COLORS, BIZLINK_FONTS } from '../../../lib/theme';
-import { getSyncHistory, type SyncHistoryEntry, type SyncHistoryOutcome } from '../../../lib/sync-history';
+import { getSyncHistory, type SyncHistoryEntry } from '../../../lib/sync-history';
 import { BizTopBar } from '../../../components/bizlink/BizTopBar';
-import { StatusBadge } from '../../../components/ui/StatusBadge';
-
-const OUTCOME_BADGES: Record<SyncHistoryOutcome, { label: string; background: string; color: string }> = {
-  synced: { label: 'Synced', background: BIZLINK_COLORS.tintA, color: BIZLINK_COLORS.ink },
-  conflict: { label: 'Conflict', background: BIZLINK_COLORS.tintB, color: BIZLINK_COLORS.orange },
-  failed: { label: 'Failed', background: BIZLINK_COLORS.tintB, color: BIZLINK_COLORS.red },
-};
-
-function createdOnlineLabel(createdOnline: boolean | null): string | null {
-  if (createdOnline === null) return null;
-  return createdOnline ? 'Ginawa habang online' : 'Ginawa habang offline';
-}
-
-function HistoryRow({ entry }: { entry: SyncHistoryEntry }) {
-  const badge = OUTCOME_BADGES[entry.status];
-  const createdLabel = createdOnlineLabel(entry.createdOnline);
-  return (
-    <YStack
-      backgroundColor={BIZLINK_COLORS.card}
-      borderRadius={20}
-      padding={16}
-      marginBottom={10}
-      gap="$1"
-    >
-      <XStack alignItems="center" gap="$3">
-        <YStack flex={1} gap="$0.5">
-          <Text fontFamily={BIZLINK_FONTS.semibold} fontSize={14} color={BIZLINK_COLORS.text}>
-            {entry.label}
-          </Text>
-          <Text fontSize={11.5} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted}>
-            {entry.status === 'synced' ? 'Na-upload noong ' : 'Huling sinubukan noong '}
-            {new Date(entry.occurredAt).toLocaleString()}
-          </Text>
-          {createdLabel ? (
-            <Text fontSize={11} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted}>
-              {createdLabel} · {new Date(entry.createdAt).toLocaleString()}
-            </Text>
-          ) : null}
-        </YStack>
-        <StatusBadge {...badge} />
-      </XStack>
-      {entry.status === 'failed' && entry.lastError ? (
-        <Text fontSize={11} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.red} numberOfLines={2}>
-          {entry.lastError}
-        </Text>
-      ) : null}
-      {entry.adminMessage ? (
-        <Text fontSize={11} fontFamily={BIZLINK_FONTS.semibold} color={BIZLINK_COLORS.orange} marginTop="$0.5">
-          {entry.adminMessage}
-        </Text>
-      ) : null}
-    </YStack>
-  );
-}
+import { SyncHistoryRow } from '../../../components/sync/SyncHistoryRow';
 
 /**
  * Wireframe `id="a-synchistory"` (`aRenderSyncHistory()`, ~line 1814) —
@@ -100,7 +47,7 @@ export default function SyncHistoryScreen() {
             </Text>
           </YStack>
         ) : (
-          entries.map((entry) => <HistoryRow key={entry.id} entry={entry} />)
+          entries.map((entry) => <SyncHistoryRow key={entry.id} entry={entry} />)
         )}
       </ScrollView>
     </YStack>

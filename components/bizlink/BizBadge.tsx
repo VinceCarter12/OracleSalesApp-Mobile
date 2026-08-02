@@ -15,7 +15,14 @@ import { StatusBadge } from '../ui/StatusBadge';
  * only renders `edit`/`request`.
  */
 export type BizBadgeRequestKindVariant = 'edit' | 'request' | 'reassign' | 'tagalong';
-export type BizBadgeDecisionStatusVariant = 'pending' | 'approved' | 'rejected';
+// `accepted`/`declined`/`cancelled` (Batch 8, 2026-08-02) added for the My
+// Requests screen's tag-along rows — `RemoteTagAlongStatus`
+// (types/database.ts) never returns `approved`/`rejected`, only its own
+// accepted/declined/cancelled union. Tones reuse the existing
+// approved/rejected hues (Wireframe-Sales-BizLink.html's
+// `aRequestStatusHtml()` maps `accepted`→`b-success` same as `approved`, and
+// `declined`/`cancelled`→`b-lost` same as `rejected`).
+export type BizBadgeDecisionStatusVariant = 'pending' | 'approved' | 'rejected' | 'accepted' | 'declined' | 'cancelled';
 export type BizBadgeVariant = BizBadgeRequestKindVariant | BizBadgeDecisionStatusVariant;
 
 interface BizBadgeProps {
@@ -37,6 +44,9 @@ export function BizBadge({ variant, label }: BizBadgeProps) {
     pending: { background: BIZLINK_COLORS.soft, color: BIZLINK_COLORS.navy },
     approved: { background: BIZLINK_COLORS.tintA, color: BIZLINK_COLORS.brand },
     rejected: { background: BIZLINK_COLORS.tintB, color: BIZLINK_COLORS.red },
+    accepted: { background: BIZLINK_COLORS.tintA, color: BIZLINK_COLORS.brand },
+    declined: { background: BIZLINK_COLORS.tintB, color: BIZLINK_COLORS.red },
+    cancelled: { background: BIZLINK_COLORS.tintB, color: BIZLINK_COLORS.red },
   };
   const tone = TONES[variant];
   return <StatusBadge label={label} background={tone.background} color={tone.color} />;

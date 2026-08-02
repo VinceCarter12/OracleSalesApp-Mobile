@@ -17,6 +17,8 @@ import { StatusBadge } from '../../../components/ui/StatusBadge';
 import { SyncBadge } from '../../../components/sync/SyncBadge';
 import { BizCard } from '../../../components/bizlink/BizCard';
 import { BizChip } from '../../../components/bizlink/BizChip';
+import { BizPager } from '../../../components/bizlink/BizPager';
+import { usePagination } from '../../../lib/use-pagination';
 import type { OutboxStatus } from '../../../lib/sync/outbox-status';
 import type { Client, ClientStatus, Meeting } from '../../../types';
 
@@ -144,6 +146,13 @@ export default function ClientsScreen() {
     });
   }, [clients, search, filter]);
 
+  // Wireframe #a-clients' `aRenderPager` (page size 10) applied AFTER the
+  // filter/search pass above — same order as `aRenderClientsFiltered`,
+  // which paginates the already-filtered `shown` array. Resets to page 1
+  // whenever filter or search changes, mirroring `aFiltStatus`'s
+  // `aClientPage=1`.
+  const { page, totalPages, pageItems, setPage } = usePagination(filtered, `${filter}:${search.trim().toLowerCase()}`);
+
   return (
     <YStack flex={1} backgroundColor={BIZLINK_COLORS.canvas} paddingTop={insets.top}>
       <XStack alignItems="center" paddingHorizontal="$4" paddingTop="$2.5" paddingBottom="$1.5">
@@ -222,7 +231,7 @@ export default function ClientsScreen() {
         </YStack>
       ) : (
         <FlatList
-          data={filtered}
+          data={pageItems}
           keyExtractor={(item) => item.id}
           contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 16, paddingTop: 20 }}
           renderItem={({ item }) => (
@@ -240,6 +249,9 @@ export default function ClientsScreen() {
                 {clients.length === 0 ? 'Wala ka pang clients.' : 'Walang tumugma sa filter.'}
               </Text>
             </YStack>
+          }
+          ListFooterComponent={
+            filtered.length > 0 ? <BizPager page={page} totalPages={totalPages} onPageChange={setPage} /> : null
           }
         />
       )}

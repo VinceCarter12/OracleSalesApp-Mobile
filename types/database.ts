@@ -655,6 +655,41 @@ export type Database = {
         Args: { p_client_id: string };
         Returns: { ok: boolean; code: string; client?: Record<string, unknown> };
       };
+      // ADR-053 / Migrations 057-060 (Batch 7B, live 2026-08-02): the
+      // calling agent's own role-scoped usage against the active
+      // `cutoff_periods` row. target/confirmed_count/remaining are all
+      // independently nullable — no active period, or no target configured
+      // for the caller's role. At most one row (implicit on caller's own
+      // session/role, not parameterized).
+      get_my_cutoff_usage_summary: {
+        Args: Record<string, never>;
+        Returns: {
+          period_id: string | null;
+          period_label: string | null;
+          starts_on: string | null;
+          ends_on: string | null;
+          role: string;
+          target: number | null;
+          confirmed_count: number | null;
+          remaining: number | null;
+        }[];
+      };
+      // ADR-053 / Migrations 057-060 (Batch 7B, live 2026-08-02): one
+      // client's New/Existing per-cutoff allowance. Returns no rows for
+      // prospect/in_progress clients (uncapped stages) — correct behavior,
+      // not a bug.
+      get_client_cutoff_allowance: {
+        Args: { p_client_id: string };
+        Returns: {
+          period_id: string | null;
+          period_label: string | null;
+          starts_on: string | null;
+          ends_on: string | null;
+          used: number | null;
+          cap: number | null;
+          remaining: number | null;
+        }[];
+      };
     };
     Enums: Record<string, never>;
   };

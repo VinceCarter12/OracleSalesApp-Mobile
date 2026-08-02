@@ -3,17 +3,16 @@ import { Alert, ScrollView, TextInput } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router, useLocalSearchParams } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
+import { MapPin } from 'lucide-react-native';
 import { Spinner, Text, XStack, YStack } from 'tamagui';
-import { getClientById } from '../../../lib/client-service';
 import { useAuth } from '../../../lib/useAuth';
-import { useSession } from '../../../lib/session-store';
 import { captureGps } from '../../../lib/gps';
 import { checkConnectivity } from '../../../lib/sync/connectivity';
-import { BIZLINK_COLORS, BIZLINK_FONTS } from '../../../lib/theme';
+import { BIZLINK_COLORS, BIZLINK_FONTS, BIZLINK_ON_INK } from '../../../lib/theme';
 import { createMeeting } from '../../../lib/meeting-service';
+import { buildMeetingRecord } from '../../../lib/meeting-record-assembler';
 import { AccountSuspendedError } from '../../../lib/app-lock/account-status';
-import { getCompanionRosterForViewer, getTeamRoster, inviteeKindForRole } from '../../../lib/team-roster';
-import { MAX_COMPANIONS_PER_REQUEST } from '../../../lib/tag-along-service';
+import { useMeetingRecordingController } from '../../../lib/use-meeting-recording-controller';
 import { useClientFlowRoutes } from '../../../lib/use-role-routes';
 import { isInfoComplete } from '../../../lib/client-progress';
 import { showToast } from '../../../lib/toast';
@@ -31,26 +30,51 @@ import { LostOpportunityDialog } from '../../../components/meetings/LostOpportun
 import { PhotoLightbox } from '../../../components/meetings/PhotoLightbox';
 import { ClientInfoCompletionNotice } from '../../../components/meetings/ClientInfoCompletionNotice';
 import { PoEvidenceCard } from '../../../components/meetings/PoEvidenceCard';
+import { DraftResumePrompt } from '../../../components/meetings/DraftResumePrompt';
+import { ClientCutoffAllowanceBlock } from '../../../components/cutoff/ClientCutoffAllowanceBlock';
+import { StartMeetingConfirmDialog } from '../../../components/meetings/StartMeetingConfirmDialog';
 import { isCloseDealPoEligible } from '../../../lib/policies/po-confirmation-status-policy';
-import { CLOSE_DEAL_AGENDA, type Client, type MeetingMode, type MeetingOutcome, type TeamRosterEntry } from '../../../types';
+import { CLOSE_DEAL_AGENDA, type MeetingOutcome } from '../../../types';
+
+/** mm:ss, matching VisitInProgressPanel's format and the wireframe's `a-visitElapsed`. */
+function formatElapsed(seconds: number): string {
+  const m = Math.floor(seconds / 60);
+  const s = seconds % 60;
+  return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+}
 
 const LOCATIONS = ['Client Office', 'Others'] as const;
 
+/**
+ * Step B (2026-08-02): the client/roster/draft/Start-confirm/companion/
+ * elapsed-timer logic previously duplicated here and in `record-visit.tsx`
+ * now lives in `lib/use-meeting-recording-controller.ts`. This screen also
+ * gained draft crash-recovery for the first time (it previously had none —
+ * a force-close after Start lost the start timestamp/GPS/timer/companions
+ * entirely) via the same `lib/meeting-drafts.ts` mechanism the fast path
+ * already used. Because `MeetingDraftPayload` only ever persists mode/GPS/
+ * time/companions, a resumed draft here is necessarily PARTIAL — agenda,
+ * outcome, and remarks below are never restored; see
+ * `lib/policies/meeting-draft-resume-policy.ts` and
+ * `components/meetings/DraftResumePrompt.tsx`'s disclosure copy.
+ */
 export default function RecordMeetingScreen() {
   const insets = useSafeAreaInsets();
   const { clientId } = useLocalSearchParams<{ clientId?: string }>();
   const { session } = useAuth();
-  const { profileId, role, markSuspended } = useSession();
   const routes = useClientFlowRoutes();
 
-  const [client, setClient] = useState<Client | null>(null);
-  const [roster, setRoster] = useState<TeamRosterEntry[]>([]);
-  const [selectedCompanions, setSelectedCompanions] = useState<TeamRosterEntry[]>([]);
+  const controller = useMeetingRecordingController({ clientId, flow: 'full' });
+  const {
+    client, visibleRoster, profileId, markSuspended,
+    selectedCompanions, toggleCompanion, companionSelections, companionsPreAccepted,
+    mode, setMode, start, starting, elapsedSeconds, startConfirmOpen,
+    requestStartMeeting, cancelStartMeeting, confirmStartMeeting, updateStartGps,
+    pendingDraft, resumeDraft, discardDraft, clearDraft,
+  } = controller;
 
-  const [mode, setMode] = useState<MeetingMode>('in_person');
   const [photoUri, setPhotoUri] = useState<string | null>(null);
   const [selfiePreviewOpen, setSelfiePreviewOpen] = useState(false);
-  const [location, setLocation] = useState<{ lat: number; lng: number } | null>(null);
   const [loadingLocation, setLoadingLocation] = useState(false);
 
   const [contactName, setContactName] = useState('');
@@ -71,48 +95,20 @@ export default function RecordMeetingScreen() {
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
-    if (!clientId) return;
-    // Local SQLite is the primary read path (ADR-001) — a `pending`
-    // (not-yet-synced) client only exists here.
-    getClientById(clientId).then((client) => {
-      if (!client) return;
-      setClient(client);
-      // ADR-030 Pass 2.5: prefill from the client's own contact info, kept
-      // fully editable — the actual meeting contact can differ from the
-      // client record's default.
-      setContactName(client.contact_person ?? '');
-      setContactPosition(client.position ?? '');
-    });
-  }, [clientId]);
-
-  useEffect(() => {
-    captureLocation();
-  }, []);
-
-  // ADR-030 Pass 2.5: local `team_roster_snapshot` mirror — empty when the
-  // roster hasn't synced yet (or the agent has no team), in which case
-  // CompanionPicker shows the offline helper and stays fully skippable.
-  useEffect(() => {
-    getTeamRoster().then(setRoster);
-  }, []);
-
-  function toggleCompanion(entry: TeamRosterEntry): void {
-    setSelectedCompanions((prev) => {
-      const alreadySelected = prev.some((p) => p.profileId === entry.profileId);
-      if (alreadySelected) return prev.filter((p) => p.profileId !== entry.profileId);
-      if (prev.length >= MAX_COMPANIONS_PER_REQUEST) {
-        showToast('Hanggang 2 kasama lang ang pwede');
-        return prev;
-      }
-      return [...prev, entry];
-    });
-  }
+    if (!client) return;
+    // ADR-030 Pass 2.5: prefill from the client's own contact info, kept
+    // fully editable — the actual meeting contact can differ from the
+    // client record's default. Independent of any resumed draft (contact
+    // fields are never part of MeetingDraftPayload).
+    setContactName(client.contact_person ?? '');
+    setContactPosition(client.position ?? '');
+  }, [client]);
 
   async function captureLocation(): Promise<void> {
     setLoadingLocation(true);
     try {
       const gps = await captureGps();
-      setLocation(gps);
+      updateStartGps(gps);
     } catch (err) {
       Alert.alert('Location Error', err instanceof Error ? err.message : 'Failed to get GPS location.');
     } finally {
@@ -177,8 +173,8 @@ export default function RecordMeetingScreen() {
   }
 
   async function doSave() {
-    if (!location) {
-      Alert.alert('GPS Required', 'Wait for GPS location to be captured before saving.');
+    if (!start) {
+      Alert.alert('Start Meeting Required', 'Tap Start meeting to lock GPS + timestamp before saving.');
       return;
     }
     if (!photoUri) {
@@ -210,59 +206,48 @@ export default function RecordMeetingScreen() {
 
     setSaving(true);
     try {
-      const resolvedClientId = clientId;
-
       // T-014 Phase C (ADR-026 P1 item 4): the photo is no longer uploaded
       // in the foreground at all — the meeting saves with the local
       // `file://` selfie URI immediately, and `createMeeting()` queues its
       // upload internally (`photoToQueue`) right after the local insert
-      // commits. `meeting-service.ts`'s `remoteMediaUrl()` still nulls out
-      // this local URI before it ever reaches the initial remote insert;
-      // the queued upload's own patch (lib/sync/photo-uploads.ts) is what
-      // sets the real Storage URL once it's actually uploaded. Storage path
-      // convention keys by the Auth uid (matches Storage RLS' `auth.uid()`
-      // check) — deliberately session.user.id, not profileId.
-      const meetingId = await createMeeting({
-        client_id: resolvedClientId,
-        agent_id: profileId,
-        gps_lat: location.lat,
-        gps_lng: location.lng,
-        meeting_mode: mode,
-        selfie_url: photoUri,
-        agendas: selectedAgendas,
-        outcome,
-        logged_at: new Date().toISOString(),
-        contactPerson: contactName || null,
-        contactPosition: contactPosition || null,
-        locationType: meetingLocation,
-        locationName: meetingLocation === 'Others' ? otherLocation : null,
-        remarks: remarks || null,
-        photoToQueue: { kind: 'selfie', localUri: photoUri, userId: session.user.id },
-        companions: selectedCompanions.map((entry) => ({
-          profileId: entry.profileId,
-          kind: inviteeKindForRole(entry.role),
-        })),
-        // F-205 decision 2: a manager requesting companions on their OWN
-        // meeting has no counterpart to approve it (they'd be approving
-        // themselves) — those rows insert pre-accepted instead of pending.
-        // Role-based (not route-based) so this stays correct regardless of
-        // which route group renders this shared screen.
-        companionsPreAccepted: role === 'sales_manager',
-        // ADR-046 point 2 / Wireframe-Sales-BizLink.html:2152 (`poRequestPending`):
-        // a Successful outcome is required alongside 'in_progress' + Close deal —
-        // see lib/policies/po-confirmation-status-policy.ts::isCloseDealPoEligible.
-        poEvidence:
-          poPhotoUri && client?.cycle_id && isCloseDealPoEligible(client?.status, outcome, selectedAgendas)
-            ? { localPhotoUri: poPhotoUri, cycleId: client.cycle_id, userId: session.user.id }
-            : null,
-        // Office Location Spec (2026-07-29): only an in-person 'Client
-        // Office' meeting auto-captures the permanent office pin; Online and
-        // Others must never touch it (agent may set it explicitly instead,
-        // via Client Detail's Set/Update Office Location).
-        captureOfficePin: mode === 'in_person' && meetingLocation === 'Client Office',
-      });
+      // commits. Storage path convention keys by the Auth uid (matches
+      // Storage RLS' `auth.uid()` check) — deliberately session.user.id,
+      // not profileId.
+      const meetingId = await createMeeting(
+        buildMeetingRecord({
+          flow: 'full',
+          clientId,
+          agentId: profileId,
+          authUserId: session.user.id,
+          start,
+          mode,
+          agendas: selectedAgendas,
+          companions: companionSelections,
+          companionsPreAccepted,
+          selfieUri: photoUri,
+          outcome,
+          contactName,
+          contactPosition,
+          meetingLocation,
+          otherLocation,
+          remarks,
+          // ADR-046 point 2 / Wireframe-Sales-BizLink.html:2152 (`poRequestPending`):
+          // a Successful outcome is required alongside 'in_progress' + Close
+          // deal — isCloseDealPoEligible() also enforces this. Fast Visit
+          // (record-visit.tsx) can never satisfy this gate at all: it sends
+          // `outcome: null` structurally (its BuildVisitMeetingRecordInput
+          // has no outcome field), so PO evidence can only ever originate
+          // from THIS flow. See finishMeeting()'s doc comment in
+          // record-visit.tsx for the full "not a bug" explanation.
+          poEvidence:
+            poPhotoUri && client?.cycle_id && isCloseDealPoEligible(client?.status, outcome, selectedAgendas)
+              ? { localPhotoUri: poPhotoUri, cycleId: client.cycle_id }
+              : null,
+        })
+      );
+      await clearDraft();
       const connectivity = await checkConnectivity();
-      router.replace(routes.celebrate(connectivity === 'online', meetingId));
+      router.replace(routes.celebrate(connectivity === 'online', meetingId, clientId));
     } catch (err) {
       if (err instanceof AccountSuspendedError) {
         // Batch 5 Slice 2 (ADR-051): route to AccountSuspendedScreen instead
@@ -290,16 +275,55 @@ export default function RecordMeetingScreen() {
         ) : null}
 
         <CompanionPicker
-          roster={getCompanionRosterForViewer(roster, role)}
+          roster={visibleRoster}
           selected={selectedCompanions}
           onToggle={toggleCompanion}
         />
 
         <MeetingModeToggle mode={mode} onChange={setMode} />
 
+        {pendingDraft ? (
+          <DraftResumePrompt
+            draft={pendingDraft}
+            onResume={resumeDraft}
+            onDiscard={() => {
+              void discardDraft();
+            }}
+          />
+        ) : !start ? (
+          <YStack marginTop="$4" gap="$4">
+            {/* W-2 (ADR-053): pre-start allowance line — renders nothing for prospect/in_progress, when flag is off, or when unconfigured. */}
+            <ClientCutoffAllowanceBlock client={client} compact />
+            <BizSectionHeader title="Start meeting" />
+            <YStack backgroundColor={BIZLINK_COLORS.ink} borderRadius={24} padding={16}>
+              <XStack alignItems="center" gap="$3">
+                <YStack width={44} height={44} borderRadius={14} backgroundColor={BIZLINK_ON_INK.circleFill} alignItems="center" justifyContent="center">
+                  <MapPin size={18} color={BIZLINK_COLORS.card} strokeWidth={1.75} />
+                </YStack>
+                <YStack flex={1}>
+                  <Text fontSize={12.5} fontFamily={BIZLINK_FONTS.semibold} color={BIZLINK_COLORS.card}>GPS will be captured on Start</Text>
+                  <Text fontSize={11} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_ON_INK.textMuted}>
+                    Start asks for location permission if needed.
+                  </Text>
+                </YStack>
+              </XStack>
+            </YStack>
+            <BizButton label={starting ? 'Capturing GPS…' : 'Start meeting'} onPress={requestStartMeeting} disabled={starting} />
+            <Text fontSize={12} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} textAlign="center">
+              Picture ay kukunin lang sa dulo, kasabay ng Save Meeting.
+            </Text>
+          </YStack>
+        ) : (
+          <>
+            <YStack backgroundColor={BIZLINK_COLORS.tintA} borderRadius={20} padding={14} marginTop="$4">
+              <Text fontSize={12.5} fontFamily={BIZLINK_FONTS.semibold} color={BIZLINK_COLORS.ink}>
+                Meeting in progress — nagsimula {new Date(start.capturedAt).toLocaleTimeString()} · {formatElapsed(elapsedSeconds)}
+              </Text>
+            </YStack>
+
         <AutoCapturedPanel
           loadingLocation={loadingLocation}
-          location={location}
+          location={{ lat: start.gpsLat, lng: start.gpsLng }}
           photoUri={photoUri}
           onOpenCamera={captureSelfie}
           onPreviewPress={() => setSelfiePreviewOpen(true)}
@@ -361,7 +385,7 @@ export default function RecordMeetingScreen() {
               // Gating `visible` on outcome too would show/hide this card based
               // on a field the agent hasn't reached yet in the scroll order,
               // which is a real UX regression, not just a cosmetic deviation —
-              // see isCloseDealPoEligible's use in the poEvidence trigger below
+              // see isCloseDealPoEligible's use in the poEvidence trigger above
               // for where the outcome check actually belongs.
               visible={client?.status === 'in_progress' && selectedAgendas.includes(CLOSE_DEAL_AGENDA)}
               photoUri={poPhotoUri}
@@ -380,6 +404,8 @@ export default function RecordMeetingScreen() {
         <Text fontSize={12} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} textAlign="center" marginTop="$2">
           Gagana kahit walang signal — mase-save locally, auto-sync mamaya.
         </Text>
+          </>
+        )}
       </ScrollView>
 
       <LostOpportunityDialog
@@ -392,6 +418,14 @@ export default function RecordMeetingScreen() {
       />
 
       <PhotoLightbox uri={photoUri} visible={selfiePreviewOpen} onClose={() => setSelfiePreviewOpen(false)} />
+
+      <StartMeetingConfirmDialog
+        visible={startConfirmOpen}
+        onCancel={cancelStartMeeting}
+        onConfirm={() => {
+          void confirmStartMeeting();
+        }}
+      />
     </YStack>
   );
 }

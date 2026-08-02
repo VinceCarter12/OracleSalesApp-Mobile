@@ -5,6 +5,7 @@ import { AlertCircle, GitBranch, RefreshCw } from 'lucide-react-native';
 import { Text, XStack, YStack } from 'tamagui';
 import { BIZLINK_COLORS, BIZLINK_FONTS } from '../../lib/theme';
 import { getOutboxCounts, type OutboxCounts } from '../../lib/sync-engine';
+import { getLastSyncAt } from '../../lib/sync/last-sync';
 
 // T-014 Phase 1 (ADR-024 Phase 1 shared foundation): BizLink-styled
 // extraction of the sync chip that previously lived inline in
@@ -34,10 +35,33 @@ function primaryLine(counts: OutboxCounts): string {
   return n === 0 ? 'Naka-sync na lahat' : `${n} record${n > 1 ? 's' : ''} pending sync`;
 }
 
-function subLine(counts: OutboxCounts): string {
+/**
+ * Batch 7a acceptance criterion: "stale/pending states are not labelled zero
+ * activity." A pending count of 0 only means the local outbox is empty right
+ * now — it does NOT mean the device has recently talked to the server (e.g.
+ * days offline with nothing new queued locally would previously still show
+ * the same "Naka-sync na lahat / Auto-uploads kapag may signal" copy as a
+ * device that synced 30 seconds ago). This always renders the real
+ * `getLastSyncAt()` timestamp (ADR-026 P2 item 6) as the sub-line so staleness
+ * is visible regardless of the pending count.
+ */
+function subLine(counts: OutboxCounts, lastSyncAt: string | null): string {
   if (counts.failed > 0) return `${counts.failed} failed — kailangan i-retry`;
   if (counts.conflict > 0) return `${counts.conflict} may conflict`;
-  return 'Auto-uploads kapag may signal';
+  return `Huling sync: ${lastSyncLabel(lastSyncAt)}`;
+}
+
+function lastSyncLabel(lastSyncAt: string | null): string {
+  if (!lastSyncAt) return 'hindi pa nakaka-sync';
+  const elapsedMs = Date.now() - new Date(lastSyncAt).getTime();
+  if (elapsedMs < 0) return 'kanina lang';
+  const minutes = Math.floor(elapsedMs / 60000);
+  if (minutes < 1) return 'kanina lang';
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  return `${days}d ago`;
 }
 
 interface SyncStatusChipProps {
@@ -49,12 +73,17 @@ interface SyncStatusChipProps {
 
 export function SyncStatusChip({ counts: countsProp, onPress }: SyncStatusChipProps) {
   const [selfCounts, setSelfCounts] = useState<OutboxCounts>(EMPTY_COUNTS);
+  const [lastSyncAt, setLastSyncAt] = useState<string | null>(null);
   const usesOwnFetch = countsProp === undefined;
 
   useFocusEffect(
     useCallback(() => {
-      if (!usesOwnFetch) return;
-      getOutboxCounts().then(setSelfCounts).catch(() => {});
+      if (usesOwnFetch) {
+        getOutboxCounts().then(setSelfCounts).catch(() => {});
+      }
+      // Fetched regardless of `usesOwnFetch` — the last-sync-at label is
+      // real device sync-history state, not tied to who owns the counts.
+      getLastSyncAt().then(setLastSyncAt).catch(() => {});
     }, [usesOwnFetch])
   );
 
@@ -80,7 +109,7 @@ export function SyncStatusChip({ counts: countsProp, onPress }: SyncStatusChipPr
           {primaryLine(counts)}
         </Text>
         <Text fontSize={11} fontFamily={BIZLINK_FONTS.regular} color={BIZLINK_COLORS.muted}>
-          {subLine(counts)}
+          {subLine(counts, lastSyncAt)}
         </Text>
       </YStack>
     </XStack>

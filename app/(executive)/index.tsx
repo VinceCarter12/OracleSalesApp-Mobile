@@ -13,6 +13,7 @@ import { BizHeroCard } from '../../components/bizlink/BizHeroCard';
 import { BizSectionHeader } from '../../components/bizlink/BizSectionHeader';
 import { BizQuickAction } from '../../components/bizlink/BizQuickAction';
 import { BizButton } from '../../components/bizlink/BizButton';
+import { getDashboardActionHref } from '../../lib/dashboard-action-registry';
 
 /**
  * Wireframe x-home — company-wide metrics across all teams (no Sales/RSR
@@ -109,22 +110,22 @@ export default function ExecutiveHomeScreen() {
           <BizQuickAction
             icon={<Users size={20} color={BIZLINK_COLORS.ink} strokeWidth={1.75} />}
             label="Teams"
-            onPress={() => router.push('/(executive)/teams')}
+            onPress={() => router.push(getDashboardActionHref('executive-teams', 'executive'))}
           />
           <BizQuickAction
             icon={<Building2 size={20} color={BIZLINK_COLORS.ink} strokeWidth={1.75} />}
             label="Clients"
-            onPress={() => router.push('/(executive)/clients')}
+            onPress={() => router.push(getDashboardActionHref('executive-clients', 'executive'))}
           />
           <BizQuickAction
             icon={<Map size={20} color={BIZLINK_COLORS.ink} strokeWidth={1.75} />}
             label="Maps"
-            onPress={() => router.push('/(executive)/more/maps')}
+            onPress={() => router.push(getDashboardActionHref('executive-maps', 'executive'))}
           />
           <BizQuickAction
             icon={<Building2 size={20} color={BIZLINK_COLORS.ink} strokeWidth={1.75} />}
             label="Reports"
-            onPress={() => router.push('/(executive)/more/reports')}
+            onPress={() => router.push(getDashboardActionHref('executive-reports', 'executive'))}
           />
         </XStack>
 

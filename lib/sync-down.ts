@@ -4,6 +4,8 @@ import { normalizeCompanyName } from './company-name';
 import { getDb } from './db';
 import { ENTITY_REGISTRY, type EntityTableName } from './sync/entity-registry';
 import { syncAgendaPolicyAndCycles } from './sync/policy-sync-down';
+import { syncCutoffQuotaSnapshots } from './sync/cutoff-sync-down';
+import { isFeatureEnabled } from './feature-flags';
 import type { SQLiteDatabase } from 'expo-sqlite';
 
 // T-002/T-005/T-014: the pull half of the sync engine — split out of
@@ -191,6 +193,15 @@ export async function syncDown(agentId: string, teamId?: string | null): Promise
   // handling (each of the four tables catches its own failure independently
   // so one bad pull never blocks another).
   await syncAgendaPolicyAndCycles(db, agentId);
+
+  // Batch 7C (ADR-053): the three cutoff/quota pulls only run when the
+  // `cutoff_quota_v1` flag is ON — this keeps the flag's "OFF = byte-
+  // identical to today" guarantee true at the network level too, not just
+  // the UI level (no request to `cutoff_periods`, `get_my_cutoff_usage_
+  // summary()`, or `get_client_cutoff_allowance()` is ever made while OFF).
+  if (await isFeatureEnabled('cutoff_quota_v1')) {
+    await syncCutoffQuotaSnapshots(db, agentId);
+  }
 }
 
 /**

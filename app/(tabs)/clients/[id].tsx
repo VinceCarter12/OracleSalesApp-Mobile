@@ -25,6 +25,7 @@ import { BizSectionHeader } from '../../../components/bizlink/BizSectionHeader';
 import { BizButton } from '../../../components/bizlink/BizButton';
 import { ProgressRing } from '../../../components/ui/ProgressRing';
 import { StatusBadge } from '../../../components/ui/StatusBadge';
+import { ClientCutoffAllowanceBlock } from '../../../components/cutoff/ClientCutoffAllowanceBlock';
 import type { Client } from '../../../types';
 
 export default function ClientDetailScreen() {
@@ -225,6 +226,9 @@ export default function ClientDetailScreen() {
             shared screen (decision 2, [[Sprint#Batch 4 - Office Location
             Core (2026-07-29 Pre-Implementation Vault Update)]]) even though
             the Manager wireframe shows neither button. */}
+        {/* W-4 (ADR-053): renders nothing for prospect/in_progress, when flag is off, or when unconfigured. */}
+        <ClientCutoffAllowanceBlock client={client} />
+
         <XStack gap="$2.5" marginTop="$3.5" flexWrap="wrap">
           <YStack flex={1} minWidth={140}>
             <BizButton

@@ -28,6 +28,10 @@ export interface SyncHistoryEntry {
   createdOnline: boolean | null;
   /** Set only for `status === 'failed'` — points the agent at what to do next, since retrying repeatedly won't fix a genuinely broken record. */
   adminMessage: string | null;
+  /** Batch 7a: fields surfaced for the Sync History detail expansion — "what changed, why it's pending/failed, when it was last attempted." */
+  retryCount: number;
+  failureClass: FailureClass | null;
+  lastAttemptAt: string | null;
 }
 
 interface OutboxHistoryRow {
@@ -132,6 +136,17 @@ function adminMessageFor(
   return null;
 }
 
+/** Batch 7a: human-readable copy for the Sync History detail view's "why" line — mirrors the diagnostic axis lib/sync/outbox-status.ts's `FailureClass` already computes, never re-derived. */
+export const FAILURE_CLASS_LABEL: Record<FailureClass, string> = {
+  validation: 'Invalid o hindi kumpletong data',
+  network: 'Walang koneksyon sa internet',
+  authentication: 'Kailangan mag-sign in ulit / walang access',
+  conflict: 'May nauna nang bersyon sa server',
+  server: 'Server-side error',
+  rate_limited: 'Sobrang dami ng request — susubukan ulit',
+  unknown: 'Hindi tiyak na dahilan',
+};
+
 /** Most-recent-first terminal outbox outcomes (synced/conflict/failed), capped for a device-local list view. */
 export async function getSyncHistory(limit = 50): Promise<SyncHistoryEntry[]> {
   const db = await getDb();
@@ -154,6 +169,9 @@ export async function getSyncHistory(limit = 50): Promise<SyncHistoryEntry[]> {
     lastError: row.last_error,
     createdOnline: toCreatedOnline(row.created_online),
     adminMessage: adminMessageFor(row.status, row.retry_count, row.last_error, row.failure_class),
+    retryCount: row.retry_count,
+    failureClass: row.failure_class,
+    lastAttemptAt: row.last_attempt_at,
   }));
 }
 
