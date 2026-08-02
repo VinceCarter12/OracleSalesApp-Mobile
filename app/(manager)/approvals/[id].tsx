@@ -67,9 +67,11 @@ export default function ManagerApprovalDetailScreen() {
           : (await decidePoConfirmation(row.requestId, decision, null));
       switch (classifyDecisionCode(code)) {
         case 'success':
+          // Navigating away unmounts this screen's own feed instance; the
+          // list screen's useFocusEffect already refetches on return, so no
+          // reload() here (would race a state update on an unmounting hook).
           showToast(code === 'approved' ? 'Na-approve ang request.' : 'Na-reject ang request.');
           router.back();
-          await reload();
           break;
         case 'already_decided':
           // Not an error — someone else (or a retried tap) already decided

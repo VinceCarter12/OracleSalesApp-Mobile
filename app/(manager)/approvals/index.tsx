@@ -22,10 +22,11 @@ const STATUS_FILTER_OPTIONS: BizFilterOption<StatusFilterValue>[] = [
   { value: 'rejected', label: 'Rejected' },
 ];
 
-// ADR-052 section J item 3 / Sprint.md "Filter chips (exact)": only these two
-// chips are specified for the request-type row (no separate "All" chip) —
-// each chip TOGGLES: tapping a selected chip clears the kind filter back to
-// showing both kinds, tapping an unselected one narrows to that kind alone.
+// Sprint.md Batch 6 "Manager Approvals Screen — Filter Chips Confirmed
+// (2026-08-02)": only these two chips are specified for the request-type row
+// (no separate "All" chip) — each chip TOGGLES: tapping a selected chip
+// clears the kind filter back to showing both kinds, tapping an unselected
+// one narrows to that kind alone.
 const KIND_FILTER_OPTIONS: BizFilterOption<ApprovalRequestKind>[] = [
   { value: 'client_edit', label: 'Client Edit' },
   { value: 'po_confirmation', label: 'PO Confirmation' },
