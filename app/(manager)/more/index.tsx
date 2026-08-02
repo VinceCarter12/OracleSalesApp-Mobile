@@ -1,7 +1,7 @@
 import { ScrollView } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
-import { BarChart3, Bell, Building2, History, Info, Map, User, Users } from 'lucide-react-native';
+import { BarChart3, Bell, Building2, History, Info, Map, PenLine, User, Users } from 'lucide-react-native';
 import { Text, XStack, YStack } from 'tamagui';
 import { BIZLINK_COLORS, BIZLINK_FONTS } from '../../../lib/theme';
 import { useSession } from '../../../lib/session-store';
@@ -64,6 +64,13 @@ export default function ManagerMoreScreen() {
             title="Tag-Along"
             subtitle={<Text fontSize={10.5} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted}>Accept/decline requests + approve meetings</Text>}
             onPress={() => router.push('/(manager)/tag-along')}
+          />
+          {/* Batch 6 PR B (ADR-052, F-205 reversal). */}
+          <BizMoreTile
+            icon={<PenLine size={19} color={BIZLINK_COLORS.text} strokeWidth={1.75} />}
+            title="Approvals"
+            subtitle={<Text fontSize={10.5} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted}>Client edit + PO confirmation requests</Text>}
+            onPress={() => router.push('/(manager)/approvals')}
           />
           <BizMoreTile
             icon={<BarChart3 size={19} color={BIZLINK_COLORS.text} strokeWidth={1.75} />}

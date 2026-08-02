@@ -8,17 +8,22 @@ import type { RemoteApprovalRequestKind } from '../types/database';
 // — same reasoning as `lib/tag-along-manager-service.ts` being split out of
 // `lib/tag-along-service.ts`.
 //
-// ⚠️ NOT wired into any screen yet — a pre-implementation wireframe check
-// (hard project rule) found that `Wireframe-Manager-BizLink.html`'s only
-// `s-approvals` screen is scoped EXCLUSIVELY to client-edit requests (a
-// still-deferred, not-yet-built domain per ADR-044 decision 3), and its
-// client-detail "pending" banner only branches on `type==='edit'` or
-// reassignment (no `po_confirmation`/tag-along branch anywhere). There is no
-// wireframe screen for a Manager deciding a team member's PO confirmation or
-// pending-manager-tag-along request today — flagged to Vince rather than
-// inventing one. This file exists so the RPC contract is ready the moment
-// that screen is designed; every function here is pure I/O, safe to unit-test
-// against a mocked `supabase` client, and imports nothing UI-specific.
+// Correction (ADR-052 section J item 1, Batch 6 PR B, 2026-08-02): this
+// header previously claimed the Manager Approvals screen was scoped
+// EXCLUSIVELY to client-edit requests and that no wireframe screen existed
+// for a Manager deciding a PO confirmation. That was already wrong when
+// written — `Wireframe-Manager-BizLink.html`'s `s-approvals`/`openApproval()`
+// always branched on 4 request types (`edit`/`po_confirmation`/`reassign`/
+// `tagalong`), PO confirmation included (see `approvalTypeBadge()`/
+// `approvalTypeLabel()`, ~line 1677). The real screen (Batch 6 PR B) now
+// lives at `app/(manager)/approvals/`, built on
+// `lib/manager-approval-feed-service.ts::fetchManagerApprovalFeed()`, which
+// reuses `getManagerApprovalFeed()` below (still the single RPC call site)
+// rather than duplicating it, and narrows its result to the `client_edit`/
+// `po_confirmation` kinds that screen owns — `tag_along` keeps its own
+// dedicated flow (`app/(manager)/tag-along.tsx`), unchanged by this batch.
+// Every function here remains pure I/O, safe to unit-test against a mocked
+// `supabase` client, and imports nothing UI-specific.
 
 export interface ManagerApprovalFeedItem {
   requestKind: RemoteApprovalRequestKind;
