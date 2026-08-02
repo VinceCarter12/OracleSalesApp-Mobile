@@ -5,7 +5,8 @@
  * states. `lib/manager-dashboard-service.ts` (previously always excluded the
  * manager from team aggregates) and `lib/manager-team-service.ts::fetchTeamOverview()`
  * (previously always included the manager) disagreed on this exact question —
- * this type plus `partitionByScope` (`lib/team-remote-mappers.ts`) is the one
+ * this type plus `partitionByScope` (below, in this file — see its own
+ * doc-comment for why it isn't in `lib/team-remote-mappers.ts`) is the one
  * shared answer both now use.
  */
 export type ManagerScope = 'mine' | 'team' | 'combined';

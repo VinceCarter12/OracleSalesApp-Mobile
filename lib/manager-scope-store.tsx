@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { createContext, useContext, useMemo, useState, type ReactNode } from 'react';
 import { DEFAULT_MANAGER_SCOPE, type ManagerScope } from './manager-scope';
 import { useSession } from './session-store';
 
@@ -27,19 +27,25 @@ const ManagerScopeContext = createContext<ManagerScopeStore | null>(null);
  * subsequent `signIn()` — even as a different manager — remounts it fresh.
  * That natural unmount/remount is the primary reset mechanism.
  *
- * The `useEffect` below is a deliberate second, independent reset path (not
- * a duplicate of the same behavior) — it re-arms to `DEFAULT_MANAGER_SCOPE`
- * whenever `profileId` changes for any reason while this provider happens to
- * still be mounted, so the guarantee holds even if a future navigator change
- * ever keeps `(manager)` alive across a sign-out/sign-in pair.
+ * The `lastProfileId`/reset-during-render block below is a deliberate
+ * second, independent reset path (not a duplicate of the same behavior) —
+ * it re-arms to `DEFAULT_MANAGER_SCOPE` whenever `profileId` changes for any
+ * reason while this provider happens to still be mounted, so the guarantee
+ * holds even if a future navigator change ever keeps `(manager)` alive
+ * across a sign-out/sign-in pair. This follows React's documented "adjusting
+ * state when a prop changes" pattern (state update during render, not in an
+ * effect) rather than a `useEffect`, to avoid a spurious extra render and
+ * this repo's `react-hooks/set-state-in-effect` lint rule.
  */
 export function ManagerScopeProvider({ children }: { children: ReactNode }) {
   const { profileId } = useSession();
   const [scope, setScope] = useState<ManagerScope>(DEFAULT_MANAGER_SCOPE);
+  const [lastProfileId, setLastProfileId] = useState(profileId);
 
-  useEffect(() => {
+  if (profileId !== lastProfileId) {
+    setLastProfileId(profileId);
     setScope(DEFAULT_MANAGER_SCOPE);
-  }, [profileId]);
+  }
 
   const value = useMemo(() => ({ scope, setScope }), [scope]);
 

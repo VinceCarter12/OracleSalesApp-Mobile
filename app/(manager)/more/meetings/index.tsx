@@ -31,6 +31,18 @@ export default function ManagerMeetingsScreen() {
   const { profileId, fullName } = useSession();
   const [agentFilter, setAgentFilter] = useState<string | 'all'>('all');
   const [outcomeFilter, setOutcomeFilter] = useState<OutcomeFilter>('all');
+  const [lastScope, setLastScope] = useState(scope);
+
+  // Wireframe's setMeetingScope() unconditionally clears the agent chip
+  // selection on every scope change, not only while scope is 'mine' — e.g.
+  // selecting agent X under 'team', switching to 'mine' and back to 'team'
+  // should land on "All", not silently restore agent X's stale selection.
+  // Reset during render (not a setState-in-useEffect sync) per this file's
+  // existing pattern above.
+  if (scope !== lastScope) {
+    setLastScope(scope);
+    setAgentFilter('all');
+  }
 
   const meetings = overview?.meetings ?? [];
   const clients = overview?.clients ?? [];
@@ -45,22 +57,14 @@ export default function ManagerMeetingsScreen() {
       ? [...agents, { id: profileId, name: fullName, initials: initialsFromName(fullName), meetingsThisMonth: 0, activeClients: 0, successRate: 0 }]
       : agents;
 
-  // Wireframe setMeetingScope(): `meetingFilterAgent='all'` on every scope
-  // change — the per-agent filter is meaningless once scope narrows to
-  // 'mine'. Derived directly at render time (not a `setState`-in-`useEffect`
-  // sync, which the project's lint config flags as cascading-render risk)
-  // rather than stored: the chip row itself is hidden while scope is 'mine'
-  // (below), so there's nothing for a stale stored selection to contradict.
-  const effectiveAgentFilter = scope === 'mine' ? 'all' : agentFilter;
-
   const filtered = useMemo(
     () =>
       meetings.filter(
         (m) =>
-          (effectiveAgentFilter === 'all' || m.agentId === effectiveAgentFilter) &&
+          (agentFilter === 'all' || m.agentId === agentFilter) &&
           (outcomeFilter === 'all' || m.outcome === outcomeFilter)
       ),
-    [meetings, effectiveAgentFilter, outcomeFilter]
+    [meetings, agentFilter, outcomeFilter]
   );
 
   return (

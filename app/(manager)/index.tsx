@@ -164,8 +164,8 @@ export default function ManagerDashboardScreen() {
           <YStack flex={1}>
             <BizStatCard
               tone="white"
-              value={summary.agentCount}
-              label="Agents"
+              value={scope === 'mine' ? '—' : summary.agentCount}
+              label={scope === 'mine' ? 'Your records' : 'Team Agents'}
               caption="your team"
               onPress={() => router.push('/(manager)/team')}
             />
