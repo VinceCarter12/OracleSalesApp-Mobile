@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildClientEditRequestRemotePayload } from './client-edit-request-payload';
+import { buildClientEditRequestRemotePayload, computeClientEditChanges } from './client-edit-request-payload';
 
 describe('buildClientEditRequestRemotePayload', () => {
   it('builds the exact remote-writable shape, omitting status/reviewed_by/reviewed_at/review_note', () => {
@@ -40,5 +40,44 @@ describe('buildClientEditRequestRemotePayload', () => {
       baseAssignedAgentId: 'agent-2',
     });
     expect(payload.changes).toEqual(changes);
+  });
+});
+
+describe('computeClientEditChanges', () => {
+  const ALLOWLIST = ['company_name', 'contact_person', 'office_address', 'minor_notes'] as const;
+
+  it('returns an empty object when nothing in the allowlist changed', () => {
+    const before = { company_name: 'Oracle Co', contact_person: 'Juan', office_address: null, minor_notes: null };
+    const after = { company_name: 'Oracle Co', contact_person: 'Juan', office_address: null, minor_notes: null };
+    expect(computeClientEditChanges(before, after, ALLOWLIST)).toEqual({});
+  });
+
+  it('treats "" and null as the same empty value, so an untouched blank field never looks dirty', () => {
+    const before = { company_name: 'Oracle Co', contact_person: 'Juan', office_address: null, minor_notes: null };
+    const after = { company_name: 'Oracle Co', contact_person: 'Juan', office_address: '', minor_notes: '' };
+    expect(computeClientEditChanges(before, after, ALLOWLIST)).toEqual({});
+  });
+
+  it('reports only the fields that actually changed, keyed by allowlist field name', () => {
+    const before = { company_name: 'Oracle Co', contact_person: 'Juan', office_address: 'Old St', minor_notes: null };
+    const after = { company_name: 'Oracle Petroleum', contact_person: 'Juan', office_address: 'Old St', minor_notes: null };
+    expect(computeClientEditChanges(before, after, ALLOWLIST)).toEqual({
+      company_name: { old: 'Oracle Co', new: 'Oracle Petroleum' },
+    });
+  });
+
+  it('ignores fields outside the given allowlist even if they differ', () => {
+    const before = { company_name: 'Oracle Co', sales_channel: 'distributor' };
+    const after = { company_name: 'Oracle Co', sales_channel: 'dealer' };
+    expect(computeClientEditChanges(before, after, ['company_name'])).toEqual({});
+  });
+
+  it('bundles multiple changed fields into one diff (one save = one request = one bundled diff)', () => {
+    const before = { company_name: 'Oracle Co', contact_person: 'Juan', office_address: 'Old St', minor_notes: null };
+    const after = { company_name: 'Oracle Petroleum', contact_person: 'Pedro', office_address: 'Old St', minor_notes: null };
+    expect(computeClientEditChanges(before, after, ALLOWLIST)).toEqual({
+      company_name: { old: 'Oracle Co', new: 'Oracle Petroleum' },
+      contact_person: { old: 'Juan', new: 'Pedro' },
+    });
   });
 });

@@ -8,10 +8,10 @@ import { toRemoteCustomerType, toRemoteSalesChannel, toRemoteStatus } from './re
 import { rowToClient, type LocalClientRow } from './local-client-mapper';
 import { checkCompanyNameDuplicate, DuplicateCompanyNameError } from './client-duplicate-check';
 import { verifyAccountActive, AccountSuspendedError } from './app-lock/account-status';
+import { resolveClientInfoUpdate, type ExistingClientInfoRow } from './client-info-update';
 import type { SalesChannel, Client } from '../types';
 
-// Batch 5 Slice 2 (ADR-051): short budget so a suspension check never
-// meaningfully delays an offline field write — this must fail open fast.
+// Batch 5 Slice 2 (ADR-051): short budget so a suspension check never delays an offline field write — must fail open fast.
 const SENSITIVE_WRITE_CHECK_TIMEOUT_MS = 2500;
 
 // T-005: single write path for client creation — both Create Client
@@ -150,18 +150,6 @@ export async function createClient(input: CreateClientInput): Promise<string> {
   return id;
 }
 
-/**
- * ADR-052: `undefined` means "caller didn't touch this field" (every
- * existing caller pre-dating this batch) — preserve the current DB value
- * rather than clobbering it with NULL. An explicit `null`/`''` genuinely
- * clears it. Pure so it's directly unit-testable without a DB round-trip.
- */
-export function resolveMinorNotesForUpdate(incoming: string | null | undefined, existing: string | null): string | null {
-  if (incoming === undefined) return existing;
-  if (incoming === null) return null;
-  return incoming.trim() || null;
-}
-
 export interface UpdateClientInfoInput {
   clientId: string;
   agentId: string;
@@ -176,23 +164,28 @@ export interface UpdateClientInfoInput {
   // sets this yet (Phase 8's job); optional so every existing caller of
   // `updateClientInfo()` keeps compiling unchanged.
   minorNotes?: string | null;
+  // Batch 6 PR D: same "undefined preserves the current value" rule as
+  // minorNotes above (see lib/client-info-update.ts::resolveClientInfoUpdate).
+  companyName?: string;
+  // Wireframe-Sales-BizLink ~line 623's "Existing client" tile — one-way
+  // flag only, never reverts an already-'existing' client back down.
+  markExisting?: boolean;
 }
 
 /**
  * Complete/Edit Info (Wireframe a-complete, F-001 Phase B / F-002): local-first
  * update + outbox enqueue, same pattern as createClient(). Status is never
- * agent-chosen here (2026-07-19 rule correction) — this only stamps
- * `details_completed_at` (first save only) and leaves `status` untouched.
+ * agent-chosen here (2026-07-19 rule correction) except via the explicit
+ * one-way `markExisting` override (Batch 6 PR D) — this otherwise only
+ * stamps `details_completed_at` (first save only) and leaves `status` alone.
  *
  * The prospect→new promotion itself (ADR-027) is deliberately NOT done here
  * or anywhere on-device — ADR-006 requires lifecycle automations to run
  * server-side (a Postgres trigger, see Migration-017-Report.md), since a
- * per-device check can miss the transition entirely when the two
- * conditions (completed info, a Successful meeting) are satisfied by writes
- * from two different devices/agents. `details_completed_at` synced up via
- * the outbox below is exactly the input the server trigger evaluates; the
- * resulting `status='new'` flows back down through the normal sync-down
- * pull once the trigger fires remotely.
+ * per-device check can miss the transition entirely across devices.
+ * `details_completed_at` synced up via the outbox below is exactly the
+ * input the server trigger evaluates; the resulting `status='new'` flows
+ * back down through the normal sync-down pull once the trigger fires.
  */
 export async function updateClientInfo(input: UpdateClientInfoInput): Promise<void> {
   // Batch 5 Slice 2 (ADR-051) trigger point 2: fail-open on 'active'/
@@ -210,12 +203,11 @@ export async function updateClientInfo(input: UpdateClientInfoInput): Promise<vo
   const contactNumber = input.contactNumber.trim() || null;
   const officeAddress = input.officeAddress.trim() || null;
 
-  const existing = await db.getFirstAsync<{ details_completed_at: string | null; minor_notes: string | null }>(
-    'SELECT details_completed_at, minor_notes FROM clients WHERE id = ?',
+  const existing = await db.getFirstAsync<ExistingClientInfoRow>(
+    'SELECT details_completed_at, minor_notes, company_name, status FROM clients WHERE id = ?',
     [input.clientId]
   );
-  const detailsCompletedAt = existing?.details_completed_at ?? now;
-  const resolvedMinorNotes = resolveMinorNotesForUpdate(input.minorNotes, existing?.minor_notes ?? null);
+  const resolved = resolveClientInfoUpdate(input, existing, now);
 
   const remotePayload = {
     id: input.clientId,
@@ -226,13 +218,18 @@ export async function updateClientInfo(input: UpdateClientInfoInput): Promise<vo
     // Kept regardless: it's the correct current owner, satisfies the update
     // policy, and is a harmless idempotent re-set to its existing value.
     assigned_agent_id: input.agentId,
+    company_name: resolved.companyName,
     contact_person: contactPerson,
     contact_position: position,
     contact_number: contactNumber,
     office_address: officeAddress,
     sales_channel: toRemoteSalesChannel(input.salesChannel),
-    details_completed_at: detailsCompletedAt,
-    minor_notes: resolvedMinorNotes,
+    // Same "harmless idempotent re-set" reasoning as assigned_agent_id above
+    // when markExisting wasn't passed this call — mirrors whatever status
+    // already exists remotely (never regresses a stage, see toRemoteCustomerType).
+    customer_type: resolved.customerType,
+    details_completed_at: resolved.detailsCompletedAt,
+    minor_notes: resolved.minorNotes,
     updated_at: now,
   };
 
@@ -241,17 +238,20 @@ export async function updateClientInfo(input: UpdateClientInfoInput): Promise<vo
   await db.withTransactionAsync(async () => {
     await db.runAsync(
       `UPDATE clients
-        SET contact_person = ?, position = ?, contact_number = ?, office_address = ?,
-            sales_channel = ?, details_completed_at = ?, minor_notes = ?, updated_at = ?, local_updated_at = ?, sync_status = 'pending'
+        SET company_name = ?, normalized_name = ?, contact_person = ?, position = ?, contact_number = ?, office_address = ?,
+            sales_channel = ?, status = ?, details_completed_at = ?, minor_notes = ?, updated_at = ?, local_updated_at = ?, sync_status = 'pending'
        WHERE id = ?`,
       [
+        resolved.companyName,
+        resolved.normalizedName,
         contactPerson,
         position,
         contactNumber,
         officeAddress,
         input.salesChannel,
-        detailsCompletedAt,
-        resolvedMinorNotes,
+        resolved.status,
+        resolved.detailsCompletedAt,
+        resolved.minorNotes,
         now,
         now,
         input.clientId,
