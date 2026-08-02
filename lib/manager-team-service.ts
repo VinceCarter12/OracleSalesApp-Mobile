@@ -10,6 +10,7 @@ import {
   type ProfileRow,
 } from './team-remote-mappers';
 import { fromRemoteStatus } from './remote-client-mapping';
+import { DEFAULT_MANAGER_SCOPE, partitionByScope, type ManagerScope } from './manager-scope';
 import type { TeamAgent, TeamClient, TeamMeeting } from '../types';
 
 // B-054 Phase 1: the first real (non-mock) Manager team-wide read path for
@@ -78,8 +79,20 @@ async function fetchClientsAndMeetings(
  * actually comes back (B-047's broad-read profiles policy + the Migration
  * 016 clients/meetings agent-scoped policies), this query just asks for the
  * manager's own team plus their own profile id.
+ *
+ * `scope` (B-073, ADR-052 §G) defaults to `DEFAULT_MANAGER_SCOPE` ('combined')
+ * — this function already always fetched the manager's own records alongside
+ * the team's, so an unpassed `scope` reproduces this function's exact
+ * pre-existing behavior. Every caller of `useTeamOverview()` other than
+ * Manager Home/Manager Meetings (Manager Clients, Manager Team, Reports,
+ * Account, tag-along reassign, …) doesn't pass a scope and is therefore
+ * unaffected by this change.
  */
-export async function fetchTeamOverview(teamId: string, managerProfileId: string): Promise<TeamOverview> {
+export async function fetchTeamOverview(
+  teamId: string,
+  managerProfileId: string,
+  scope: ManagerScope = DEFAULT_MANAGER_SCOPE
+): Promise<TeamOverview> {
   const profiles = await fetchTeamProfiles(teamId);
   // ADR-020: a manager can create clients directly (assigned to their own
   // profileId) — included in the clients/meetings query so those clients
@@ -87,12 +100,23 @@ export async function fetchTeamOverview(teamId: string, managerProfileId: string
   // (the manager isn't a roster entry on their own team screen).
   const agentIds = [...profiles.map((p) => p.id), managerProfileId];
 
-  const { clients: allClients, meetings } = await fetchClientsAndMeetings(agentIds);
+  const { clients: allTeamClients, meetings: allMeetings } = await fetchClientsAndMeetings(agentIds);
   // Lost/deleted clients are Executive/reports territory, not this list.
-  const clients = allClients.filter((c) => !EXCLUDED_CLIENT_STATUSES.has(c.status));
+  const allClients = allTeamClients.filter((c) => !EXCLUDED_CLIENT_STATUSES.has(c.status));
+  // B-073 fix: partition by scope AFTER fetching the combined set, same
+  // derivation `lib/manager-dashboard-service.ts` now uses — the two used to
+  // disagree (this function always included the manager, the dashboard
+  // service always excluded them); `partitionByScope` is the one shared
+  // answer both use now.
+  const clients = partitionByScope(allClients, (c) => c.assigned_agent_id, managerProfileId, scope);
+  const meetings = partitionByScope(allMeetings, (m) => m.agent_id, managerProfileId, scope);
 
   const now = new Date();
-  const clientStatusById = new Map(clients.map((c) => [c.id, fromRemoteStatus(c.status, c.customer_type)]));
+  // Built from the full (unpartitioned) client set — a meeting's `agent_id`
+  // (who ran it) and its client's `assigned_agent_id` (who owns it) can
+  // legitimately differ (reassignment, tag-along), so status/label lookups
+  // must not depend on the scope partition.
+  const clientStatusById = new Map(allClients.map((c) => [c.id, fromRemoteStatus(c.status, c.customer_type)]));
 
   const weekAgo = new Date(now.getTime() - TREND_WINDOW_DAYS * 24 * 60 * 60 * 1000);
   const prospectClients = clients.filter((c) => clientStatusById.get(c.id) === 'prospect');
@@ -102,7 +126,9 @@ export async function fetchTeamOverview(teamId: string, managerProfileId: string
   });
 
   return {
-    agents: buildTeamAgents(profiles, clients, meetings, now),
+    // Deliberately built from the FULL (unpartitioned) roster data — see
+    // the matching comment in lib/manager-dashboard-service.ts.
+    agents: buildTeamAgents(profiles, allClients, allMeetings, now),
     clients: clients.map((c) => mapClientRowToTeamClient(c, now)),
     meetings: meetings.map((m) => {
       const status = m.client_id ? clientStatusById.get(m.client_id) : undefined;

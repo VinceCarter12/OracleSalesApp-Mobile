@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useFocusEffect } from 'expo-router';
 import { fetchTeamOverview, type TeamOverview } from './manager-team-service';
+import { DEFAULT_MANAGER_SCOPE, type ManagerScope } from './manager-scope';
 import { useSession } from './session-store';
 
 export interface UseTeamOverview {
@@ -15,8 +16,14 @@ export interface UseTeamOverview {
  * Unlike `lib/useManagerDashboard.ts` (which never surfaces a load failure to
  * the UI, a known gap), this hook has a real `error` state so screens can
  * show a retry affordance instead of spinning forever.
+ *
+ * `scope` (B-073, ADR-052 §G) defaults to `DEFAULT_MANAGER_SCOPE` ('combined')
+ * — this reproduces `fetchTeamOverview()`'s pre-existing always-include-the-
+ * manager behavior exactly, so every caller besides Manager Home/Manager
+ * Meetings (Manager Clients, Manager Team, Reports, reassign, …) is
+ * unaffected by this change.
  */
-export function useTeamOverview(): UseTeamOverview {
+export function useTeamOverview(scope: ManagerScope = DEFAULT_MANAGER_SCOPE): UseTeamOverview {
   const { teamId, profileId } = useSession();
   const [overview, setOverview] = useState<TeamOverview | null>(null);
   const [loading, setLoading] = useState(true);
@@ -31,7 +38,7 @@ export function useTeamOverview(): UseTeamOverview {
     setLoading(true);
     setError(null);
     try {
-      const data = await fetchTeamOverview(teamId, profileId);
+      const data = await fetchTeamOverview(teamId, profileId, scope);
       setOverview(data);
     } catch (err) {
       console.error('[use-team-overview] load failed:', err instanceof Error ? err.message : String(err));
@@ -39,7 +46,7 @@ export function useTeamOverview(): UseTeamOverview {
     } finally {
       setLoading(false);
     }
-  }, [teamId, profileId]);
+  }, [teamId, profileId, scope]);
 
   useEffect(() => {
     load();
