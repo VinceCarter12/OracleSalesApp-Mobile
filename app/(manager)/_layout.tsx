@@ -3,6 +3,7 @@ import { Tabs } from 'expo-router';
 import { Building2, House, MoreHorizontal, Users } from 'lucide-react-native';
 import { BIZLINK_COLORS, BIZLINK_FONTS } from '../../lib/theme';
 import { ManagerStoreProvider } from '../../lib/manager-store';
+import { ManagerScopeProvider } from '../../lib/manager-scope-store';
 
 type LucideIcon = typeof House;
 
@@ -32,9 +33,11 @@ function TabIcon({ focused, Icon }: { focused: boolean; Icon: LucideIcon }) {
 
 export default function ManagerTabsLayout() {
   return (
-    <ManagerStoreProvider>
-      <ManagerTabs />
-    </ManagerStoreProvider>
+    <ManagerScopeProvider>
+      <ManagerStoreProvider>
+        <ManagerTabs />
+      </ManagerStoreProvider>
+    </ManagerScopeProvider>
   );
 }
 

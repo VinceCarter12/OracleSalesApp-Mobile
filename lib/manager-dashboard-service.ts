@@ -1,6 +1,7 @@
 import { supabase } from './supabase';
 import { fromRemoteOutcome } from './remote-meeting-mapping';
-import { buildTeamAgents } from './team-remote-mappers';
+import { buildTeamAgents, initialsOf } from './team-remote-mappers';
+import { DEFAULT_MANAGER_SCOPE, partitionByScope, type ManagerScope } from './manager-scope';
 import type { ManagerDashboardSummary, TeamMeetingPreview } from '../types';
 
 // Real cross-agent Supabase queries for the Manager dashboard (2026-07-16,
@@ -58,7 +59,9 @@ function isSameMonth(iso: string, reference: Date): boolean {
 
 export async function fetchManagerDashboard(
   managerTeamId: string,
-  managerFirstName: string
+  managerFirstName: string,
+  managerProfileId: string,
+  scope: ManagerScope = DEFAULT_MANAGER_SCOPE
 ): Promise<ManagerDashboardSummary> {
   const { data: profileRows } = await supabase
     .from('profiles')
@@ -69,15 +72,24 @@ export async function fetchManagerDashboard(
   // `clients.assigned_agent_id` / `meetings.agent_id` are FKs to `profiles.id`,
   // never `profiles.user_id` (ADR-023) — B-055 fix.
   const agentIds = profiles.map((p) => p.id);
+  // B-073 fix: always fetch the manager's own clients/meetings alongside the
+  // team roster's, then partition by scope client-side (lib/manager-scope.ts)
+  // — this file used to hard-exclude the manager entirely, which is exactly
+  // the divergence from lib/manager-team-service.ts::fetchTeamOverview() (which
+  // always included the manager) that made 'mine'/'team'/'combined'
+  // inconsistent across screens.
+  const queryAgentIds = Array.from(new Set([...agentIds, managerProfileId]));
 
-  const [{ data: clientRows }, { data: meetingRows }] = agentIds.length
+  const [{ data: clientRows }, { data: meetingRows }] = queryAgentIds.length
     ? await Promise.all([
-        supabase.from('clients').select('id, company_name, customer_type, assigned_agent_id').in('assigned_agent_id', agentIds),
-        supabase.from('meetings').select('id, client_id, agent_id, outcome, meeting_date').in('agent_id', agentIds),
+        supabase.from('clients').select('id, company_name, customer_type, assigned_agent_id').in('assigned_agent_id', queryAgentIds),
+        supabase.from('meetings').select('id, client_id, agent_id, outcome, meeting_date').in('agent_id', queryAgentIds),
       ])
     : [{ data: [] }, { data: [] }];
-  const clients = (clientRows ?? []) as ClientRow[];
-  const meetings = (meetingRows ?? []) as MeetingRow[];
+  const allClients = (clientRows ?? []) as ClientRow[];
+  const allMeetings = (meetingRows ?? []) as MeetingRow[];
+  const clients = partitionByScope(allClients, (c) => c.assigned_agent_id, managerProfileId, scope);
+  const meetings = partitionByScope(allMeetings, (m) => m.agent_id, managerProfileId, scope);
 
   const now = new Date();
   const thisMonthMeetings = meetings.filter((m) => isSameMonth(m.meeting_date, now));
@@ -86,9 +98,22 @@ export async function fetchManagerDashboard(
   // lib/team-remote-mappers.ts::buildTeamAgents(). B-055 fix: agents are now
   // keyed by `p.id` (profiles.id, ADR-023 canonical ownership identity),
   // matching lib/manager-team-service.ts's already-correct precedent.
-  const agents = buildTeamAgents(profiles, clients, meetings, now);
-  const agentById = new Map(agents.map((a) => [a.id, a]));
-  const clientNameById = new Map(clients.map((c) => [c.id, c.company_name]));
+  // Deliberately built from the FULL (unpartitioned) roster data, not the
+  // scope-filtered `clients`/`meetings` above — "Agents"/"My Team" is a
+  // roster-headcount fact, not a scope-selectable record set (the manager
+  // themself was never a roster entry here, same as before this fix).
+  const agents = buildTeamAgents(profiles, allClients, allMeetings, now);
+  // The manager's own name/initials for `recentMeetings` rows attributed to
+  // them ('mine'/'combined' scope can surface the manager's own meetings,
+  // but `agents` above never includes the manager as a roster entry).
+  const managerAsAgent = { id: managerProfileId, name: managerFirstName, initials: initialsOf(managerFirstName) };
+  const agentById = new Map([...agents, managerAsAgent].map((a) => [a.id, a]));
+  // Built from the full (unpartitioned) client set, not the scope-filtered
+  // `clients` above — a meeting's `agent_id` (who ran it) and its client's
+  // `assigned_agent_id` (who owns it) can legitimately differ (reassignment,
+  // tag-along), so this name lookup must not depend on the scope partition
+  // or it could wrongly show "Unknown client" for an in-scope meeting.
+  const clientNameById = new Map(allClients.map((c) => [c.id, c.company_name]));
 
   // Existing-client fast-path meetings have no outcome at all (ADR-015) —
   // filtered out here same as the old mock summary did, rather than

@@ -9,6 +9,7 @@ import { useManagerDashboard } from '../../lib/useManagerDashboard';
 import { useTeamOverview } from '../../lib/use-team-overview';
 import { getIncomingCompanionRequests } from '../../lib/tag-along-invitee-service';
 import { useSession } from '../../lib/session-store';
+import { useManagerScope } from '../../lib/manager-scope-store';
 import { firstName, initialsFromName } from '../../lib/display-name';
 import { Avatar } from '../../components/ui/Avatar';
 import { StatusBadge } from '../../components/ui/StatusBadge';
@@ -16,10 +17,17 @@ import { BizStatCard } from '../../components/bizlink/BizStatCard';
 import { BizHeroCard } from '../../components/bizlink/BizHeroCard';
 import { BizSectionHeader } from '../../components/bizlink/BizSectionHeader';
 import { BizQuickAction } from '../../components/bizlink/BizQuickAction';
+import { BizScopeFilter } from '../../components/bizlink/BizScopeFilter';
 import { AvatarStatusRing } from '../../components/bizlink/AvatarStatusRing';
 import { SyncStatusChip } from '../../components/sync/SyncStatusChip';
 import { SyncCenterSheet } from '../../components/sync/SyncCenterSheet';
+import type { ManagerScope } from '../../lib/manager-scope';
 import type { TeamAgent, TeamMeetingPreview } from '../../types';
+
+// Wireframe-Manager-BizLink.html renderManagerScope() (~line 1123/1127-1132):
+// `meta={mine:{...label:'My'},team:{...label:'Team'},combined:{...label:'Combined'}}`
+// — the stat-card labels below change with scope, not just their numbers.
+const SCOPE_LABEL: Record<ManagerScope, string> = { mine: 'My', team: 'Team', combined: 'Combined' };
 
 // T-014 Phase 3 (ADR-024): local, Manager-Home-only replacements for
 // `components/manager/TeamAvatarStrip.tsx` / `TeamMeetingRow.tsx` — those two
@@ -67,10 +75,14 @@ function RecentMeetingRow({ meeting, onPress }: { meeting: TeamMeetingPreview; o
 /** Wireframe s-home — real cross-agent Supabase data (ADR-021); manager's own-device sync chip (ADR-022 Phase D scope, not team-wide). */
 export default function ManagerDashboardScreen() {
   const insets = useSafeAreaInsets();
-  const { summary, loading } = useManagerDashboard();
+  // B-073 (ADR-052 §G): both hooks now share the same 'mine'|'team'|'combined'
+  // scope selection, closing the divergence between this screen's aggregates
+  // and Team Overview's.
+  const { scope } = useManagerScope();
+  const { summary, loading } = useManagerDashboard(scope);
   // B-054 Phase 1 item 6: real "this week" trend numbers for the two stat
   // captions below.
-  const { overview } = useTeamOverview();
+  const { overview } = useTeamOverview(scope);
   const { fullName, profileId } = useSession();
   const [syncSheetOpen, setSyncSheetOpen] = useState(false);
   // B-023: see app/(tabs)/index.tsx's twin — remounts the chip on sheet-close.
@@ -126,12 +138,14 @@ export default function ManagerDashboardScreen() {
       </XStack>
 
       <ScrollView contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 96 }}>
+        <BizScopeFilter />
+
         <XStack gap={10} marginTop={6}>
           <YStack flex={1}>
             <BizStatCard
               tone="tintA"
               value={summary.teamProspects}
-              label="Team Prospects"
+              label={`${SCOPE_LABEL[scope]} Prospects`}
               caption={`+${overview?.newProspectsThisWeek ?? 0} this week`}
               onPress={() => router.push('/(manager)/more/clients')}
             />
@@ -140,7 +154,7 @@ export default function ManagerDashboardScreen() {
             <BizStatCard
               tone="white"
               value={summary.teamClients}
-              label="Team Clients"
+              label={`${SCOPE_LABEL[scope]} Clients`}
               caption={`+${overview?.newTeamClientsThisWeek ?? 0} this week`}
               onPress={() => router.push('/(manager)/more/clients')}
             />
@@ -170,7 +184,7 @@ export default function ManagerDashboardScreen() {
         <BizHeroCard
           value={summary.teamMeetings}
           unit="meetings"
-          label="Team meetings this month"
+          label={`${SCOPE_LABEL[scope]} meetings this month`}
           caption={`${summary.teamMeetingsSuccessful} successful`}
           onPress={() => router.push('/(manager)/more/meetings')}
         />
