@@ -9,7 +9,13 @@ import { describe, expect, it, vi } from 'vitest';
 // scoping note (pure modules only).
 vi.mock('./entity-registry', () => ({ isEntityTableName: () => false }));
 
-import { classifySyncError, RATE_LIMIT_STATUS_CODE, UNIQUE_VIOLATION_CODE, RLS_PERMISSION_DENIED_CODE } from './outbox-status';
+import {
+  classifySyncError,
+  isNonRetryableClientEditRequestFailure,
+  RATE_LIMIT_STATUS_CODE,
+  UNIQUE_VIOLATION_CODE,
+  RLS_PERMISSION_DENIED_CODE,
+} from './outbox-status';
 
 // ADR-036 (Batch 3): 'rate_limited' is a distinct FailureClass from 'server',
 // detected via the HTTP status remote-upsert.ts now attaches to thrown
@@ -56,5 +62,31 @@ describe('classifySyncError', () => {
     const result = classifySyncError({ message: 'something odd happened' });
     expect(result.failureClass).toBe('unknown');
     expect(result.kind).toBe('permanent');
+  });
+});
+
+// ADR-052 decision 4 (Batch 6 Phase 5): 403 (RLS)/23505 (duplicate-pending)
+// must supersede a client_edit_requests row rather than retry forever, but a
+// retryable-after-reauth JWT-expiry 'authentication' failure must NOT.
+describe('isNonRetryableClientEditRequestFailure', () => {
+  it('is non-retryable for a 23505 unique-violation (duplicate pending request)', () => {
+    const classified = classifySyncError({ code: UNIQUE_VIOLATION_CODE, message: 'duplicate key' });
+    expect(isNonRetryableClientEditRequestFailure(classified)).toBe(true);
+  });
+
+  it('is non-retryable for a 42501 RLS-denied error (client reassigned/lost mid-request)', () => {
+    const classified = classifySyncError({ code: RLS_PERMISSION_DENIED_CODE, message: 'permission denied' });
+    expect(isNonRetryableClientEditRequestFailure(classified)).toBe(true);
+  });
+
+  it('is NOT non-retryable for a JWT-expiry authentication failure (should retry after reauth)', () => {
+    const classified = classifySyncError({ message: 'jwt expired' });
+    expect(classified.failureClass).toBe('authentication');
+    expect(isNonRetryableClientEditRequestFailure(classified)).toBe(false);
+  });
+
+  it('is NOT non-retryable for a transient network failure', () => {
+    const classified = classifySyncError({ message: 'network request failed' });
+    expect(isNonRetryableClientEditRequestFailure(classified)).toBe(false);
   });
 });

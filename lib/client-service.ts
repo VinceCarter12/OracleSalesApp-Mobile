@@ -150,6 +150,18 @@ export async function createClient(input: CreateClientInput): Promise<string> {
   return id;
 }
 
+/**
+ * ADR-052: `undefined` means "caller didn't touch this field" (every
+ * existing caller pre-dating this batch) — preserve the current DB value
+ * rather than clobbering it with NULL. An explicit `null`/`''` genuinely
+ * clears it. Pure so it's directly unit-testable without a DB round-trip.
+ */
+export function resolveMinorNotesForUpdate(incoming: string | null | undefined, existing: string | null): string | null {
+  if (incoming === undefined) return existing;
+  if (incoming === null) return null;
+  return incoming.trim() || null;
+}
+
 export interface UpdateClientInfoInput {
   clientId: string;
   agentId: string;
@@ -158,6 +170,12 @@ export interface UpdateClientInfoInput {
   contactNumber: string;
   officeAddress: string;
   salesChannel: SalesChannel;
+  // ADR-052 (Batch 6 Phase 5): approval-EXEMPT field — always settable
+  // directly through this function regardless of role, never through
+  // `lib/client-edit-request-service.ts::createClientEditRequest()`. No UI
+  // sets this yet (Phase 8's job); optional so every existing caller of
+  // `updateClientInfo()` keeps compiling unchanged.
+  minorNotes?: string | null;
 }
 
 /**
@@ -192,11 +210,12 @@ export async function updateClientInfo(input: UpdateClientInfoInput): Promise<vo
   const contactNumber = input.contactNumber.trim() || null;
   const officeAddress = input.officeAddress.trim() || null;
 
-  const existing = await db.getFirstAsync<{ details_completed_at: string | null }>(
-    'SELECT details_completed_at FROM clients WHERE id = ?',
+  const existing = await db.getFirstAsync<{ details_completed_at: string | null; minor_notes: string | null }>(
+    'SELECT details_completed_at, minor_notes FROM clients WHERE id = ?',
     [input.clientId]
   );
   const detailsCompletedAt = existing?.details_completed_at ?? now;
+  const resolvedMinorNotes = resolveMinorNotesForUpdate(input.minorNotes, existing?.minor_notes ?? null);
 
   const remotePayload = {
     id: input.clientId,
@@ -213,6 +232,7 @@ export async function updateClientInfo(input: UpdateClientInfoInput): Promise<vo
     office_address: officeAddress,
     sales_channel: toRemoteSalesChannel(input.salesChannel),
     details_completed_at: detailsCompletedAt,
+    minor_notes: resolvedMinorNotes,
     updated_at: now,
   };
 
@@ -222,9 +242,20 @@ export async function updateClientInfo(input: UpdateClientInfoInput): Promise<vo
     await db.runAsync(
       `UPDATE clients
         SET contact_person = ?, position = ?, contact_number = ?, office_address = ?,
-            sales_channel = ?, details_completed_at = ?, updated_at = ?, local_updated_at = ?, sync_status = 'pending'
+            sales_channel = ?, details_completed_at = ?, minor_notes = ?, updated_at = ?, local_updated_at = ?, sync_status = 'pending'
        WHERE id = ?`,
-      [contactPerson, position, contactNumber, officeAddress, input.salesChannel, detailsCompletedAt, now, now, input.clientId]
+      [
+        contactPerson,
+        position,
+        contactNumber,
+        officeAddress,
+        input.salesChannel,
+        detailsCompletedAt,
+        resolvedMinorNotes,
+        now,
+        now,
+        input.clientId,
+      ]
     );
     await enqueueOutboxRow(db, {
       outboxId,

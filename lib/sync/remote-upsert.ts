@@ -21,6 +21,7 @@ type RemoteTableName =
   | 'clients'
   | 'meetings'
   | 'tag_along_requests'
+  | 'client_edit_requests'
   | 'collection_visits'
   | 'purchase_orders'
   | 'remittances'
@@ -39,6 +40,7 @@ type AnyRemoteInsertPayload =
   | Database['public']['Tables']['clients']['Insert']
   | Database['public']['Tables']['meetings']['Insert']
   | Database['public']['Tables']['tag_along_requests']['Insert']
+  | Database['public']['Tables']['client_edit_requests']['Insert']
   | Database['public']['Tables']['collection_visits']['Insert']
   | Database['public']['Tables']['purchase_orders']['Insert']
   | Database['public']['Tables']['remittances']['Insert']
@@ -75,6 +77,14 @@ function upsertOne(remoteTable: RemoteTableName, payload: AnyRemoteInsertPayload
       return supabase
         .from('tag_along_requests')
         .upsert(payload as Database['public']['Tables']['tag_along_requests']['Insert'], { onConflict });
+    case 'client_edit_requests':
+      // ADR-052: Sales/RSR's own creation always pushes as a fresh insert —
+      // Manager decisions never route through the outbox at all (ADR-052
+      // section E: online-only, calls `decide_client_edit_request()` RPC
+      // directly), so this table never appears on `updateOne()`'s side below.
+      return supabase
+        .from('client_edit_requests')
+        .upsert(payload as Database['public']['Tables']['client_edit_requests']['Insert'], { onConflict });
     case 'collection_visits':
       // F-007: mobile never INSERTs these (the admin publishes the list), so
       // this branch is unused in practice — present to keep the switch total.
@@ -174,6 +184,10 @@ function upsertMany(remoteTable: RemoteTableName, payloads: AnyRemoteInsertPaylo
       return supabase
         .from('tag_along_requests')
         .upsert(payloads as Database['public']['Tables']['tag_along_requests']['Insert'][], { onConflict });
+    case 'client_edit_requests':
+      return supabase
+        .from('client_edit_requests')
+        .upsert(payloads as Database['public']['Tables']['client_edit_requests']['Insert'][], { onConflict });
     case 'collection_visits':
       return supabase
         .from('collection_visits')

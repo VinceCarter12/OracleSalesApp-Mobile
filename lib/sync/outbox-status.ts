@@ -7,6 +7,14 @@ import type { SQLiteDatabase } from 'expo-sqlite';
 
 export type OutboxStatus = 'pending' | 'syncing' | 'synced' | 'conflict' | 'failed';
 
+// ADR-052 (Batch 6 Phase 5): the one entity whose outbox table_name isn't
+// `clients`/`meetings`/etc's generic `sync_status`/`sync_error` shape — its
+// own local-only terminal `status='superseded'` value IS the failure
+// signal, so `markOutboxRow()` below special-cases it instead of running
+// the generic per-table update (which would try to write a `sync_status`
+// column this table doesn't have).
+const CLIENT_EDIT_REQUESTS_TABLE = 'client_edit_requests';
+
 // Exponential backoff capped at 15s: 1s, 2s, 4s, 8s, 15s, 15s, ...
 export const BACKOFF_SCHEDULE_MS = [1000, 2000, 4000, 8000, 15000];
 export const MAX_OUTBOX_ATTEMPTS = 10;
@@ -65,6 +73,20 @@ function extractStatus(err: unknown): number | undefined {
     return (err as { status: number }).status;
   }
   return undefined;
+}
+
+/**
+ * ADR-052 decision 4 (Batch 6 Phase 5): a `client_edit_requests` push that
+ * fails with 403 (RLS rejection — e.g. the client was reassigned/lost mid-
+ * request) or 23505 (unique violation — a duplicate pending request already
+ * exists for this client) must NOT retry forever; it's a genuine, permanent
+ * "this exact request can never succeed" outcome, not a transient hiccup.
+ * Gated on the Postgres error `code` specifically (not the broader
+ * `failureClass`/`kind` axes) so a JWT-expiry 'authentication' failure —
+ * which IS worth retrying after reauth — is never misclassified the same way.
+ */
+export function isNonRetryableClientEditRequestFailure(classified: ClassifiedError): boolean {
+  return classified.code === UNIQUE_VIOLATION_CODE || classified.code === RLS_PERMISSION_DENIED_CODE;
 }
 
 /**
@@ -143,6 +165,15 @@ export async function markOutboxRow(
     'UPDATE outbox SET status = ?, last_error = ?, last_attempt_at = ?, retry_count = ?, failure_class = ? WHERE id = ?',
     [status, errorText, now, retryCount, classified.failureClass, outboxId]
   );
+  if (tableName === CLIENT_EDIT_REQUESTS_TABLE) {
+    if (isNonRetryableClientEditRequestFailure(classified)) {
+      await db.runAsync(
+        "UPDATE client_edit_requests SET status = 'superseded', updated_at = ? WHERE id = ? AND status = 'pending'",
+        [now, recordId]
+      );
+    }
+    return;
+  }
   if (isEntityTableName(tableName)) {
     await db.runAsync(`UPDATE ${tableName} SET sync_status = ?, sync_error = ? WHERE id = ?`, [
       status,

@@ -1,5 +1,6 @@
 import {
   upsertSyncedClient,
+  upsertSyncedClientEditRequest,
   upsertSyncedCodRemittance,
   upsertSyncedCollectionVisit,
   upsertSyncedMeeting,
@@ -18,6 +19,7 @@ export type EntityTableName =
   | 'clients'
   | 'meetings'
   | 'tag_along_requests'
+  | 'client_edit_requests'
   | 'collection_visits'
   | 'purchase_orders'
   | 'remittances'
@@ -100,6 +102,29 @@ export const ENTITY_REGISTRY: Record<EntityTableName, SyncEntityConfig> = {
       {
         table: 'meetings',
         extractForeignKey: (payload) => (payload.related_meeting_id as string | null | undefined) ?? null,
+      },
+    ],
+  },
+  // ADR-052 (Batch 6 Phase 5): offline-queueable Sales/RSR edit-approval
+  // requests. Priority 35 (after tag_along_requests' 30, before
+  // collection_visits' 40) — pushed after both clients AND tag-alongs, but
+  // before the F-007 field-role lanes. `applyScope` restricts sync-down to
+  // the requester's own rows only — a Manager's team-wide approval feed
+  // comes from a separate RPC (`get_manager_approval_feed()`, Phase 6), not
+  // this generic per-agent sync-down. Depends on `clients` so a request
+  // never pushes ahead of its own client (same guard shape as `meetings`
+  // above), since its `base_updated_at`/`base_assigned_agent_id` conflict
+  // check needs the server to already know the client's current state.
+  client_edit_requests: {
+    remoteTable: 'client_edit_requests',
+    priority: 35,
+    onConflict: 'id',
+    applyRemoteRow: upsertSyncedClientEditRequest,
+    applyScope: (query, agentId) => query.eq('requested_by', agentId),
+    dependencies: [
+      {
+        table: 'clients',
+        extractForeignKey: (payload) => (payload.client_id as string | null | undefined) ?? null,
       },
     ],
   },

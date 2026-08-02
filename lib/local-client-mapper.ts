@@ -29,6 +29,10 @@ export interface LocalClientRow {
   office_lng?: number | null;
   office_pin_updated_at?: string | null;
   office_pin_source?: 'manual' | 'client_office_meeting' | null;
+  // ADR-052 (Batch 6 Phase 5, lib/db.ts v21): approval-EXEMPT field, written
+  // directly via `updateClientInfo()`. Optional for the same pre-migration
+  // reason as `cycle_id`/`office_lat` above.
+  minor_notes?: string | null;
 }
 
 export function rowToClient(row: LocalClientRow): Client {
@@ -52,5 +56,6 @@ export function rowToClient(row: LocalClientRow): Client {
     office_lng: row.office_lng ?? null,
     office_pin_updated_at: row.office_pin_updated_at ?? null,
     office_pin_source: row.office_pin_source ?? null,
+    minor_notes: row.minor_notes ?? null,
   };
 }

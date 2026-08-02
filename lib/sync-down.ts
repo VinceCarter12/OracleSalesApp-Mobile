@@ -22,6 +22,7 @@ type RemoteTableName =
   | 'clients'
   | 'meetings'
   | 'tag_along_requests'
+  | 'client_edit_requests'
   | 'collection_visits'
   | 'purchase_orders'
   | 'remittances'
@@ -36,6 +37,10 @@ const AGENT_SCOPED_COLUMN: Record<EntityTableName, string> = {
   clients: 'assigned_agent_id',
   meetings: 'agent_id',
   tag_along_requests: 'requester_id',
+  // Always supplies its own `applyScope` (entity-registry.ts: requester-only
+  // pull, ADR-052), so this entry is unused in practice — present only to
+  // keep the Record exhaustive, same as tag_along_requests above.
+  client_edit_requests: 'requested_by',
   // collection_visits/purchase_orders always supply their own `applyScope`
   // (whole-day pull, RLS-scoped by role), so these are unused — present only
   // to keep the Record exhaustive, same as tag_along_requests.
@@ -108,6 +113,16 @@ export async function syncDown(agentId: string, teamId?: string | null): Promise
     await pullEntity(db, agentId, 'tag_along_requests');
   } catch (err) {
     console.error('[sync-down] tag_along_requests pull failed:', err);
+  }
+
+  // ADR-052 (Batch 6 Phase 5): best-effort, like tag_along_requests above —
+  // the live `client_edit_requests` table may not exist yet in a given
+  // environment (Migration File A not pushed as of 2026-08-01), and this
+  // must never abort the rest of syncDown().
+  try {
+    await pullEntity(db, agentId, 'client_edit_requests');
+  } catch (err) {
+    console.error('[sync-down] client_edit_requests pull failed:', err);
   }
 
   // F-007 (web 043-046): pull the day's Collection & Delivery lists. Best-effort

@@ -51,6 +51,14 @@ export type RemoteClientCycleEndReason = 'lost' | 'superseded' | 'deleted';
 // the device, so it is NOT part of this remote-shape union.
 export type RemotePoConfirmationStatus = 'pending' | 'approved' | 'rejected' | 'cancelled';
 
+// ADR-052 (Batch 6 Phase 5, 2026-08-01): domain-specific client-edit approval
+// table — mirrors po_confirmation_requests' structural precedent above.
+// Only 'pending'/'approved'/'rejected' are valid remotely; mobile's own
+// local-only 'superseded' status (a non-retryable outbox push failure, e.g.
+// 403 RLS rejection or 23505 duplicate-pending, see lib/sync/outbox-status.ts)
+// never leaves the device, so it is NOT part of this remote-shape union.
+export type RemoteClientEditRequestStatus = 'pending' | 'approved' | 'rejected';
+
 // Migration 042 (Migration-042-Report.md): the literal UNIONed by both
 // `get_manager_approval_feed()` and `get_my_request_statuses()` —
 // ADR-046 correction addendum point 3 is explicit that this is
@@ -139,6 +147,12 @@ export type Database = {
           office_lng: number | null;
           office_pin_updated_at: string | null;
           office_pin_source: 'manual' | 'client_office_meeting' | null;
+          // ADR-052 (Batch 6 Phase 5, Migration File B — additive,
+          // `ALTER TABLE clients ADD COLUMN IF NOT EXISTS minor_notes TEXT`).
+          // The one CLIENT_EDITABLE_FIELDS entry that is approval-EXEMPT — set
+          // directly via `updateClientInfo()`, never via a `client_edit_requests`
+          // row (lib/policies/approval-policy.ts).
+          minor_notes: string | null;
           created_at: string;
           updated_at: string;
         };
@@ -391,6 +405,38 @@ export type Database = {
           'status' | 'decided_by' | 'decided_at' | 'decision_note' | 'created_at' | 'updated_at'
         >;
         Update: Partial<Database['public']['Tables']['po_confirmation_requests']['Insert']>;
+        Relationships: [];
+      };
+      // ADR-052 (Batch 6 Phase 5, Migration File A — table backfill, NOT yet
+      // pushed to the web repo as of 2026-08-01, proceeding per the approved
+      // phased rollout since this schema-consuming mobile code stays inert
+      // until the table exists live). No dedicated create-RPC — Sales/RSR
+      // INSERT directly (RLS-gated, offline-queueable via the outbox);
+      // decisions go through `decide_client_edit_request()` only.
+      client_edit_requests: {
+        Row: {
+          id: string;
+          client_id: string;
+          requested_by: string;
+          changes: Record<string, { old: unknown; new: unknown }>;
+          status: RemoteClientEditRequestStatus;
+          reviewed_by: string | null;
+          reviewed_at: string | null;
+          review_note: string | null;
+          base_updated_at: string;
+          base_assigned_agent_id: string;
+          created_at: string;
+          updated_at: string;
+        };
+        // Client-generated `id` sent explicitly (same B-041/B-044 lesson as
+        // `tag_along_requests`/`po_confirmation_requests` above) —
+        // status/decision fields are server-defaulted/only ever set via
+        // decide_client_edit_request().
+        Insert: Omit<
+          Database['public']['Tables']['client_edit_requests']['Row'],
+          'status' | 'reviewed_by' | 'reviewed_at' | 'review_note' | 'created_at' | 'updated_at'
+        >;
+        Update: Partial<Database['public']['Tables']['client_edit_requests']['Insert']>;
         Relationships: [];
       };
       // F-007 Collection module — migrations 043 (base) + 045 (client_name/area)
