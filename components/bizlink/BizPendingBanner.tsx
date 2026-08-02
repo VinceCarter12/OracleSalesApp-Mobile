@@ -16,12 +16,6 @@ function formatSince(iso: string): string {
  * "Request pending since [date], awaiting manager review." Mirrors
  * Wireframe-Manager-BizLink.html's `.pendbanner` (line 273: amber-soft
  * background, clock icon, ~amber-brown text).
- *
- * Batch 6 PR D note: this file also exists on `feat/batch6-prb-manager-
- * approvals-screen` (PR #29, unmerged at PR D implementation time) —
- * byte-identical, copied against that PR's already-quality-gated interface
- * rather than branching off it, per Batch 6's PR sequencing notes. Whichever
- * PR merges first "wins"; the other's identical file merges as a no-op.
  */
 export function BizPendingBanner({ since }: BizPendingBannerProps) {
   const BIZLINK_COLORS = useBizlinkColors();

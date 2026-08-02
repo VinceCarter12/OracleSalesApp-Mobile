@@ -246,7 +246,7 @@ export default function CompleteInfoScreen() {
 
         <YStack marginTop="$5">
           <BizButton
-            label={saving ? 'Saving…' : firstTime ? 'Save Info' : 'Submit for approval'}
+            label={saving ? 'Saving…' : firstTime || isManagerOwnClient ? 'Save Info' : 'Submit for approval'}
             onPress={handleSubmit}
             disabled={!canSubmit}
           />
