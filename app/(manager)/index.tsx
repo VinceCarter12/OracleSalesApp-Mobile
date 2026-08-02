@@ -2,7 +2,7 @@ import { useCallback, useState } from 'react';
 import { Pressable, ScrollView } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router, useFocusEffect } from 'expo-router';
-import { Bell, Building2, Ellipsis, History, Hourglass, Users } from 'lucide-react-native';
+import { Bell, Building2, Ellipsis, History, Hourglass, PenLine, Users } from 'lucide-react-native';
 import { Spinner, Text, XStack, YStack } from 'tamagui';
 import { BIZLINK_COLORS, BIZLINK_FONTS, OUTCOME_BADGE_STYLES } from '../../lib/theme';
 import { useManagerDashboard } from '../../lib/useManagerDashboard';
@@ -177,6 +177,19 @@ export default function ManagerDashboardScreen() {
 
         <BizSectionHeader title="Quick Actions" />
         <XStack gap="$2.5" flexWrap="wrap">
+          {/* Batch 6 PR B (ADR-052, F-205 reversal): Wireframe-Manager-BizLink.html
+              line 487's "Approvals" Quick Action, restored — client-edit +
+              PO-confirmation requests only (Wireframe line 687: tag-along
+              keeps its own separate flow below, unchanged). No live pending
+              count wired here yet (kept minimal for this PR's "safe, empty
+              inbox" phased-rollout step, ADR-052 section K.6) — the badge
+              this had in the wireframe (`qaApprovalDot`) can follow in a
+              later pass once the inbox has real request volume to count. */}
+          <BizQuickAction
+            icon={<PenLine size={20} color={BIZLINK_COLORS.ink} strokeWidth={1.75} />}
+            label="Approvals"
+            onPress={() => router.push('/(manager)/approvals')}
+          />
           <BizQuickAction
             icon={<Users size={20} color={BIZLINK_COLORS.ink} strokeWidth={1.75} />}
             label="Tag-Along"

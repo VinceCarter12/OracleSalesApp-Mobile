@@ -62,8 +62,11 @@ export type RemoteClientEditRequestStatus = 'pending' | 'approved' | 'rejected';
 // Migration 042 (Migration-042-Report.md): the literal UNIONed by both
 // `get_manager_approval_feed()` and `get_my_request_statuses()` —
 // ADR-046 correction addendum point 3 is explicit that this is
-// 'po_confirmation', never the shorthand 'po'.
-export type RemoteApprovalRequestKind = 'po_confirmation' | 'tag_along';
+// 'po_confirmation', never the shorthand 'po'. ADR-052 (Batch 6, migrations
+// 053-056, confirmed live 2026-08-02) extends both RPCs' UNION with a third
+// 'client_edit' kind sourced from `client_edit_requests` — see
+// `lib/manager-approval-feed-service.ts`.
+export type RemoteApprovalRequestKind = 'po_confirmation' | 'tag_along' | 'client_edit';
 
 // F-007 Collection & Delivery (web migrations 043/044/045/046, deployed
 // 2026-07-28). Lowercase remote value sets — mobile's display casing
@@ -586,6 +589,18 @@ export type Database = {
       decide_po_confirmation: {
         Args: { p_request_id: string; p_decision: string; p_note?: string | null };
         Returns: { ok: boolean; code: string };
+      };
+      // ADR-052 section D (2026-08-01 correction, migration 056, confirmed
+      // live 2026-08-02): idempotent CAS decision, same `p_request_id`/
+      // `p_decision`/`p_note` argument shape as decide_po_confirmation()
+      // above, but — per the recorded correction — returns a PLAIN TEXT
+      // code directly (not an `{ ok, code }` object). One of
+      // 'invalid_decision', 'not_found', 'role_not_eligible',
+      // 'already_decided', 'base_conflict', 'approved', 'rejected'. See
+      // lib/client-edit-decision-service.ts::ClientEditDecisionCode.
+      decide_client_edit_request: {
+        Args: { p_request_id: string; p_decision: string; p_note?: string | null };
+        Returns: string;
       };
       // Migration 042 (Migration-042-Report.md lines 33-52): SECURITY
       // INVOKER — RLS on the underlying tables does the authorization work,
