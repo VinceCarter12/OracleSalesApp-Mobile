@@ -53,3 +53,36 @@ export function buildClientEditRequestRemotePayload(
     base_assigned_agent_id: input.baseAssignedAgentId,
   };
 }
+
+// Batch 6 PR D: `''` and `null` must compare equal — otherwise every
+// untouched-but-blank field (e.g. an office_address never filled in) would
+// look "dirty" the moment the form round-trips it through a controlled
+// TextInput (which always yields `''`, never `null`). `undefined` is also
+// folded in so a caller that omits a key entirely behaves the same as one
+// that supplies an explicit blank.
+function normalizeForCompare(value: unknown): unknown {
+  return value === '' || value === null || value === undefined ? null : value;
+}
+
+/**
+ * Diffs `before`/`after` over `allowlist` only, normalizing blank
+ * representations first (see `normalizeForCompare`). Returns an empty
+ * object — never a request — when nothing in the allowlist actually
+ * changed; callers (`app/(tabs)/clients/complete.tsx`) rely on this
+ * short-circuit to decide whether a `client_edit_requests` row is needed
+ * at all.
+ */
+export function computeClientEditChanges(
+  before: Readonly<Record<string, unknown>>,
+  after: Readonly<Record<string, unknown>>,
+  allowlist: readonly string[]
+): ClientEditRequestChanges {
+  const changes: ClientEditRequestChanges = {};
+  for (const field of allowlist) {
+    const oldValue = before[field];
+    const newValue = after[field];
+    if (normalizeForCompare(oldValue) === normalizeForCompare(newValue)) continue;
+    changes[field] = { old: oldValue, new: newValue };
+  }
+  return changes;
+}

@@ -7,6 +7,8 @@ import type { Client, ClientStatus, SalesChannel } from '../types';
 export interface LocalClientRow {
   id: string;
   company_name: string;
+  // Batch 6 PR D: see types/index.ts's Client.city comment.
+  city?: string | null;
   contact_person: string | null;
   position: string | null;
   contact_number: string | null;
@@ -39,6 +41,7 @@ export function rowToClient(row: LocalClientRow): Client {
   return {
     id: row.id,
     company_name: row.company_name,
+    city: row.city ?? null,
     contact_person: row.contact_person ?? '',
     position: row.position,
     contact_number: row.contact_number,

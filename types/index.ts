@@ -89,6 +89,11 @@ export type MeetingMode = typeof MEETING_MODES[number];
 export interface Client {
   id: string;
   company_name: string;
+  // Batch 6 PR D: exposed for the Complete/Edit Info form's company_name
+  // duplicate check (lib/client-duplicate-check.ts), which is (name, city)-
+  // scoped — was already stored in SQLite (lib/db.ts) but never surfaced
+  // through this type/local-client-mapper.ts before now.
+  city?: string | null;
   contact_person: string;
   // Wireframe a-complete fields — optional until columns land in Supabase (T-001).
   position?: string | null;
