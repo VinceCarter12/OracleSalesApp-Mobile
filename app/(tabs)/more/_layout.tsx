@@ -10,6 +10,11 @@ export default function MoreStackLayout() {
       <Stack.Screen name="reports" />
       <Stack.Screen name="clock-in-out" />
       <Stack.Screen name="maps" />
+      <Stack.Screen name="office-map/[id]" />
+      <Stack.Screen name="my-requests/index" />
+      <Stack.Screen name="my-requests/[id]" />
+      <Stack.Screen name="lost-opportunities/index" />
+      <Stack.Screen name="lost-opportunities/[id]" />
       <Stack.Screen name="account" />
     </Stack>
   );

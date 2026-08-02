@@ -1,6 +1,46 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useFocusEffect } from 'expo-router';
-import { fetchExecutiveLostOpportunities, type ExecLostOpportunity } from './executive-lost-opportunity-service';
+import { fetchLostOpportunities, type LostOpportunityRecord } from './lost-opportunity-read-service';
+
+// Batch 9 Step D (2026-08-02): migrated off the now-deleted
+// `lib/executive-lost-opportunity-service.ts` onto the shared
+// `lib/lost-opportunity-read-service.ts` (`scope: 'company'`). This is a
+// regression-safe refactor — `ExecLostOpportunity`'s shape and
+// `ExecLostOpportunityStatus`'s values ('cooldown'/'released') are kept
+// identical to the deleted file's output so
+// `app/(executive)/more/lost-opportunity.tsx` doesn't change at all.
+
+export type ExecLostOpportunityStatus = 'cooldown' | 'released';
+
+export interface ExecLostOpportunity {
+  id: string;
+  companyName: string;
+  agentId: string;
+  agentName: string | null;
+  managerId: string | null;
+  managerName: string | null;
+  lostAt: string | null;
+  reassignableAt: string | null;
+  reason: string | null;
+  status: ExecLostOpportunityStatus;
+}
+
+function toExecLostOpportunity(record: LostOpportunityRecord): ExecLostOpportunity {
+  return {
+    id: record.id,
+    companyName: record.companyName,
+    agentId: record.assignedAgentId,
+    agentName: record.agentName,
+    managerId: record.managerId,
+    managerName: record.managerName,
+    lostAt: record.lostAt,
+    reassignableAt: record.reassignableAt,
+    reason: record.reason,
+    // `available`/`cooling` (shared service) -> `released`/`cooldown` (this
+    // screen's original labels) — same derivation, different vocabulary.
+    status: record.availability === 'available' ? 'released' : 'cooldown',
+  };
+}
 
 export interface UseExecutiveLostOpportunities {
   items: ExecLostOpportunity[];
@@ -19,8 +59,8 @@ export function useExecutiveLostOpportunities(): UseExecutiveLostOpportunities {
     setLoading(true);
     setError(null);
     try {
-      const data = await fetchExecutiveLostOpportunities();
-      setItems(data);
+      const data = await fetchLostOpportunities({ scope: 'company' });
+      setItems(data.map(toExecLostOpportunity));
     } catch (err) {
       console.error('[use-executive-lost-opportunities] load failed:', err instanceof Error ? err.message : String(err));
       setError('Hindi na-load ang lost opportunity list. Subukan ulit.');

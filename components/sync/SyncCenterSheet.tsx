@@ -4,20 +4,28 @@ import { AlertTriangle, CloudOff, GitBranch, KeyRound, RefreshCw, ServerOff, Wif
 import { Spinner, Text, XStack, YStack } from 'tamagui';
 import { BIZLINK_COLORS, BIZLINK_FONTS } from '../../lib/theme';
 import { BizButton } from '../bizlink/BizButton';
-import { getOutboxCounts, retryAllFailedOutboxRows, type OutboxCounts } from '../../lib/sync-engine';
+import { getOutboxCounts, retryAllFailedOutboxRows, runSync, type OutboxCounts } from '../../lib/sync-engine';
 import { checkConnectivity, type ConnectivityState } from '../../lib/sync/connectivity';
 import { getPendingSyncEntries, type PendingSyncEntry } from '../../lib/sync-history';
+import { getLastSyncAt } from '../../lib/sync/last-sync';
 import { useSession } from '../../lib/session-store';
 
 // T-014 Phase B (ADR-022 §5, Wireframe-Sales-BizLink.html #a-syncSheet):
-// Sync Center sheet, opened from SyncStatusChip's onPress. No fake "Last
-// synced" timestamp (lib/sync-engine.ts doesn't track one). The wireframe's
+// Sync Center sheet, opened from SyncStatusChip's onPress. The wireframe's
 // "Demo: susunod" button is a design-time-only affordance, not ported.
 //
 // B-024: originally aggregate-count-only ("12 pending", no names) — a
 // record created offline was invisible here beyond a number. Now also lists
 // each pending/failed/conflict row by its real label via
 // lib/sync-history.ts::getPendingSyncEntries().
+//
+// Batch 7a (2026-08-02): the "No fake 'Last synced' timestamp" note above is
+// now stale — ADR-026 P2 item 6 added a real one (lib/sync/last-sync.ts).
+// This sheet now shows it plus a manual "Check for updates now" action
+// (calls the same `runSync()` the 30s foreground timer uses) — the visible
+// refresh affordance the Sprint's remote-change acceptance test needs so a
+// user can distinguish "waiting for a server-side change to arrive" from
+// stale offline data, without inventing a new push/realtime mechanism.
 
 const ENTRY_STATUS_ICON: Record<PendingSyncEntry['status'], typeof RefreshCw> = {
   pending: RefreshCw,
@@ -107,6 +115,18 @@ function ConnectivityPill({ state }: { state: ConnectivityState | null }) {
  * `syncing` has no separate wireframe category — it folds into "naghihintay"
  * alongside `pending` (Vince-confirmed 2026-07-19).
  */
+function lastSyncedText(lastSyncAt: string | null): string {
+  if (!lastSyncAt) return 'Hindi pa nakaka-sync sa device na ito';
+  const elapsedMs = Date.now() - new Date(lastSyncAt).getTime();
+  const minutes = Math.floor(elapsedMs / 60000);
+  if (minutes < 1) return 'Huling sync: kanina lang';
+  if (minutes < 60) return `Huling sync: ${minutes}m ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `Huling sync: ${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  return `Huling sync: ${days}d ago`;
+}
+
 function summaryText(counts: OutboxCounts): string {
   const pendingTotal = counts.pending + counts.syncing;
   if (counts.conflict === 0 && counts.failed === 0 && pendingTotal === 0) {
@@ -126,17 +146,31 @@ interface SyncCenterSheetProps {
 }
 
 export function SyncCenterSheet({ visible, onClose }: SyncCenterSheetProps) {
-  const { profileId } = useSession();
+  const { profileId, teamId } = useSession();
   const [counts, setCounts] = useState<OutboxCounts | null>(null);
   const [connectivity, setConnectivity] = useState<ConnectivityState | null>(null);
   const [entries, setEntries] = useState<PendingSyncEntry[]>([]);
   const [retrying, setRetrying] = useState(false);
+  const [checkingNow, setCheckingNow] = useState(false);
+  const [lastSyncAt, setLastSyncAt] = useState<string | null>(null);
 
   const refresh = () => {
     getOutboxCounts().then(setCounts).catch(() => {});
     checkConnectivity().then(setConnectivity).catch(() => {});
     getPendingSyncEntries().then(setEntries).catch(() => {});
+    getLastSyncAt().then(setLastSyncAt).catch(() => {});
   };
+
+  async function handleCheckNow(): Promise<void> {
+    if (!profileId || checkingNow) return;
+    setCheckingNow(true);
+    try {
+      await runSync(profileId, teamId);
+      refresh();
+    } finally {
+      setCheckingNow(false);
+    }
+  }
 
   useEffect(() => {
     if (!visible) return;
@@ -183,6 +217,24 @@ export function SyncCenterSheet({ visible, onClose }: SyncCenterSheetProps) {
             </Text>
 
             <ConnectivityPill state={connectivity} />
+
+            <XStack alignItems="center" justifyContent="space-between" marginTop={10}>
+              <Text fontSize={11.5} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted}>
+                {lastSyncedText(lastSyncAt)}
+              </Text>
+              <Pressable onPress={handleCheckNow} disabled={checkingNow} hitSlop={8} style={{ minHeight: 44, minWidth: 44, alignItems: 'center', justifyContent: 'center' }}>
+                <XStack alignItems="center" gap="$1.5">
+                  {checkingNow ? (
+                    <Spinner size="small" color={BIZLINK_COLORS.brand} />
+                  ) : (
+                    <RefreshCw size={13} color={BIZLINK_COLORS.brand} strokeWidth={1.75} />
+                  )}
+                  <Text fontSize={11.5} fontFamily={BIZLINK_FONTS.semibold} color={BIZLINK_COLORS.brand}>
+                    {checkingNow ? 'Checking…' : 'Check now'}
+                  </Text>
+                </XStack>
+              </Pressable>
+            </XStack>
 
             <YStack backgroundColor={BIZLINK_COLORS.card} borderRadius={20} padding={16} marginTop={12}>
               <Text fontSize={14} fontFamily={BIZLINK_FONTS.semibold} color={BIZLINK_COLORS.text}>

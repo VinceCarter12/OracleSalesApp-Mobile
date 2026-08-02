@@ -28,7 +28,7 @@ export interface ClientFlowRoutes {
   officeLocation: (clientId: string) => Href;
   recordMeeting: (clientId: string) => Href;
   meetingDetail: (id: string) => Href;
-  celebrate: (online: boolean, meetingId?: string) => Href;
+  celebrate: (online: boolean, meetingId?: string, clientId?: string) => Href;
   meetingsHome: () => Href;
   clientList: () => Href;
   home: () => Href;
@@ -55,7 +55,11 @@ export function useClientFlowRoutes(): ClientFlowRoutes {
     officeLocation: (clientId: string) => `${clientsBase}/office-location?clientId=${clientId}` as Href,
     recordMeeting: (clientId: string) => `${meetingsBase}/record?clientId=${clientId}` as Href,
     meetingDetail: (id: string) => (isManager ? `${meetingsBase}/meeting/${id}` : `${meetingsBase}/${id}`) as Href,
-    celebrate: (online: boolean, meetingId?: string) => `${meetingsBase}/celebrate?online=${online}${meetingId ? `&meetingId=${encodeURIComponent(meetingId)}` : ''}` as Href,
+    // Batch 7C (ADR-053): optional `clientId` param feeds the celebrate
+    // screen's PostRecordCutoffStatus (W-3) — additive, existing 2-arg
+    // callers are unaffected.
+    celebrate: (online: boolean, meetingId?: string, clientId?: string) =>
+      `${meetingsBase}/celebrate?online=${online}${meetingId ? `&meetingId=${encodeURIComponent(meetingId)}` : ''}${clientId ? `&clientId=${encodeURIComponent(clientId)}` : ''}` as Href,
     meetingsHome: () => (isManager ? '/(manager)/more/meetings' : '/(tabs)/meetings') as Href,
     clientList: () => clientsBase as Href,
     home: () => homeBase as Href,

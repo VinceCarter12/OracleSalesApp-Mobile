@@ -25,3 +25,5 @@ expo-env.d.ts
 # Local-only generated/tooling files (never commit)
 WEB_STATUS.md
 .claude/
+.codex-logs/
+*.apk

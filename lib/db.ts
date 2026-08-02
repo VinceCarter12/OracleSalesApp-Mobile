@@ -12,7 +12,7 @@ export const DATABASE_NAME = 'oracle-sales-app.db';
 
 // Bump this and add a new `case` below whenever the schema changes — never
 // edit an already-shipped case, since devices may have already run it.
-const LATEST_SCHEMA_VERSION = 21;
+const LATEST_SCHEMA_VERSION = 22;
 
 /**
  * Runs once per app launch via `SQLiteProvider`'s `onInit` (see app/_layout.tsx).
@@ -895,6 +895,131 @@ export async function migrateDbIfNeeded(db: SQLiteDatabase): Promise<void> {
       CREATE INDEX idx_client_edit_requests_requester_status ON client_edit_requests(requested_by, status);
     `);
     currentVersion = 21;
+  }
+
+  // Batch 7C (ADR-053, SQLite v22): read-only mirror tables for the new
+  // Admin-configured cutoff/quota feature. Mobile NEVER writes to these
+  // tables directly — they exist only for a future sync-down pull
+  // (lib/sync/cutoff-sync-down.ts, deliberately NOT yet wired into the live
+  // sync loop since Batch 7B's server-side tables don't exist yet) to fill.
+  // Shapes mirror lib/policies/cutoff-policy.ts's pure-TS types 1:1 so the
+  // eventual pull function can map remote rows straight across. All three
+  // will read empty until Batch 7B lands — every consumer of these tables
+  // must treat an empty result as the explicit "no policy configured/no
+  // active period" state (never a crash, never a hardcoded fallback).
+  if (currentVersion === 21) {
+    await db.execAsync(`
+      CREATE TABLE cutoff_periods_snapshot (
+        id TEXT PRIMARY KEY NOT NULL,
+        starts_at TEXT NOT NULL,
+        ends_at TEXT NOT NULL,
+        is_active INTEGER NOT NULL DEFAULT 1,
+        synced_at TEXT NOT NULL
+      );
+
+      -- One row per (period, role): Sales Specialist and RSR each have an
+      -- independently configured target (ADR-053 O-6) — never one shared
+      -- global row. cap_role is NULL when a cap row is the shared/global
+      -- fallback for the period rather than a role-specific override.
+      CREATE TABLE cutoff_role_usage_snapshot (
+        period_id TEXT NOT NULL,
+        agent_id TEXT NOT NULL,
+        role TEXT NOT NULL CHECK (role IN ('sales_specialist', 'rsr')),
+        target INTEGER,
+        confirmed_count INTEGER NOT NULL DEFAULT 0,
+        pending_count INTEGER NOT NULL DEFAULT 0,
+        synced_at TEXT NOT NULL,
+        PRIMARY KEY (period_id, agent_id)
+      );
+      CREATE INDEX idx_cutoff_role_usage_agent ON cutoff_role_usage_snapshot (agent_id);
+
+      -- One row per (period, client): shared New/Existing cap pool usage
+      -- (O-2/O-3) — used/cap counts already server-classified, never
+      -- recomputed from raw meeting rows on this table alone.
+      CREATE TABLE cutoff_client_allowance_snapshot (
+        period_id TEXT NOT NULL,
+        client_id TEXT NOT NULL,
+        used_count INTEGER NOT NULL DEFAULT 0,
+        cap INTEGER,
+        synced_at TEXT NOT NULL,
+        PRIMARY KEY (period_id, client_id)
+      );
+      CREATE INDEX idx_cutoff_client_allowance_client ON cutoff_client_allowance_snapshot (client_id);
+    `);
+    currentVersion = 22;
+  }
+
+  // Batch 7C (ADR-053, SQLite v23): the v22 shapes above were written before
+  // Batch 7B's live schema was confirmed and don't match the actual deployed
+  // surfaces (`cutoff_periods`, `get_my_cutoff_usage_summary()`,
+  // `get_client_cutoff_allowance()` — migrations 057-060, live 2026-08-02).
+  // Replaced wholesale rather than patched, since no release has ever shipped
+  // with the v22 shapes populated (cutoff-sync-down.ts was never wired in) —
+  // there is no real data to migrate. `cutoff_role_usage_snapshot` and
+  // `cutoff_client_allowance_snapshot` now hold ONE row per agent/client
+  // (the RPCs return the caller's own summary / one client's allowance, not
+  // a role-keyed or period-keyed set), matching `get_my_cutoff_usage_summary`
+  // and `get_client_cutoff_allowance`'s actual return columns 1:1.
+  if (currentVersion === 22) {
+    await db.execAsync(`
+      DROP TABLE IF EXISTS cutoff_periods_snapshot;
+      DROP TABLE IF EXISTS cutoff_role_usage_snapshot;
+      DROP TABLE IF EXISTS cutoff_client_allowance_snapshot;
+
+      -- Mirrors public.cutoff_periods (broad authenticated read RLS). Only
+      -- status='active' rows are pulled (see cutoff-sync-down.ts) — at most
+      -- one row is expected, but the shape allows more without assuming it.
+      CREATE TABLE cutoff_periods_snapshot (
+        id TEXT PRIMARY KEY NOT NULL,
+        label TEXT NOT NULL,
+        starts_on TEXT NOT NULL,
+        ends_on TEXT NOT NULL,
+        sales_target INTEGER,
+        rsr_target INTEGER,
+        client_meeting_cap INTEGER NOT NULL,
+        status TEXT NOT NULL,
+        supersedes_period_id TEXT,
+        version INTEGER,
+        synced_at TEXT NOT NULL
+      );
+
+      -- Mirrors public.get_my_cutoff_usage_summary() — the calling agent's
+      -- OWN role-scoped usage for the active period. One row per agent
+      -- (never per-role/per-period — the RPC itself is role/period-implicit
+      -- from the caller's session). period_id/period_label/target/
+      -- confirmed_count/remaining are all independently nullable: no active
+      -- period, or no target configured for the caller's role.
+      CREATE TABLE cutoff_role_usage_snapshot (
+        agent_id TEXT PRIMARY KEY NOT NULL,
+        period_id TEXT,
+        period_label TEXT,
+        starts_on TEXT,
+        ends_on TEXT,
+        role TEXT NOT NULL CHECK (role IN ('sales_specialist', 'rsr')),
+        target INTEGER,
+        confirmed_count INTEGER,
+        remaining INTEGER,
+        synced_at TEXT NOT NULL
+      );
+
+      -- Mirrors public.get_client_cutoff_allowance(p_client_id) — one row per
+      -- locally-owned new/existing client (prospect/in_progress never get a
+      -- row, matching the function's own no-rows-for-uncapped-stages
+      -- behavior). used/cap/remaining nullable when no active period covers
+      -- this client's allowance.
+      CREATE TABLE cutoff_client_allowance_snapshot (
+        client_id TEXT PRIMARY KEY NOT NULL,
+        period_id TEXT,
+        period_label TEXT,
+        starts_on TEXT,
+        ends_on TEXT,
+        used INTEGER,
+        cap INTEGER,
+        remaining INTEGER,
+        synced_at TEXT NOT NULL
+      );
+    `);
+    currentVersion = 23;
   }
 
   await db.execAsync(`PRAGMA user_version = ${currentVersion}`);

@@ -10,6 +10,9 @@ export default function ManagerMoreStackLayout() {
       <Stack.Screen name="meetings/index" />
       <Stack.Screen name="meetings/[id]" />
       <Stack.Screen name="reports" />
+      <Stack.Screen name="lost-opportunities/index" />
+      <Stack.Screen name="lost-opportunities/[id]" />
+      <Stack.Screen name="office-map/[id]" />
       <Stack.Screen name="maps" />
       <Stack.Screen name="account" />
     </Stack>

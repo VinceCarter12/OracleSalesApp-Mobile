@@ -1,22 +1,16 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { Alert, ScrollView } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router, useLocalSearchParams } from 'expo-router';
 import { Spinner, Text, YStack } from 'tamagui';
 import { useAuth } from '../../../lib/useAuth';
-import { useSession } from '../../../lib/session-store';
-import { getClientById } from '../../../lib/client-service';
 import { createMeeting } from '../../../lib/meeting-service';
+import { buildMeetingRecord } from '../../../lib/meeting-record-assembler';
 import { AccountSuspendedError } from '../../../lib/app-lock/account-status';
-import { companionsForDraft, restoreCompanionsFromDraft, saveDraft, getDraftForClient, deleteDraft, type MeetingDraft } from '../../../lib/meeting-drafts';
-import { getCompanionRosterForViewer, getTeamRoster, inviteeKindForRole } from '../../../lib/team-roster';
-import { MAX_COMPANIONS_PER_REQUEST } from '../../../lib/tag-along-service';
-import { useElapsedTimer } from '../../../lib/use-elapsed-timer';
+import { useMeetingRecordingController } from '../../../lib/use-meeting-recording-controller';
 import { isInfoComplete } from '../../../lib/client-progress';
 import { useClientFlowRoutes } from '../../../lib/use-role-routes';
-import { captureGps } from '../../../lib/gps';
 import { checkConnectivity } from '../../../lib/sync/connectivity';
-import { showToast } from '../../../lib/toast';
 import { BIZLINK_COLORS, BIZLINK_FONTS } from '../../../lib/theme';
 import { BizTopBar } from '../../../components/bizlink/BizTopBar';
 import { BizButton } from '../../../components/bizlink/BizButton';
@@ -26,13 +20,8 @@ import { VisitInProgressPanel } from '../../../components/meetings/VisitInProgre
 import { type CapturedPhoto } from '../../../components/meetings/PhotoCapture';
 import { DraftResumePrompt } from '../../../components/meetings/DraftResumePrompt';
 import { ClientInfoCompletionNotice } from '../../../components/meetings/ClientInfoCompletionNotice';
-import type { Client, MeetingMode, TeamRosterEntry } from '../../../types';
-
-interface StartCapture {
-  capturedAt: string;
-  gpsLat: number;
-  gpsLng: number;
-}
+import { ClientCutoffAllowanceBlock } from '../../../components/cutoff/ClientCutoffAllowanceBlock';
+import { StartMeetingConfirmDialog } from '../../../components/meetings/StartMeetingConfirmDialog';
 
 /**
  * Existing-client fast path (revises ADR-015, 2026-07-16): select client →
@@ -42,133 +31,30 @@ interface StartCapture {
  * matching the Start GPS to the End photo's GPS; duration is computed
  * web-side from the two timestamps, never here.
  *
- * Live elapsed timer (Wireframe `id="a-visitElapsed"`, `aVisitTick()`) and
- * the End Photo agenda-gate (`#a-visitEndBtn disabled` +
- * `#a-visitAgendaGateNote`) are both implemented below — pure UI-feedback,
- * the timer itself is never persisted (real duration calc stays server-side
- * per the wireframe's own footer note).
+ * Step B (2026-08-02): the client/roster/draft/Start-confirm/companion/
+ * elapsed-timer logic previously duplicated here and in `record.tsx` now
+ * lives in `lib/use-meeting-recording-controller.ts`. Fast-path never
+ * collects an outcome — `outcome: null` below, handled by the assembler —
+ * so Close Deal / PO evidence is structurally impossible on this screen; see
+ * the comment on `finishMeeting()` for why that is intentional, not a gap.
  */
 export default function RecordVisitScreen() {
   const insets = useSafeAreaInsets();
   const { clientId } = useLocalSearchParams<{ clientId: string }>();
   const { session } = useAuth();
-  const { profileId, role, markSuspended } = useSession();
   const routes = useClientFlowRoutes();
 
-  const [client, setClient] = useState<Client | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [roster, setRoster] = useState<TeamRosterEntry[]>([]);
-  const [rosterLoaded, setRosterLoaded] = useState(false);
-  const [rosterLoadError, setRosterLoadError] = useState(false);
-  const [selectedCompanions, setSelectedCompanions] = useState<TeamRosterEntry[]>([]);
-  const [mode, setMode] = useState<MeetingMode>('in_person');
-  const [starting, setStarting] = useState(false);
-  const [start, setStart] = useState<StartCapture | null>(null);
+  const controller = useMeetingRecordingController({ clientId, flow: 'visit' });
+  const {
+    client, clientLoading, profileId, markSuspended, visibleRoster,
+    selectedCompanions, toggleCompanion, companionSelections, companionsPreAccepted,
+    mode, setMode, start, starting, elapsedSeconds, startConfirmOpen,
+    requestStartMeeting, cancelStartMeeting, confirmStartMeeting,
+    pendingDraft, resumeDraft, discardDraft, clearDraft,
+  } = controller;
+
   const [selectedAgendas, setSelectedAgendas] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
-  // ADR-026 P1 item 3 (Meeting Draft Recovery): a same-day draft found for
-  // this client on mount — resume/discard prompt gates the normal Start
-  // button until the agent picks one.
-  const [pendingDraft, setPendingDraft] = useState<MeetingDraft | null>(null);
-
-  const elapsedSeconds = useElapsedTimer(start?.capturedAt ?? null);
-
-  // Local SQLite is the primary read path (ADR-001/T-003). Also checks for a
-  // same-day draft (ADR-026 P1 item 3) — a client that no longer exists
-  // locally (e.g. removed by the lost/deleted sync-down fix,
-  // lib/sync/entity-appliers.ts) silently discards any orphaned draft
-  // instead of ever offering to resume it.
-  useEffect(() => {
-    if (!clientId) return;
-    let cancelled = false;
-    (async () => {
-      const foundClient = await getClientById(clientId);
-      if (cancelled) return;
-      if (!foundClient) {
-        Alert.alert('Error', 'Client not found.');
-        // Best-effort cleanup — a transient SQLite error here must never
-        // strand the screen on its loading spinner (the Alert has already
-        // fired regardless of whether the delete succeeds).
-        await deleteDraft(clientId).catch((err) =>
-          console.error('[RecordVisit] Failed to discard orphaned draft:', err)
-        );
-        setLoading(false);
-        return;
-      }
-      setClient(foundClient);
-      if (profileId) {
-        const draft = await getDraftForClient(clientId, profileId);
-        if (!cancelled) setPendingDraft(draft);
-      }
-      setLoading(false);
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [clientId, profileId]);
-
-  // ADR-030 Pass 2.5: same "Kasama sa visit" companion picker as the
-  // prospect/new full-form path (record.tsx) — the existing-client fast
-  // path was missing it entirely, even though tag-along applies regardless
-  // of client status.
-  useEffect(() => {
-    let cancelled = false;
-    getTeamRoster()
-      .then((entries) => {
-        if (!cancelled) setRoster(entries);
-      })
-      .catch((err) => {
-        console.error('[RecordVisit] Failed to load companion roster:', err);
-        if (!cancelled) setRosterLoadError(true);
-      })
-      .finally(() => {
-        if (!cancelled) setRosterLoaded(true);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  function toggleCompanion(entry: TeamRosterEntry): void {
-    setSelectedCompanions((prev) => {
-      const alreadySelected = prev.some((p) => p.profileId === entry.profileId);
-      if (alreadySelected) return prev.filter((p) => p.profileId !== entry.profileId);
-      if (prev.length >= MAX_COMPANIONS_PER_REQUEST) {
-        showToast('Hanggang 2 kasama lang ang pwede');
-        return prev;
-      }
-      return [...prev, entry];
-    });
-  }
-
-  function resumeDraft(): void {
-    if (!pendingDraft) return;
-    // A draft with companions must not resume until the offline roster query
-    // has settled. Otherwise the initial empty roster would permanently drop
-    // the persisted selections before the picker is available again.
-    if ((pendingDraft.payload.companions?.length ?? 0) > 0 && !rosterLoaded) {
-      showToast('Loading companion list. Please try Resume again.');
-      return;
-    }
-    if ((pendingDraft.payload.companions?.length ?? 0) > 0 && rosterLoadError) {
-      showToast('Unable to load companions. Reopen this visit and try again.');
-      return;
-    }
-    setMode(pendingDraft.payload.mode);
-    setStart({
-      capturedAt: pendingDraft.payload.capturedAt,
-      gpsLat: pendingDraft.payload.gpsLat,
-      gpsLng: pendingDraft.payload.gpsLng,
-    });
-    setSelectedCompanions(restoreCompanionsFromDraft(pendingDraft.payload.companions, roster));
-    setPendingDraft(null);
-  }
-
-  async function discardDraft(): Promise<void> {
-    if (!clientId) return;
-    await deleteDraft(clientId);
-    setPendingDraft(null);
-  }
 
   function toggleAgenda(agenda: string): void {
     setSelectedAgendas((prev) =>
@@ -177,107 +63,43 @@ export default function RecordVisitScreen() {
   }
 
   /**
-   * Starts the meeting: GPS + timestamp only, no photo (2026-07-16 revision).
-   * Also persists a draft (ADR-026 P1 item 3) so this GPS+timestamp lock —
-   * which can't be recreated with integrity by just re-tapping Start —
-   * survives an app crash/kill before the end photo is taken. The draft
-   * write is best-effort: a failure here logs but never blocks the meeting
-   * itself from starting.
+   * Fast Visit is a routine quick-visit path only — it structurally never
+   * collects a meeting outcome (`outcome: null` below, always). Close Deal /
+   * PO confirmation therefore requires the full Record Meeting flow
+   * (`record.tsx`), the only flow that asks for an outcome at all —
+   * `isCloseDealPoEligible()` (lib/policies/po-confirmation-status-policy.ts)
+   * requires `outcome === 'Successful'`, which this screen can never supply.
+   * Confirmed 2026-08-02: not a bug, no PO-evidence UI is added here.
    */
-  async function startMeeting(): Promise<void> {
-    if (!clientId || !profileId) return;
-    setStarting(true);
-    try {
-      const gps = await captureGps();
-      const capturedAt = new Date().toISOString();
-      setStart({ capturedAt, gpsLat: gps.lat, gpsLng: gps.lng });
-      try {
-        await saveDraft({
-          clientId,
-          agentId: profileId,
-          flow: 'visit',
-          payload: {
-            mode,
-            gpsLat: gps.lat,
-            gpsLng: gps.lng,
-            capturedAt,
-            companions: companionsForDraft(selectedCompanions),
-          },
-        });
-      } catch (draftErr) {
-        console.error('[RecordVisit] Failed to persist meeting draft:', draftErr);
-      }
-    } catch (err) {
-      Alert.alert('Location Error', err instanceof Error ? err.message : 'Failed to get GPS location.');
-    } finally {
-      setStarting(false);
-    }
-  }
-
   async function finishMeeting(endPhoto: CapturedPhoto): Promise<void> {
-    if (!start || !session || !profileId) return;
+    if (!start || !session || !profileId || !clientId) return;
     setSaving(true);
     try {
-      // T-014 Phase C (ADR-026 P1 item 4): the end photo is no longer
-      // uploaded in the foreground at all — the meeting saves with the
-      // local `file://` URI immediately, and `createMeeting()` queues its
-      // upload internally (`photoToQueue`) right after the local insert
-      // commits. `meeting-service.ts`'s `remoteMediaUrl()` still nulls out
-      // this local URI before it ever reaches the initial remote insert;
-      // the queued upload's own patch (lib/sync/photo-uploads.ts) is what
-      // sets the real Storage URL once it's actually uploaded. Storage path
-      // convention keys by the Auth uid (matches Storage RLS' `auth.uid()`
-      // check) — deliberately session.user.id, not profileId.
-      const meetingId = await createMeeting({
-        client_id: clientId ?? null,
-        agent_id: profileId,
-        gps_lat: start.gpsLat,
-        gps_lng: start.gpsLng,
-        meeting_mode: mode,
-        agendas: selectedAgendas,
-        outcome: null,
-        start_captured_at: start.capturedAt,
-        end_photo_url: endPhoto.uri,
-        end_captured_at: endPhoto.capturedAt,
-        end_gps_lat: endPhoto.gpsLat,
-        end_gps_lng: endPhoto.gpsLng,
-        logged_at: start.capturedAt,
-        // B-085 (Office Location Spec follow-up, 2026-07-29): this fast path
-        // never passed `locationType` at all, so
-        // `toRemoteLocationType()` (lib/remote-meeting-mapping.ts) silently
-        // defaulted every visit's remote `location_type` to 'client_office'
-        // even for an Online visit. Fixed at this call site only — see
-        // Bugs.md's dated entry.
-        locationType: mode === 'online' ? 'Others' : 'Client Office',
-        photoToQueue: { kind: 'end', localUri: endPhoto.uri, userId: session.user.id },
-        companions: selectedCompanions.map((entry) => ({
-          profileId: entry.profileId,
-          kind: inviteeKindForRole(entry.role),
-        })),
-        // F-205 decision 2 (quality-gate fix): mirrors record.tsx exactly —
-        // this fast path was missed when the picker was added to
-        // record-visit.tsx (Pass 2.5 Completeness Fix), leaving a manager's
-        // own companion requests here landing as normal PENDING rows
-        // (requester_id = the manager, same as any other requester) with no
-        // counterpart able to approve them. Role-based so it stays correct
-        // regardless of which route renders this shared screen.
-        companionsPreAccepted: role === 'sales_manager',
-        // Office Location Spec (2026-07-29): fast-path gate is `mode ===
-        // 'in_person'` alone (no separate location chip exists on this
-        // screen — every in-person fast-path visit IS a Client Office
-        // visit, matching the `locationType` fix above).
-        captureOfficePin: mode === 'in_person',
-      });
+      const meetingId = await createMeeting(
+        buildMeetingRecord({
+          flow: 'visit',
+          clientId,
+          agentId: profileId,
+          authUserId: session.user.id,
+          start,
+          mode,
+          agendas: selectedAgendas,
+          companions: companionSelections,
+          companionsPreAccepted,
+          endPhoto: {
+            uri: endPhoto.uri,
+            capturedAt: endPhoto.capturedAt,
+            gpsLat: endPhoto.gpsLat,
+            gpsLng: endPhoto.gpsLng,
+          },
+        })
+      );
       // The draft must never survive past a successful save (ADR-026 P1 item
       // 3) — best-effort: a cleanup failure here shouldn't surface as a save
       // error, since the meeting itself already saved successfully.
-      if (clientId) {
-        await deleteDraft(clientId).catch((cleanupErr) =>
-          console.error('[RecordVisit] Failed to clear meeting draft:', cleanupErr)
-        );
-      }
+      await clearDraft();
       const connectivity = await checkConnectivity();
-      router.replace(`/(tabs)/meetings/celebrate?online=${connectivity === 'online'}&meetingId=${encodeURIComponent(meetingId)}`);
+      router.replace(routes.celebrate(connectivity === 'online', meetingId, clientId));
     } catch (err) {
       if (err instanceof AccountSuspendedError) {
         // Batch 5 Slice 2 (ADR-051): route to AccountSuspendedScreen instead
@@ -293,7 +115,7 @@ export default function RecordVisitScreen() {
     }
   }
 
-  if (loading) {
+  if (clientLoading) {
     return (
       <YStack flex={1} justifyContent="center" alignItems="center" backgroundColor={BIZLINK_COLORS.canvas}>
         <Spinner size="large" color={BIZLINK_COLORS.brand} />
@@ -328,15 +150,19 @@ export default function RecordVisitScreen() {
             }}
           />
         ) : !start ? (
-          <VisitStartPanel
-            roster={getCompanionRosterForViewer(roster, role)}
-            selectedCompanions={selectedCompanions}
-            onToggleCompanion={toggleCompanion}
-            mode={mode}
-            onModeChange={setMode}
-            starting={starting}
-            onStart={startMeeting}
-          />
+          <>
+            {/* W-5 (ADR-053): parity with the full-form pre-start allowance line. */}
+            <ClientCutoffAllowanceBlock client={client} compact />
+            <VisitStartPanel
+              roster={visibleRoster}
+              selectedCompanions={selectedCompanions}
+              onToggleCompanion={toggleCompanion}
+              mode={mode}
+              onModeChange={setMode}
+              starting={starting}
+              onStart={requestStartMeeting}
+            />
+          </>
         ) : (
           <VisitInProgressPanel
             startedAt={start.capturedAt}
@@ -348,6 +174,14 @@ export default function RecordVisitScreen() {
           />
         )}
       </ScrollView>
+
+      <StartMeetingConfirmDialog
+        visible={startConfirmOpen}
+        onCancel={cancelStartMeeting}
+        onConfirm={() => {
+          void confirmStartMeeting();
+        }}
+      />
     </YStack>
   );
 }

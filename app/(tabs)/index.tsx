@@ -33,6 +33,9 @@ import { SyncStatusChip } from '../../components/sync/SyncStatusChip';
 import { SyncCenterSheet } from '../../components/sync/SyncCenterSheet';
 import { useSession } from '../../lib/session-store';
 import { firstName, initialsFromName } from '../../lib/display-name';
+import { CutoffQuotaCard } from '../../components/cutoff/CutoffQuotaCard';
+import { useCutoffQuotaFlag } from '../../lib/use-cutoff-quota-flag';
+import { getDashboardActionHref } from '../../lib/dashboard-action-registry';
 import { RSR_DAILY_VISIT_QUOTA, type Client, type Meeting } from '../../types';
 
 // F-012 (RSR only): today's in-person visits vs the daily quota. Online
@@ -151,6 +154,11 @@ export default function AgentHomeScreen() {
   const { meetings, refresh: refreshMeetings } = useMeetings();
   const { role, fullName, profileId } = useSession();
   const isRsr = role === 'rsr';
+  // Batch 7C (ADR-053, W-1): when the flag is ON, the shared cutoff/quota
+  // card replaces the RSR-only legacy widget for BOTH roles; when OFF, the
+  // legacy widget renders exactly as before (RSR only) — fully untouched.
+  const cutoffQuotaFlagOn = useCutoffQuotaFlag();
+  const isCutoffQuotaRole = role === 'sales_specialist' || role === 'rsr';
   const greetingName = firstName(fullName);
   const [syncSheetOpen, setSyncSheetOpen] = useState(false);
   // B-023: remounts the chip on sheet-close so a "Retry All" inside the
@@ -243,13 +251,17 @@ export default function AgentHomeScreen() {
         {/* Quick Actions directly under the hero card (Wireframe-Sales-BizLink.html a-home, 2026-07-14 client feedback). */}
         <BizSectionHeader title="Quick Actions" />
         <XStack gap="$2.5" flexWrap="wrap">
-          <BizQuickAction icon={<Plus size={20} color={BIZLINK_COLORS.ink} strokeWidth={1.75} />} label="Create Client" onPress={() => router.push('/(tabs)/clients/create')} />
-          <BizQuickAction icon={<Camera size={20} color={BIZLINK_COLORS.ink} strokeWidth={1.75} />} label="Record Meeting" onPress={() => router.push('/(tabs)/meetings/select-client')} />
-          <BizQuickAction icon={<ClipboardList size={20} color={BIZLINK_COLORS.ink} strokeWidth={1.75} />} label="My Clients" onPress={() => router.push('/(tabs)/clients')} />
-          <BizQuickAction icon={<Users size={20} color={BIZLINK_COLORS.ink} strokeWidth={1.75} />} label="Tag-Along" onPress={() => router.push('/(tabs)/more/tag-along')} />
+          <BizQuickAction icon={<Plus size={20} color={BIZLINK_COLORS.ink} strokeWidth={1.75} />} label="Create Client" onPress={() => router.push(getDashboardActionHref('create-client', role))} />
+          <BizQuickAction icon={<Camera size={20} color={BIZLINK_COLORS.ink} strokeWidth={1.75} />} label="Record Meeting" onPress={() => router.push(getDashboardActionHref('record-meeting', role))} />
+          <BizQuickAction icon={<ClipboardList size={20} color={BIZLINK_COLORS.ink} strokeWidth={1.75} />} label="My Clients" onPress={() => router.push(getDashboardActionHref('my-clients', role))} />
+          <BizQuickAction icon={<Users size={20} color={BIZLINK_COLORS.ink} strokeWidth={1.75} />} label="Tag-Along" onPress={() => router.push(getDashboardActionHref('tag-along', role))} />
         </XStack>
 
-        {isRsr ? <RsrQuotaWidget meetings={meetings} /> : null}
+        {cutoffQuotaFlagOn && isCutoffQuotaRole ? (
+          <CutoffQuotaCard agentId={profileId} role={role} />
+        ) : isRsr ? (
+          <RsrQuotaWidget meetings={meetings} />
+        ) : null}
 
         {/* T-014 Phase 1 (ADR-024): shared, BizLink-styled — same worst-state-wins logic/copy as before. */}
         <SyncStatusChip key={syncChipKey} onPress={() => setSyncSheetOpen(true)} />
