@@ -4,7 +4,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { CircleAlert } from 'lucide-react-native';
 import { Spinner, Text, XStack, YStack } from 'tamagui';
-import { BIZLINK_COLORS, BIZLINK_FONTS } from '../../../lib/theme';
+import { BIZLINK_FONTS, useBizlinkColors } from '../../../lib/theme';
 import { useManagerApprovalFeed } from '../../../lib/use-manager-approval-feed';
 import { isLikelyOnline } from '../../../lib/sync/connectivity';
 import { decideClientEditRequest } from '../../../lib/client-edit-decision-service';
@@ -34,6 +34,7 @@ function formatDateTime(iso: string): string {
  * ADR-052 explicitly documents as contradicting this design.
  */
 export default function ManagerApprovalDetailScreen() {
+  const BIZLINK_COLORS = useBizlinkColors();
   const insets = useSafeAreaInsets();
   const { id } = useLocalSearchParams<{ id: string }>();
   const { rows, loading, error, reload } = useManagerApprovalFeed();

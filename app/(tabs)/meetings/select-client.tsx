@@ -3,7 +3,7 @@ import { FlatList, Pressable, RefreshControl } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router, useFocusEffect } from 'expo-router';
 import { Spinner, Text, XStack, YStack } from 'tamagui';
-import { BIZLINK_COLORS, BIZLINK_FONTS } from '../../../lib/theme';
+import { useBizlinkColors, BIZLINK_FONTS } from '../../../lib/theme';
 import { useClients } from '../../../lib/useClients';
 import { SALES_CLIENT_STATUS_BADGES, getClientStatus, isFastPathEligible } from '../../../lib/client-status';
 import { BizTopBar } from '../../../components/bizlink/BizTopBar';
@@ -83,6 +83,7 @@ function openRecordFlow(client: Client): void {
 }
 
 function ClientRow({ client }: { client: Client }) {
+  const BIZLINK_COLORS = useBizlinkColors();
   const status = getClientStatus(client);
   const badge = SALES_CLIENT_STATUS_BADGES[status];
   const hint = recordPickerHint(status);
@@ -108,6 +109,7 @@ function ClientRow({ client }: { client: Client }) {
 
 export default function SelectClientScreen() {
   const insets = useSafeAreaInsets();
+  const BIZLINK_COLORS = useBizlinkColors();
   const { clients, loading, refresh } = useClients();
   // Wireframe-Sales-BizLink.html:1549 — `var aRecordSelectedClientId = null,
   // aRecordPickerFilter = 'all';` — default filter is 'all', not 'existing'.

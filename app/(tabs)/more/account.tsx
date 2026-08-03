@@ -123,7 +123,7 @@ export default function AgentAccountScreen() {
             <Text fontSize={12.5} fontFamily={BIZLINK_FONTS.semibold} color={BIZLINK_COLORS.text}>Session policy</Text>
           </XStack>
           <Text fontSize={13} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} marginTop="$1" lineHeight={18}>
-            Naka-login ka buong araw kahit offline. Auto-logout tuwing 12:00 midnight.
+            Naka-login ka buong araw kahit offline. Walang midnight auto-logout — kapag naka-background ang app ng mahigit 1 oras, kailangan ng fingerprint o device credential para ma-unlock ulit.
           </Text>
         </BizCard>
 

@@ -233,7 +233,7 @@ export default function ClientsScreen() {
         <FlatList
           data={pageItems}
           keyExtractor={(item) => item.id}
-          contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 16, paddingTop: 20 }}
+          contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 16 + insets.bottom, paddingTop: 20 }}
           renderItem={({ item }) => (
             <ClientRow
               client={item}

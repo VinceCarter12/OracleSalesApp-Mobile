@@ -2,12 +2,12 @@ import { useCallback, useEffect, useState } from 'react';
 import { Alert, ScrollView } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
-import { Crosshair } from 'lucide-react-native';
-import { Spinner, Text, YStack } from 'tamagui';
+import { Crosshair, MapPin } from 'lucide-react-native';
+import { Spinner, Text, View, XStack, YStack } from 'tamagui';
 import { useSession } from '../../../lib/session-store';
 import { getClientById, setOfficeLocation, hasOfficePin } from '../../../lib/client-service';
 import { captureGps } from '../../../lib/gps';
-import { BIZLINK_COLORS, BIZLINK_FONTS } from '../../../lib/theme';
+import { useBizlinkColors, BIZLINK_FONTS, BIZLINK_ON_INK } from '../../../lib/theme';
 import { showToast } from '../../../lib/toast';
 import { BizTopBar } from '../../../components/bizlink/BizTopBar';
 import { BizCard } from '../../../components/bizlink/BizCard';
@@ -28,6 +28,7 @@ import type { Client } from '../../../types';
  */
 export default function OfficeLocationScreen() {
   const insets = useSafeAreaInsets();
+  const BIZLINK_COLORS = useBizlinkColors();
   const { clientId } = useLocalSearchParams<{ clientId: string }>();
   const { profileId } = useSession();
   const [client, setClient] = useState<Client | null>(null);
@@ -99,21 +100,76 @@ export default function OfficeLocationScreen() {
   }
 
   const hasPin = hasOfficePin(client.office_lat, client.office_lng);
+  // Real data-driven verified/unverified distinction (Wireframe-Sales-
+  // BizLink.html:1389 aOpenOfficeMap — verified = brand green pin, unverified
+  // = orange pin): maps directly onto the existing `office_pin_source`
+  // column rather than inventing a new field — 'client_office_meeting' is
+  // set only when a verified Client Office visit captured the pin (see
+  // lib/client-service.ts), 'manual' is this screen's own GPS capture.
+  const verified = hasPin && client.office_pin_source === 'client_office_meeting';
 
   return (
     <YStack flex={1} backgroundColor={BIZLINK_COLORS.canvas} paddingTop={insets.top}>
       <BizTopBar title="Office location" />
       <ScrollView contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 32 }}>
-        <BizCard gap="$2">
+        {/* Wireframe-Sales-BizLink.html:1389 aOpenOfficeMap() `.hero` pin
+            visual — dashed inset frame, centered pin circle (brand = verified,
+            orange = unverified, muted soft when no pin yet), micro caption
+            bottom-left. */}
+        <YStack
+          backgroundColor={BIZLINK_COLORS.ink}
+          borderRadius={24}
+          minHeight={170}
+          padding={18}
+          position="relative"
+          overflow="hidden"
+        >
+          <View
+            position="absolute"
+            top={18}
+            left={18}
+            right={18}
+            bottom={18}
+            borderRadius={18}
+            borderWidth={1}
+            borderStyle="dashed"
+            borderColor="rgba(255,255,255,0.32)"
+          />
+          <YStack flex={1} alignItems="center" justifyContent="center">
+            <View
+              width={48}
+              height={48}
+              borderRadius={24}
+              alignItems="center"
+              justifyContent="center"
+              backgroundColor={hasPin ? (verified ? BIZLINK_COLORS.brand : BIZLINK_COLORS.orange) : BIZLINK_ON_INK.circleFill}
+            >
+              <MapPin size={20} color={BIZLINK_ON_INK.solid} strokeWidth={1.75} />
+            </View>
+          </YStack>
+          <Text position="absolute" bottom={14} left={18} fontSize={11} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_ON_INK.solid}>
+            {hasPin ? (verified ? 'Verified office pin' : 'Unverified office pin') : 'No office pin saved'}
+          </Text>
+        </YStack>
+
+        <BizCard marginTop="$3" gap="$2">
           <Text fontFamily={BIZLINK_FONTS.semibold} fontSize={16} color={BIZLINK_COLORS.text}>
             {client.company_name}
           </Text>
           <Text fontSize={13.5} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted}>
-            {hasPin ? `${client.office_lat}, ${client.office_lng}` : 'Wala pang verified office location.'}
+            {hasPin ? (client.office_address ?? 'No address on file.') : 'Wala pang office location.'}
           </Text>
+          <XStack gap="$1.5" alignItems="center">
+            <Crosshair size={13} color={BIZLINK_COLORS.muted} strokeWidth={1.75} />
+            <Text fontSize={12} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted}>
+              {hasPin
+                ? `${client.office_lat}, ${client.office_lng} · ${verified ? 'verified' : 'unverified'} office location`
+                : 'No office pin saved.'}
+            </Text>
+          </XStack>
         </BizCard>
 
-        {/* Wireframe-Sales-BizLink.html:1301 "Pin data boundary" card, adapted from the demo's copy. */}
+        {/* Wireframe-Sales-BizLink.html:1389 "Pin data boundary" card, adapted from the demo's copy. */}
         <BizCard flat marginTop="$3" gap="$1.5">
           <Text fontSize={13} fontFamily={BIZLINK_FONTS.semibold} color={BIZLINK_COLORS.text}>
             Pin data boundary
@@ -133,7 +189,7 @@ export default function OfficeLocationScreen() {
         <YStack marginTop="$4">
           <BizButton
             label={saving ? 'Capturing…' : hasPin ? 'Update from GPS' : 'Set office location'}
-            icon={<Crosshair size={15} color={BIZLINK_COLORS.card} strokeWidth={1.75} />}
+            icon={<Crosshair size={15} color={BIZLINK_ON_INK.solid} strokeWidth={1.75} />}
             onPress={handleCapture}
             disabled={saving}
           />

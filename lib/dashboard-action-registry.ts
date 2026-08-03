@@ -28,6 +28,8 @@ export type DashboardActionId =
   | 'manager-clients'
   | 'manager-more'
   | 'manager-team'
+  | 'manager-create-client'
+  | 'manager-record-meeting'
   | 'executive-teams'
   | 'executive-clients'
   | 'executive-maps'
@@ -51,6 +53,15 @@ const DASHBOARD_ACTIONS: Record<DashboardActionId, DashboardActionDef> = {
   'manager-clients': { href: '/(manager)/more/clients' as Href, roles: ['sales_manager'] },
   'manager-more': { href: '/(manager)/more' as Href, roles: ['sales_manager'] },
   'manager-team': { href: '/(manager)/team' as Href, roles: ['sales_manager'] },
+  // Wireframe-Manager-BizLink.html s-home "Mga Gawain" (startManagerCreateClient/
+  // startManagerRecordMeeting): the manager's own client/record flow lives under
+  // `(manager)/clients` (F-205 reuse of the Sales screens, see
+  // lib/use-role-routes.ts), distinct from the team-wide `(manager)/more/clients`.
+  // There is no dedicated "select client" screen for Manager (unlike Sales'
+  // meetings/select-client) — the manager's own client list is the equivalent
+  // "pick a client first" destination for starting a meeting.
+  'manager-create-client': { href: '/(manager)/clients/create' as Href, roles: ['sales_manager'] },
+  'manager-record-meeting': { href: '/(manager)/clients' as Href, roles: ['sales_manager'] },
 
   'executive-teams': { href: '/(executive)/teams' as Href, roles: ['executive'] },
   'executive-clients': { href: '/(executive)/clients' as Href, roles: ['executive'] },

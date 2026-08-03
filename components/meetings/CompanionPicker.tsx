@@ -1,5 +1,5 @@
 import { Text, XStack } from 'tamagui';
-import { BIZLINK_COLORS, BIZLINK_FONTS } from '../../lib/theme';
+import { useBizlinkColors, BIZLINK_FONTS } from '../../lib/theme';
 import { inviteeKindForRole } from '../../lib/team-roster';
 import { BizChip } from '../bizlink/BizChip';
 import { BizSectionHeader } from '../bizlink/BizSectionHeader';
@@ -24,6 +24,7 @@ interface CompanionPickerProps {
  * which case this shows the offline helper and stays fully skippable.
  */
 export function CompanionPicker({ roster, selected, onToggle }: CompanionPickerProps) {
+  const BIZLINK_COLORS = useBizlinkColors();
   return (
     <>
       <BizSectionHeader title="Kasama sa visit" helper="optional · max 2" />

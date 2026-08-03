@@ -1,7 +1,7 @@
 import { Pressable } from 'react-native';
 import { router } from 'expo-router';
 import { Text, XStack, YStack } from 'tamagui';
-import { BIZLINK_COLORS, BIZLINK_FONTS } from '../../lib/theme';
+import { useBizlinkColors, BIZLINK_FONTS } from '../../lib/theme';
 import { Avatar } from '../ui/Avatar';
 
 interface SelectedClientCardProps {
@@ -13,6 +13,7 @@ interface SelectedClientCardProps {
  * (already near the 300-line file cap) stays under it.
  */
 export function SelectedClientCard({ clientName }: SelectedClientCardProps) {
+  const BIZLINK_COLORS = useBizlinkColors();
   return (
     <XStack
       alignItems="center"

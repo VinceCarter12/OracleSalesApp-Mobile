@@ -12,6 +12,9 @@ import { BizChip } from '../../../../components/bizlink/BizChip';
 import { BizButton } from '../../../../components/bizlink/BizButton';
 import { StatusBadge } from '../../../../components/ui/StatusBadge';
 import { meetingBadge } from '../../../../lib/meeting-badge';
+import { avatarPaletteFor } from '../../../../lib/avatar-palette';
+import { initialsFromName } from '../../../../lib/display-name';
+import { useSession } from '../../../../lib/session-store';
 import { MANAGER_OUTCOME_LABELS } from '../../../../types';
 
 /** Wireframe s-meetingdetail. Branches on fastPath (ADR-015) and meetingMode (ADR-012). Real data (B-054 Phase 1). */
@@ -19,6 +22,7 @@ export default function ManagerMeetingDetailScreen() {
   const insets = useSafeAreaInsets();
   const { id } = useLocalSearchParams<{ id: string }>();
   const { overview, loading, error, reload } = useTeamOverview();
+  const { profileId, fullName } = useSession();
 
   if (loading) {
     return (
@@ -47,7 +51,8 @@ export default function ManagerMeetingDetailScreen() {
   }
 
   const client = overview?.clients.find((c) => c.id === meeting.clientId);
-  const agent = overview?.agents.find((a) => a.id === meeting.agentId);
+  const agent = overview?.agents.find((a) => a.id === meeting.agentId)
+    ?? (profileId === meeting.agentId && fullName ? { id: profileId, name: fullName, initials: initialsFromName(fullName) } : undefined);
   const isOnline = meeting.meetingMode === 'online';
 
   const ModeBadge = isOnline ? (
@@ -60,9 +65,9 @@ export default function ManagerMeetingDetailScreen() {
   if (meeting.fastPath) {
     return (
       <YStack flex={1} backgroundColor={BIZLINK_COLORS.canvas} paddingTop={insets.top}>
-        <BizTopBar title="Meeting Detail" />
+        <BizTopBar title="Meeting Detail" fallbackHref="/(manager)/more/meetings" />
         <ScrollView contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 24 }}>
-          <HeaderCard agentName={agent?.name} clientName={client?.name} />
+          <HeaderCard agentName={agent?.name} agentId={agent?.id} initials={agent?.initials} clientName={client?.name} />
           <BizSectionHeader title="Status" />
           <XStack alignItems="center" gap="$2" flexWrap="wrap">
             {meetingBadge(meeting)}
@@ -108,9 +113,9 @@ export default function ManagerMeetingDetailScreen() {
 
   return (
     <YStack flex={1} backgroundColor={BIZLINK_COLORS.canvas} paddingTop={insets.top}>
-      <BizTopBar title="Meeting Detail" />
+      <BizTopBar title="Meeting Detail" fallbackHref="/(manager)/more/meetings" />
       <ScrollView contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 24 }}>
-        <HeaderCard agentName={agent?.name} clientName={client?.name} />
+        <HeaderCard agentName={agent?.name} agentId={agent?.id} initials={agent?.initials} clientName={client?.name} />
 
         <BizSectionHeader title="Outcome" />
         <XStack alignItems="center" gap="$2" flexWrap="wrap">
@@ -189,11 +194,12 @@ export default function ManagerMeetingDetailScreen() {
   );
 }
 
-function HeaderCard({ agentName, clientName }: { agentName?: string; clientName?: string }) {
+function HeaderCard({ agentName, agentId, initials, clientName }: { agentName?: string; agentId?: string; initials?: string; clientName?: string }) {
+  const palette = avatarPaletteFor(agentId ?? 'unassigned');
   return (
     <BizCard flexDirection="row" alignItems="center" gap="$3">
-      <YStack width={44} height={44} borderRadius={22} alignItems="center" justifyContent="center" backgroundColor={BIZLINK_COLORS.tintA}>
-        <Text fontFamily={BIZLINK_FONTS.semibold} fontSize={16} color={BIZLINK_COLORS.ink}>{agentName?.split(' ').map((n) => n[0]).join('')}</Text>
+      <YStack width={44} height={44} borderRadius={22} alignItems="center" justifyContent="center" backgroundColor={palette.background}>
+        <Text fontFamily={BIZLINK_FONTS.semibold} fontSize={16} color={palette.color}>{initials ?? agentName?.split(' ').map((name) => name[0]).join('') ?? '—'}</Text>
       </YStack>
       <YStack>
         <Text fontFamily={BIZLINK_FONTS.semibold} fontSize={16} color={BIZLINK_COLORS.text}>{clientName}</Text>

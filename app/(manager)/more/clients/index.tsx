@@ -7,11 +7,15 @@ import { Spinner, Text, XStack, YStack } from 'tamagui';
 import { BIZLINK_COLORS, BIZLINK_FONTS } from '../../../../lib/theme';
 import { CLIENT_STATUS_BADGES } from '../../../../lib/client-status';
 import { useTeamOverview } from '../../../../lib/use-team-overview';
+import { useManagerScope } from '../../../../lib/manager-scope-store';
+import { useSession } from '../../../../lib/session-store';
+import { initialsFromName } from '../../../../lib/display-name';
 import { avatarPaletteFor } from '../../../../lib/avatar-palette';
 import { computeTeamClientProgress } from '../../../../lib/team-remote-mappers';
 import { BizTopBar } from '../../../../components/bizlink/BizTopBar';
 import { BizChip } from '../../../../components/bizlink/BizChip';
 import { BizButton } from '../../../../components/bizlink/BizButton';
+import { BizScopeFilter } from '../../../../components/bizlink/BizScopeFilter';
 import { StatusBadge } from '../../../../components/ui/StatusBadge';
 import { Avatar } from '../../../../components/ui/Avatar';
 import { type ClientStatus, type TeamAgent, type TeamClient, type TeamMeeting } from '../../../../types';
@@ -29,14 +33,26 @@ const CLIENT_STATUS_FILTER_ORDER: readonly ClientStatus[] = ['prospect', 'in_pro
 /** Wireframe s-clients — filter by agent + status, team-wide view (manager's own clients live in the separate `(manager)/clients` tab, F-205). Real data (B-054 Phase 1). */
 export default function ManagerClientsScreen() {
   const insets = useSafeAreaInsets();
-  const { overview, loading, error, reload } = useTeamOverview();
+  const { scope } = useManagerScope();
+  const { profileId, fullName } = useSession();
+  const { overview, loading, error, reload } = useTeamOverview(scope);
   const [search, setSearch] = useState('');
   const [agentFilter, setAgentFilter] = useState<string | 'all'>('all');
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
+  const [lastScope, setLastScope] = useState(scope);
+
+  if (scope !== lastScope) {
+    setLastScope(scope);
+    setAgentFilter('all');
+  }
 
   const clients = overview?.clients ?? [];
   const meetings = overview?.meetings ?? [];
-  const agents = overview?.agents ?? [];
+  const teamAgents = overview?.agents ?? [];
+  const agents =
+    scope !== 'team' && profileId && fullName
+      ? [...teamAgents, { id: profileId, name: fullName, initials: initialsFromName(fullName), meetingsThisMonth: 0, activeClients: 0, successRate: 0 }]
+      : teamAgents;
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -64,6 +80,7 @@ export default function ManagerClientsScreen() {
         }
       />
       <YStack paddingHorizontal="$4" gap="$2.5">
+        <BizScopeFilter />
         <XStack alignItems="center" backgroundColor={BIZLINK_COLORS.card} borderWidth={1} borderColor={BIZLINK_COLORS.line} borderRadius={16} height={52} paddingHorizontal={16} gap="$2">
           <Search size={16} color={BIZLINK_COLORS.muted} strokeWidth={1.75} />
           <TextInput
@@ -74,15 +91,19 @@ export default function ManagerClientsScreen() {
             style={{ flex: 1, fontFamily: BIZLINK_FONTS.medium, fontSize: 14.5, color: BIZLINK_COLORS.text }}
           />
         </XStack>
-        <Text fontSize={11} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} letterSpacing={0.4}>Filter by agent</Text>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-          <XStack gap="$2">
-            <BizChip label="All" selected={agentFilter === 'all'} onPress={() => setAgentFilter('all')} />
-            {agents.map((a) => (
-              <BizChip key={a.id} label={a.name.split(' ')[0]} selected={agentFilter === a.id} onPress={() => setAgentFilter(a.id)} />
-            ))}
-          </XStack>
-        </ScrollView>
+        {scope !== 'mine' ? (
+          <>
+            <Text fontSize={11} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} letterSpacing={0.4}>Filter by agent</Text>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+              <XStack gap="$2">
+                <BizChip label="All" selected={agentFilter === 'all'} onPress={() => setAgentFilter('all')} />
+                {agents.map((a) => (
+                  <BizChip key={a.id} label={a.name.split(' ')[0]} selected={agentFilter === a.id} onPress={() => setAgentFilter(a.id)} />
+                ))}
+              </XStack>
+            </ScrollView>
+          </>
+        ) : null}
         <Text fontSize={11} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} letterSpacing={0.4}>Filter by status</Text>
         <ScrollView horizontal showsHorizontalScrollIndicator={false}>
           <XStack gap="$2">

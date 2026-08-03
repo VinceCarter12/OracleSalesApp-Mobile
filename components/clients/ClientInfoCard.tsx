@@ -1,5 +1,5 @@
 import { Text, YStack } from 'tamagui';
-import { BIZLINK_COLORS, BIZLINK_FONTS } from '../../lib/theme';
+import { useBizlinkColors, BIZLINK_FONTS } from '../../lib/theme';
 import type { Client } from '../../types';
 
 interface ClientInfoCardProps {
@@ -7,6 +7,7 @@ interface ClientInfoCardProps {
 }
 
 function InfoRow({ label, value }: { label: string; value: string }) {
+  const BIZLINK_COLORS = useBizlinkColors();
   return (
     <YStack gap="$0.5">
       <Text fontSize={11} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted}>{label}</Text>
@@ -20,6 +21,7 @@ function InfoRow({ label, value }: { label: string; value: string }) {
  * agent can view the record during a meeting without any form to fill (ADR-015).
  */
 export function ClientInfoCard({ client }: ClientInfoCardProps) {
+  const BIZLINK_COLORS = useBizlinkColors();
   return (
     <YStack
       gap="$3"

@@ -8,7 +8,7 @@ import { getClientById, checkCompanyNameDuplicate, DuplicateCompanyNameError } f
 import { getPendingEditRequestForClient, ClientNotFoundLocallyError, type ClientEditRequest } from '../../../lib/client-edit-request-service';
 import { submitCompleteInfo } from '../../../lib/complete-info-submit';
 import { AccountSuspendedError } from '../../../lib/app-lock/account-status';
-import { BIZLINK_COLORS, BIZLINK_FONTS } from '../../../lib/theme';
+import { useBizlinkColors, BIZLINK_FONTS } from '../../../lib/theme';
 import { showToast } from '../../../lib/toast';
 import { isInfoComplete } from '../../../lib/client-progress';
 import { BizTopBar } from '../../../components/bizlink/BizTopBar';
@@ -33,6 +33,7 @@ type DupState = 'idle' | 'checking' | 'duplicate' | 'available';
  */
 export default function CompleteInfoScreen() {
   const insets = useSafeAreaInsets();
+  const BIZLINK_COLORS = useBizlinkColors();
   const { profileId, role, markSuspended } = useSession();
   const { clientId } = useLocalSearchParams<{ clientId: string }>();
   const [client, setClient] = useState<Client | null>(null);
@@ -195,22 +196,22 @@ export default function CompleteInfoScreen() {
             ) : null
           }
         />
-        <BizField label="Contact Person" value={contactPerson} onChangeText={setContactPerson} placeholder="Full name" />
+        <BizField label="CONTACT PERSON" value={contactPerson} onChangeText={setContactPerson} placeholder="Full name" />
         <BizField
-          label="Position (decision-maker lang)"
+          label="POSITION (decision-maker lang: purchasing/CEO/owner)"
           value={position}
           onChangeText={setPosition}
           placeholder="e.g. Purchasing Manager"
         />
         <BizField
-          label="Contact Number"
+          label="CONTACT NUMBER"
           value={contactNumber}
           onChangeText={setContactNumber}
           placeholder="09xx xxx xxxx"
           keyboardType="phone-pad"
         />
         <BizField
-          label="Office Address"
+          label="OFFICE ADDRESS"
           value={officeAddress}
           onChangeText={setOfficeAddress}
           placeholder="Complete address"
@@ -246,7 +247,7 @@ export default function CompleteInfoScreen() {
 
         <YStack marginTop="$5">
           <BizButton
-            label={saving ? 'Saving…' : firstTime || isManagerOwnClient ? 'Save Info' : 'Submit for approval'}
+            label={saving ? 'Saving…' : firstTime || isManagerOwnClient ? 'Save info' : 'Submit for approval'}
             onPress={handleSubmit}
             disabled={!canSubmit}
           />

@@ -22,17 +22,23 @@ export default function AgentDetailScreen() {
 
   if (loading) {
     return (
-      <YStack flex={1} justifyContent="center" alignItems="center" backgroundColor={BIZLINK_COLORS.canvas}>
-        <Spinner size="large" color={BIZLINK_COLORS.brand} />
+      <YStack flex={1} backgroundColor={BIZLINK_COLORS.canvas} paddingTop={insets.top}>
+        <BizTopBar title="Agent" fallbackHref="/(manager)/team" />
+        <YStack flex={1} justifyContent="center" alignItems="center">
+          <Spinner size="large" color={BIZLINK_COLORS.brand} />
+        </YStack>
       </YStack>
     );
   }
 
   if (error) {
     return (
-      <YStack flex={1} justifyContent="center" alignItems="center" backgroundColor={BIZLINK_COLORS.canvas} gap="$3" paddingHorizontal="$5">
-        <Text fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} textAlign="center">{error}</Text>
-        <BizButton small label="Ulitin" variant="white" onPress={reload} />
+      <YStack flex={1} backgroundColor={BIZLINK_COLORS.canvas} paddingTop={insets.top}>
+        <BizTopBar title="Agent" fallbackHref="/(manager)/team" />
+        <YStack flex={1} justifyContent="center" alignItems="center" gap="$3" paddingHorizontal="$5">
+          <Text fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} textAlign="center">{error}</Text>
+          <BizButton small label="Ulitin" variant="white" onPress={reload} />
+        </YStack>
       </YStack>
     );
   }
@@ -40,8 +46,11 @@ export default function AgentDetailScreen() {
   const agent = overview?.agents.find((a) => a.id === agentId);
   if (!agent) {
     return (
-      <YStack flex={1} justifyContent="center" alignItems="center" backgroundColor={BIZLINK_COLORS.canvas}>
-        <Text fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted}>Agent not found.</Text>
+      <YStack flex={1} backgroundColor={BIZLINK_COLORS.canvas} paddingTop={insets.top}>
+        <BizTopBar title="Agent" fallbackHref="/(manager)/team" />
+        <YStack flex={1} justifyContent="center" alignItems="center" paddingHorizontal="$5">
+          <Text fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} textAlign="center">Agent not found.</Text>
+        </YStack>
       </YStack>
     );
   }
@@ -51,7 +60,7 @@ export default function AgentDetailScreen() {
 
   return (
     <YStack flex={1} backgroundColor={BIZLINK_COLORS.canvas} paddingTop={insets.top}>
-      <BizTopBar title={agent.name.split(' ')[0]} />
+      <BizTopBar title={agent.name.split(' ')[0]} fallbackHref="/(manager)/team" />
       <ScrollView contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 24 }}>
         <XStack alignItems="center" gap="$3.5" backgroundColor={BIZLINK_COLORS.card} borderRadius={24} padding={18}>
           <Avatar initials={agent.initials} size="lg" background={avatarPaletteFor(agent.id).background} color={avatarPaletteFor(agent.id).color} />
@@ -62,9 +71,9 @@ export default function AgentDetailScreen() {
         </XStack>
 
         <XStack gap={10} marginTop={14}>
-          <StatBox value={agent.meetingsThisMonth} label="Meetings this mo." />
-          <StatBox value={agent.activeClients} label="Active clients" />
-          <StatBox value={`${agent.successRate}%`} label="Success rate" />
+          <StatBox value={agent.meetingsThisMonth} label="Meetings" color={BIZLINK_COLORS.text} />
+          <StatBox value={agent.activeClients} label="Clients" color={BIZLINK_COLORS.navy} />
+          <StatBox value={`${agent.successRate}%`} label="Success rate" color={BIZLINK_COLORS.orange} />
         </XStack>
 
         <BizSectionHeader title="Clients handled" />
@@ -128,10 +137,10 @@ export default function AgentDetailScreen() {
   );
 }
 
-function StatBox({ value, label }: { value: number | string; label: string }) {
+function StatBox({ value, label, color }: { value: number | string; label: string; color: string }) {
   return (
     <YStack flex={1} backgroundColor={BIZLINK_COLORS.card} borderRadius={20} padding={14}>
-      <Text fontSize={20} fontFamily={BIZLINK_FONTS.semibold} color={BIZLINK_COLORS.brand}>{value}</Text>
+      <Text fontSize={24} fontFamily={BIZLINK_FONTS.semibold} color={color}>{value}</Text>
       <Text fontSize={11.5} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted}>{label}</Text>
     </YStack>
   );

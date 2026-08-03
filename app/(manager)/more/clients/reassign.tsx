@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { ScrollView } from 'react-native';
+import { ScrollView, TextInput } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { Spinner, Text, XStack, YStack } from 'tamagui';
@@ -10,10 +10,11 @@ import { avatarPaletteFor } from '../../../../lib/avatar-palette';
 import { isLikelyOnline } from '../../../../lib/sync/connectivity';
 import {
   fetchTeamReassignCandidates,
-  reassignClient,
+  reassignTeamClient,
   ReassignConflictError,
   type TeamAgentOption,
 } from '../../../../lib/manager-client-service';
+import { isReassignSuccess, mapReassignResponseCode } from '../../../../lib/policies/reassignment-response-policy';
 import { BizTopBar } from '../../../../components/bizlink/BizTopBar';
 import { BizButton } from '../../../../components/bizlink/BizButton';
 import { Avatar } from '../../../../components/ui/Avatar';
@@ -29,6 +30,7 @@ export default function ReassignClientScreen() {
   const [candidatesLoading, setCandidatesLoading] = useState(true);
   const [candidatesError, setCandidatesError] = useState<string | null>(null);
   const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null);
+  const [reason, setReason] = useState('');
   const [online, setOnline] = useState(true);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -65,16 +67,21 @@ export default function ReassignClientScreen() {
   );
 
   async function confirm(): Promise<void> {
-    if (!selectedAgentId || !client) return;
+    if (!selectedAgentId || !client || !reason.trim()) return;
     setSubmitting(true);
     setSubmitError(null);
     try {
-      await reassignClient({
+      const result = await reassignTeamClient({
         clientId: client.id,
         fromAgentProfileId: client.agentId,
         toAgentProfileId: selectedAgentId,
+        reason: reason.trim(),
       });
-      router.replace(`/(manager)/more/clients/${encodeURIComponent(client.id)}`);
+      if (isReassignSuccess(result.code)) {
+        router.replace(`/(manager)/more/clients/${encodeURIComponent(client.id)}`);
+        return;
+      }
+      setSubmitError(mapReassignResponseCode(result.code));
     } catch (err) {
       if (err instanceof ReassignConflictError) {
         setSubmitError('Nailipat na ang client na ito sa ibang agent — i-refresh at subukan ulit.');
@@ -180,6 +187,20 @@ export default function ReassignClientScreen() {
           })
         )}
 
+        <YStack marginTop="$2" gap="$1.5">
+          <Text fontSize={11} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} letterSpacing={0.4}>Reason for reassignment</Text>
+          <TextInput
+            value={reason}
+            onChangeText={setReason}
+            placeholder="Ilagay ang dahilan ng reassignment"
+            placeholderTextColor={BIZLINK_COLORS.muted}
+            multiline
+            textAlignVertical="top"
+            style={{ minHeight: 96, borderRadius: 16, backgroundColor: BIZLINK_COLORS.card, borderWidth: 1, borderColor: BIZLINK_COLORS.line, padding: 14, fontFamily: BIZLINK_FONTS.medium, fontSize: 14, color: BIZLINK_COLORS.text }}
+          />
+          <Text fontSize={12} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted}>Required ito para sa permanent audit trail. Online-only ang reassignment.</Text>
+        </YStack>
+
         {submitError ? (
           <Text fontSize={12.5} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.red} marginTop="$2.5" textAlign="center">
             {submitError}
@@ -189,7 +210,7 @@ export default function ReassignClientScreen() {
         <YStack marginTop="$4">
           <BizButton
             label={submitting ? 'Nire-reassign…' : 'Confirm Reassignment'}
-            disabled={!selectedAgentId || !online || submitting}
+            disabled={!selectedAgentId || !reason.trim() || !online || submitting}
             onPress={confirm}
           />
         </YStack>

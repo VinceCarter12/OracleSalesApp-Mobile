@@ -3,7 +3,7 @@ import { Alert, Image, Pressable } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { Spinner, Text, YStack } from 'tamagui';
 import { captureGps } from '../../lib/gps';
-import { BIZLINK_COLORS, BIZLINK_FONTS } from '../../lib/theme';
+import { useBizlinkColors, BIZLINK_FONTS, BIZLINK_ON_INK } from '../../lib/theme';
 import { BizButton } from '../bizlink/BizButton';
 import { PhotoLightbox } from './PhotoLightbox';
 
@@ -73,6 +73,7 @@ export function PhotoCapture({
   onConfirm,
   disabled = false,
 }: PhotoCaptureProps) {
+  const BIZLINK_COLORS = useBizlinkColors();
   const [photo, setPhoto] = useState<CapturedPhoto | null>(null);
   const [busy, setBusy] = useState(false);
   const [locked, setLocked] = useState(false);
@@ -139,7 +140,10 @@ export function PhotoCapture({
           variant="brand"
           onPress={capture}
           disabled={busy || disabled}
-          icon={busy ? <Spinner color={BIZLINK_COLORS.card} /> : undefined}
+          // BIZLINK_COLORS.card is a theme-reactive surface color, not a
+          // valid foreground on this brand-colored button — see
+          // Design-System-Catalog §6 (BIZLINK_ON_INK.solid stays white).
+          icon={busy ? <Spinner color={BIZLINK_ON_INK.solid} /> : undefined}
         />
       )}
     </YStack>
