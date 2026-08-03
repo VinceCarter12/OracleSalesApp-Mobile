@@ -1,6 +1,6 @@
 import { TriangleAlert } from 'lucide-react-native';
 import { Spinner, Text, XStack, YStack } from 'tamagui';
-import { BIZLINK_COLORS, BIZLINK_FONTS } from '../../lib/theme';
+import { useBizlinkColors, BIZLINK_FONTS } from '../../lib/theme';
 import { BizCard } from '../bizlink/BizCard';
 import { BizSectionHeader } from '../bizlink/BizSectionHeader';
 import { AgendaChecklist } from './AgendaChecklist';
@@ -35,6 +35,7 @@ export function VisitInProgressPanel({
   saving,
   onConfirm,
 }: VisitInProgressPanelProps) {
+  const BIZLINK_COLORS = useBizlinkColors();
   return (
     <YStack marginTop="$4" gap="$4">
       <BizCard flat borderRadius={20}>

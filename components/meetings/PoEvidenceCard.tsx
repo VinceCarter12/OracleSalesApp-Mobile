@@ -1,6 +1,6 @@
 import { FileCheck2, Paperclip, Check } from 'lucide-react-native';
 import { Text, YStack } from 'tamagui';
-import { BIZLINK_COLORS, BIZLINK_FONTS } from '../../lib/theme';
+import { useBizlinkColors, BIZLINK_FONTS } from '../../lib/theme';
 import { BizButton } from '../bizlink/BizButton';
 
 interface PoEvidenceCardProps {
@@ -20,6 +20,7 @@ interface PoEvidenceCardProps {
  * this presentational card.
  */
 export function PoEvidenceCard({ visible, photoUri, capturing, onCapture }: PoEvidenceCardProps) {
+  const BIZLINK_COLORS = useBizlinkColors();
   if (!visible) return null;
 
   return (

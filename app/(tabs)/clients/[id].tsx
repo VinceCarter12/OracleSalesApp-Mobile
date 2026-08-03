@@ -14,7 +14,7 @@ import {
   COMPANION_REQUEST_BADGE_TONES,
   type ClientCompanionRequest,
 } from '../../../lib/tag-along-service';
-import { OUTCOME_BADGE_STYLES, BIZLINK_COLORS, BIZLINK_FONTS } from '../../../lib/theme';
+import { OUTCOME_BADGE_STYLES, useBizlinkColors, BIZLINK_FONTS, BIZLINK_ON_INK } from '../../../lib/theme';
 import { SALES_CLIENT_STATUS_BADGES, getClientStatus, WAITING_MANAGER_APPROVAL_BADGE } from '../../../lib/client-status';
 import { getClientProgressBreakdown, getInfoChecklist, isInfoComplete } from '../../../lib/client-progress';
 import { useMeetings } from '../../../lib/useMeetings';
@@ -25,10 +25,20 @@ import { BizSectionHeader } from '../../../components/bizlink/BizSectionHeader';
 import { BizButton } from '../../../components/bizlink/BizButton';
 import { ProgressRing } from '../../../components/ui/ProgressRing';
 import { StatusBadge } from '../../../components/ui/StatusBadge';
-import type { Client } from '../../../types';
+import type { Client, ClientStatus } from '../../../types';
+
+// Wireframe-Sales-BizLink.html `#a-detailStageRail`/`.stage-labels` (lines
+// 604-605): 4-segment lifecycle rail, matches ADR-042's four-stage lifecycle
+// (ClientStatus). 'inactive' is a terminal/dead-end status outside this
+// progression (not part of the wireframe rail) — STAGE_ORDER.indexOf returns
+// -1 for it, which correctly renders the rail as not-yet-reached rather than
+// guessing a position for it.
+const STAGE_ORDER: ClientStatus[] = ['prospect', 'in_progress', 'new', 'existing'];
+const STAGE_LABELS = ['Prospect', 'In Progress', 'New', 'Existing'];
 
 export default function ClientDetailScreen() {
   const insets = useSafeAreaInsets();
+  const BIZLINK_COLORS = useBizlinkColors();
   const { id } = useLocalSearchParams<{ id: string }>();
   const { profileId } = useSession();
   const routes = useClientFlowRoutes();
@@ -113,7 +123,12 @@ export default function ClientDetailScreen() {
       <BizTopBar title="Client" fallbackHref={routes.clientList()} />
       <ScrollView contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 24 }}>
         <BizCard flexDirection="row" alignItems="center" gap="$3.5">
-          <ProgressRing percent={progress} />
+          <ProgressRing
+            percent={progress}
+            trackColor={BIZLINK_COLORS.line}
+            fillColor={BIZLINK_COLORS.brand}
+            textColor={BIZLINK_COLORS.text}
+          />
           <YStack flex={1} gap="$1.5">
             <Text fontFamily={BIZLINK_FONTS.semibold} fontSize={17} color={BIZLINK_COLORS.text} lineHeight={20}>
               {client.company_name}
@@ -142,6 +157,39 @@ export default function ClientDetailScreen() {
             />
           </YStack>
         </BizCard>
+
+        {/* Wireframe-Sales-BizLink.html `#a-detailStageRail`/`.stage-labels`
+            (lines 604-605): 4-segment lifecycle rail driven by the client's
+            real `status` field — same STAGE_ORDER used for indexOf below. */}
+        <XStack gap="$1.5" marginTop="$3" marginBottom="$1">
+          {STAGE_ORDER.map((stage, index) => {
+            const stageIndex = STAGE_ORDER.indexOf(status);
+            const reached = stageIndex >= 0 && index <= stageIndex;
+            return (
+              <View
+                key={stage}
+                flex={1}
+                height={6}
+                borderRadius={99}
+                backgroundColor={reached ? BIZLINK_COLORS.brand : BIZLINK_COLORS.line}
+              />
+            );
+          })}
+        </XStack>
+        <XStack marginBottom="$1">
+          {STAGE_LABELS.map((label) => (
+            <Text
+              key={label}
+              flex={1}
+              textAlign="center"
+              fontSize={8.5}
+              fontFamily={BIZLINK_FONTS.semibold}
+              color={BIZLINK_COLORS.muted}
+            >
+              {label}
+            </Text>
+          ))}
+        </XStack>
 
         {/* ADR-030 Pass 2: requester-side companion-request status — no
             literal wireframe markup exists for client-detail specifically
@@ -200,7 +248,7 @@ export default function ClientDetailScreen() {
                 alignItems="center"
                 justifyContent="center"
               >
-                {item.done ? <Check size={12} color={BIZLINK_COLORS.card} strokeWidth={1.75} /> : null}
+                {item.done ? <Check size={12} color={BIZLINK_ON_INK.solid} strokeWidth={1.75} /> : null}
               </View>
               <Text
                 fontSize={13.5}
@@ -240,7 +288,7 @@ export default function ClientDetailScreen() {
             <YStack flex={1} minWidth={140}>
               <BizButton
                 label="Qualify Opportunity"
-                icon={<Handshake size={15} color={BIZLINK_COLORS.card} strokeWidth={1.75} />}
+                icon={<Handshake size={15} color={BIZLINK_ON_INK.solid} strokeWidth={1.75} />}
                 onPress={() => router.push(routes.recordMeeting(client.id))}
               />
             </YStack>

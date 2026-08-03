@@ -1,6 +1,6 @@
 import { Modal, Pressable } from 'react-native';
 import { Text, XStack, YStack } from 'tamagui';
-import { BIZLINK_COLORS, BIZLINK_FONTS } from '../../lib/theme';
+import { useBizlinkColors, BIZLINK_FONTS } from '../../lib/theme';
 import { BizButton } from '../bizlink/BizButton';
 
 interface LostOpportunityDialogProps {
@@ -11,6 +11,7 @@ interface LostOpportunityDialogProps {
 
 /** Wireframe a-lostDlg — confirms before marking a meeting outcome as Lost Opportunity. */
 export function LostOpportunityDialog({ visible, onCancel, onConfirm }: LostOpportunityDialogProps) {
+  const BIZLINK_COLORS = useBizlinkColors();
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onCancel}>
       <Pressable

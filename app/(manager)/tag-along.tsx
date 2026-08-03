@@ -4,7 +4,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect } from 'expo-router';
 import { CircleCheckBig } from 'lucide-react-native';
 import { Spinner, Text, XStack, YStack } from 'tamagui';
-import { BIZLINK_COLORS, BIZLINK_FONTS } from '../../lib/theme';
+import { BIZLINK_FONTS, useBizlinkColors } from '../../lib/theme';
 import { useSession } from '../../lib/session-store';
 import {
   getIncomingCompanionRequests,
@@ -18,6 +18,7 @@ import {
   COMPANION_REQUEST_BADGE_TONES,
 } from '../../lib/tag-along-service';
 import { BizButton } from '../../components/bizlink/BizButton';
+import { BizTopBar } from '../../components/bizlink/BizTopBar';
 import { Avatar } from '../../components/ui/Avatar';
 import { StatusBadge } from '../../components/ui/StatusBadge';
 
@@ -34,6 +35,7 @@ import { StatusBadge } from '../../components/ui/StatusBadge';
  * screen is now accept/decline only.
  */
 export default function TagAlongRequestsScreen() {
+  const BIZLINK_COLORS = useBizlinkColors();
   const insets = useSafeAreaInsets();
   const { profileId } = useSession();
 
@@ -87,9 +89,7 @@ export default function TagAlongRequestsScreen() {
 
   return (
     <YStack flex={1} backgroundColor={BIZLINK_COLORS.canvas} paddingTop={insets.top}>
-      <XStack alignItems="center" paddingHorizontal="$4" paddingTop="$2.5" paddingBottom="$1.5">
-        <Text fontFamily={BIZLINK_FONTS.semibold} fontSize={21} color={BIZLINK_COLORS.text}>Tag-Along Requests</Text>
-      </XStack>
+      <BizTopBar title="Tag-Along Requests" />
       <ScrollView contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 24 }}>
         <Text fontSize={13} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} marginBottom="$3" lineHeight={19}>
           Hindi ka na gumagawa ng sariling meeting record. Ang sales rep ang nagre-record ng buong client visit
@@ -174,12 +174,14 @@ export default function TagAlongRequestsScreen() {
 }
 
 function SectionLabel({ title }: { title: string }) {
+  const BIZLINK_COLORS = useBizlinkColors();
   return (
     <Text fontFamily={BIZLINK_FONTS.semibold} fontSize={16} color={BIZLINK_COLORS.text} marginTop="$4" marginBottom="$2">{title}</Text>
   );
 }
 
 function EmptyState({ icon, label }: { icon?: React.ReactNode; label: string }) {
+  const BIZLINK_COLORS = useBizlinkColors();
   return (
     <YStack alignItems="center" paddingVertical="$5" gap="$2">
       {icon ?? <CircleCheckBig size={28} color={BIZLINK_COLORS.muted} strokeWidth={1.75} />}

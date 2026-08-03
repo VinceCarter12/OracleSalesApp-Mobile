@@ -1,7 +1,7 @@
 import { Image, Pressable } from 'react-native';
 import { Camera, Check } from 'lucide-react-native';
 import { Text, XStack, YStack } from 'tamagui';
-import { BIZLINK_COLORS, BIZLINK_ON_INK, BIZLINK_FONTS } from '../../lib/theme';
+import { useBizlinkColors, BIZLINK_ON_INK, BIZLINK_FONTS } from '../../lib/theme';
 import { BizButton } from '../bizlink/BizButton';
 
 interface AutoCapturedPanelProps {
@@ -25,6 +25,7 @@ export function AutoCapturedPanel({
   onPreviewPress,
   onRetryLocation,
 }: AutoCapturedPanelProps) {
+  const BIZLINK_COLORS = useBizlinkColors();
   const gpsFailed = !loadingLocation && !location;
   return (
     <>
@@ -34,7 +35,10 @@ export function AutoCapturedPanel({
       <YStack backgroundColor={BIZLINK_COLORS.ink} borderRadius={24} padding={16} gap="$2.5">
         <XStack alignItems="center" gap="$2" flexWrap="wrap">
           <Check size={14} color="#8FD7B4" strokeWidth={1.75} />
-          <Text fontSize={12.5} fontFamily={BIZLINK_FONTS.semibold} color={BIZLINK_COLORS.card}>GPS</Text>
+          {/* Design-System-Catalog §6: BIZLINK_COLORS.card is a theme-reactive
+              surface color, never a foreground on the always-dark `ink` bg —
+              use BIZLINK_ON_INK.solid so this stays white in both themes. */}
+          <Text fontSize={12.5} fontFamily={BIZLINK_FONTS.semibold} color={BIZLINK_ON_INK.solid}>GPS</Text>
           <Text fontSize={12.5} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_ON_INK.textMuted}>
             {loadingLocation
               ? 'Capturing…'
@@ -56,7 +60,7 @@ export function AutoCapturedPanel({
         </XStack>
         <XStack alignItems="center" gap="$2">
           <Check size={14} color="#8FD7B4" strokeWidth={1.75} />
-          <Text fontSize={12.5} fontFamily={BIZLINK_FONTS.semibold} color={BIZLINK_COLORS.card}>Date & time</Text>
+          <Text fontSize={12.5} fontFamily={BIZLINK_FONTS.semibold} color={BIZLINK_ON_INK.solid}>Date & time</Text>
           <Text fontSize={12.5} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_ON_INK.textMuted}>{new Date().toLocaleString()}</Text>
         </XStack>
         <XStack alignItems="center" gap="$3">
@@ -66,11 +70,11 @@ export function AutoCapturedPanel({
             </Pressable>
           ) : (
             <YStack width={56} height={56} borderRadius={16} backgroundColor={BIZLINK_ON_INK.circleFill} alignItems="center" justifyContent="center">
-              <Camera size={20} color={BIZLINK_COLORS.card} strokeWidth={1.75} />
+              <Camera size={20} color={BIZLINK_ON_INK.solid} strokeWidth={1.75} />
             </YStack>
           )}
           <YStack flex={1}>
-            <Text fontSize={12} fontFamily={BIZLINK_FONTS.semibold} color={BIZLINK_COLORS.card}>Selfie — camera only</Text>
+            <Text fontSize={12} fontFamily={BIZLINK_FONTS.semibold} color={BIZLINK_ON_INK.solid}>Selfie — camera only</Text>
             <Text fontSize={11} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_ON_INK.textMuted}>Compressed ≤3MB · naka-save locally</Text>
             <YStack marginTop="$1.5">
               <BizButton small label={photoUri ? 'Retake' : 'Open Camera'} variant="white" onPress={onOpenCamera} />

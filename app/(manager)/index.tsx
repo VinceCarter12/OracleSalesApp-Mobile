@@ -2,7 +2,7 @@ import { useCallback, useState } from 'react';
 import { Pressable, ScrollView } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router, useFocusEffect } from 'expo-router';
-import { Bell, Building2, Ellipsis, History, Hourglass, PenLine, Users } from 'lucide-react-native';
+import { BarChart3, Bell, Building2, CalendarDays, Handshake, History, Hourglass, Map, PenLine, Plus, ShieldCheck, UserRound, Users } from 'lucide-react-native';
 import { Spinner, Text, XStack, YStack } from 'tamagui';
 import { BIZLINK_COLORS, BIZLINK_FONTS, OUTCOME_BADGE_STYLES } from '../../lib/theme';
 import { useManagerDashboard } from '../../lib/useManagerDashboard';
@@ -16,6 +16,7 @@ import { StatusBadge } from '../../components/ui/StatusBadge';
 import { BizStatCard } from '../../components/bizlink/BizStatCard';
 import { BizHeroCard } from '../../components/bizlink/BizHeroCard';
 import { BizSectionHeader } from '../../components/bizlink/BizSectionHeader';
+import { BizPrimaryActionCard } from '../../components/bizlink/BizPrimaryActionCard';
 import { BizQuickAction } from '../../components/bizlink/BizQuickAction';
 import { BizScopeFilter } from '../../components/bizlink/BizScopeFilter';
 import { AvatarStatusRing } from '../../components/bizlink/AvatarStatusRing';
@@ -189,43 +190,50 @@ export default function ManagerDashboardScreen() {
           onPress={() => router.push('/(manager)/more/meetings')}
         />
 
-        <BizSectionHeader title="Quick Actions" />
-        <XStack gap="$2.5" flexWrap="wrap">
-          {/* Batch 6 PR B (ADR-052, F-205 reversal): Wireframe-Manager-BizLink.html
-              line 487's "Approvals" Quick Action, restored — client-edit +
-              PO-confirmation requests only (Wireframe line 687: tag-along
-              keeps its own separate flow below, unchanged). No live pending
-              count wired here yet (kept minimal for this PR's "safe, empty
-              inbox" phased-rollout step, ADR-052 section K.6) — the badge
-              this had in the wireframe (`qaApprovalDot`) can follow in a
-              later pass once the inbox has real request volume to count. */}
-          <BizQuickAction
-            icon={<PenLine size={20} color={BIZLINK_COLORS.ink} strokeWidth={1.75} />}
-            label="Approvals"
-            onPress={() => router.push('/(manager)/approvals')}
+        <BizSectionHeader title="Mga Gawain" />
+        <XStack gap="$2.5">
+          {/* Existing manager-local create and record flows, arranged as the
+              two primary s-home actions. */}
+          <BizPrimaryActionCard
+            variant="dark"
+            icon={<Plus size={18} color="#FFFFFF" strokeWidth={1.75} />}
+            title="Gumawa ng client"
+            subtitle="Company at city muna"
+            onPress={() => router.push('/(manager)/clients/create')}
           />
-          <BizQuickAction
-            icon={<Users size={20} color={BIZLINK_COLORS.ink} strokeWidth={1.75} />}
-            label="Tag-Along"
-            badgeCount={pendingTagAlongCount}
-            onPress={() => router.push('/(manager)/tag-along')}
-          />
-          <BizQuickAction
-            icon={<History size={20} color={BIZLINK_COLORS.ink} strokeWidth={1.75} />}
-            label="Sales History"
-            onPress={() => router.push('/(manager)/more/meetings')}
-          />
-          <BizQuickAction
-            icon={<Building2 size={20} color={BIZLINK_COLORS.ink} strokeWidth={1.75} />}
-            label="Clients"
-            onPress={() => router.push('/(manager)/more/clients')}
-          />
-          <BizQuickAction
-            icon={<Ellipsis size={20} color={BIZLINK_COLORS.ink} strokeWidth={1.75} />}
-            label="More"
-            onPress={() => router.push('/(manager)/more')}
+          <BizPrimaryActionCard
+            variant="alt"
+            icon={<Handshake size={18} color={BIZLINK_COLORS.ink} strokeWidth={1.75} />}
+            title="I-record ang meeting"
+            subtitle="Pumili muna ng client"
+            onPress={() => router.push('/(manager)/clients')}
           />
         </XStack>
+
+        {/* s-home "Manager Actions": a fixed three-column dashboard hub.
+            Each item retains an existing route; unavailable wireframe-only
+            destinations are deliberately not rendered as fake actions. */}
+        <BizSectionHeader title="Manager Actions" />
+        <YStack gap="$3">
+          <XStack justifyContent="space-between">
+            <BizQuickAction icon={<PenLine size={20} color={BIZLINK_COLORS.ink} strokeWidth={1.75} />} label="Approvals" onPress={() => router.push('/(manager)/approvals')} />
+            <BizQuickAction icon={<Users size={20} color={BIZLINK_COLORS.ink} strokeWidth={1.75} />} label="Tag-Along" badgeCount={pendingTagAlongCount} onPress={() => router.push('/(manager)/tag-along')} />
+            <BizQuickAction icon={<UserRound size={20} color={BIZLINK_COLORS.ink} strokeWidth={1.75} />} label="My Team" onPress={() => router.push('/(manager)/team')} />
+          </XStack>
+          <XStack justifyContent="space-between">
+            <BizQuickAction icon={<Building2 size={20} color={BIZLINK_COLORS.ink} strokeWidth={1.75} />} label="Clients" onPress={() => router.push('/(manager)/more/clients')} />
+            <BizQuickAction icon={<CalendarDays size={20} color={BIZLINK_COLORS.ink} strokeWidth={1.75} />} label="Meeting Details" onPress={() => router.push('/(manager)/more/meetings')} />
+            <BizQuickAction icon={<BarChart3 size={20} color={BIZLINK_COLORS.ink} strokeWidth={1.75} />} label="Reports" onPress={() => router.push('/(manager)/more/reports')} />
+          </XStack>
+          <XStack justifyContent="space-between">
+            <BizQuickAction icon={<Map size={20} color={BIZLINK_COLORS.ink} strokeWidth={1.75} />} label="Office Map" onPress={() => router.push('/(manager)/more/maps')} />
+            <BizQuickAction icon={<Bell size={20} color={BIZLINK_COLORS.ink} strokeWidth={1.75} />} label="Notifications" onPress={() => router.push('/(manager)/more/notifications')} />
+            <BizQuickAction icon={<History size={20} color={BIZLINK_COLORS.ink} strokeWidth={1.75} />} label="Sync History" onPress={() => router.push('/(manager)/more/sync-history')} />
+          </XStack>
+          <XStack justifyContent="flex-start" gap="$2.5">
+            <BizQuickAction icon={<ShieldCheck size={20} color={BIZLINK_COLORS.ink} strokeWidth={1.75} />} label="Account" onPress={() => router.push('/(manager)/more/account')} />
+          </XStack>
+        </YStack>
 
         {/* T-014 Phase 3 (ADR-022 Phase D scope): manager's OWN device outbox
             only — same SyncStatusChip/SyncCenterSheet as the Sales Agent Home,

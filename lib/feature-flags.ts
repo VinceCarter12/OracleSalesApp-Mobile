@@ -15,6 +15,13 @@ export const FEATURE_FLAGS = [
   // consumed anywhere yet — suspension enforcement (Slice 2) ships
   // unflagged since a security feature defaulting off would fail open.
   'app_root_lock',
+  // Batch 7C (ADR-053): mobile-side cutoff/quota UI (shared quota card,
+  // per-client allowance blocks, provisional post-record status). Defaults
+  // OFF — Batch 7B's server-side tables/policy don't exist yet, so this must
+  // stay inert until a later batch explicitly activates it per ADR-053's
+  // two-phase version-gated rollout (O-9). Server-side enforcement is a
+  // SEPARATE gate (minimum_supported_version), not this flag.
+  'cutoff_quota_v1',
 ] as const;
 
 export type FeatureFlag = (typeof FEATURE_FLAGS)[number];

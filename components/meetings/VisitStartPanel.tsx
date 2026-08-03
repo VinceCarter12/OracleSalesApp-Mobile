@@ -1,6 +1,6 @@
 import { MapPin } from 'lucide-react-native';
 import { Text, XStack, YStack } from 'tamagui';
-import { BIZLINK_COLORS, BIZLINK_FONTS, BIZLINK_ON_INK } from '../../lib/theme';
+import { useBizlinkColors, BIZLINK_FONTS, BIZLINK_ON_INK } from '../../lib/theme';
 import { BizSectionHeader } from '../bizlink/BizSectionHeader';
 import { BizButton } from '../bizlink/BizButton';
 import { CompanionPicker } from './CompanionPicker';
@@ -31,6 +31,7 @@ export function VisitStartPanel({
   starting,
   onStart,
 }: VisitStartPanelProps) {
+  const BIZLINK_COLORS = useBizlinkColors();
   return (
     <YStack marginTop="$4" gap="$4">
       <CompanionPicker roster={roster} selected={selectedCompanions} onToggle={onToggleCompanion} />
@@ -40,10 +41,13 @@ export function VisitStartPanel({
       <YStack backgroundColor={BIZLINK_COLORS.ink} borderRadius={24} padding={16}>
         <XStack alignItems="center" gap="$3">
           <YStack width={44} height={44} borderRadius={14} backgroundColor={BIZLINK_ON_INK.circleFill} alignItems="center" justifyContent="center">
-            <MapPin size={18} color={BIZLINK_COLORS.card} strokeWidth={1.75} />
+            {/* Design-System-Catalog §6: BIZLINK_COLORS.card is theme-reactive
+                surface color, not a valid foreground on the always-dark `ink`
+                bg — BIZLINK_ON_INK.solid stays white in both themes. */}
+            <MapPin size={18} color={BIZLINK_ON_INK.solid} strokeWidth={1.75} />
           </YStack>
           <YStack flex={1}>
-            <Text fontSize={12.5} fontFamily={BIZLINK_FONTS.semibold} color={BIZLINK_COLORS.card}>GPS lang — walang photo</Text>
+            <Text fontSize={12.5} fontFamily={BIZLINK_FONTS.semibold} color={BIZLINK_ON_INK.solid}>GPS lang — walang photo</Text>
             <Text fontSize={11} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_ON_INK.textMuted}>
               GPS + timestamp ang naka-bind dito; magsisimula ang running timer
             </Text>

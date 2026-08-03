@@ -1,6 +1,6 @@
 import { TextInput } from 'react-native';
 import { Text, XStack } from 'tamagui';
-import { BIZLINK_COLORS, BIZLINK_FONTS } from '../../lib/theme';
+import { useBizlinkColors, BIZLINK_FONTS } from '../../lib/theme';
 import { BizSectionHeader } from '../bizlink/BizSectionHeader';
 import { BizChip } from '../bizlink/BizChip';
 import { MEETING_AGENDAS, type MeetingOutcome } from '../../types';
@@ -29,6 +29,7 @@ export function MeetingWrapUpSection({
   onSelectOutcome,
   afterAgenda,
 }: MeetingWrapUpSectionProps) {
+  const BIZLINK_COLORS = useBizlinkColors();
   return (
     <>
       <BizSectionHeader title="Agenda" helper="· piliin lahat" />

@@ -3,13 +3,14 @@ import { Alert, ScrollView, TextInput } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router, useLocalSearchParams } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
+import { AlertTriangle } from 'lucide-react-native';
 import { Spinner, Text, XStack, YStack } from 'tamagui';
 import { getClientById } from '../../../lib/client-service';
 import { useAuth } from '../../../lib/useAuth';
 import { useSession } from '../../../lib/session-store';
 import { captureGps } from '../../../lib/gps';
 import { checkConnectivity } from '../../../lib/sync/connectivity';
-import { BIZLINK_COLORS, BIZLINK_FONTS } from '../../../lib/theme';
+import { useBizlinkColors, BIZLINK_FONTS } from '../../../lib/theme';
 import { createMeeting } from '../../../lib/meeting-service';
 import { AccountSuspendedError } from '../../../lib/app-lock/account-status';
 import { getCompanionRosterForViewer, getTeamRoster, inviteeKindForRole } from '../../../lib/team-roster';
@@ -22,7 +23,6 @@ import { BizField } from '../../../components/bizlink/BizField';
 import { BizSectionHeader } from '../../../components/bizlink/BizSectionHeader';
 import { BizChip } from '../../../components/bizlink/BizChip';
 import { BizButton } from '../../../components/bizlink/BizButton';
-import { MeetingModeToggle } from '../../../components/meetings/MeetingModeToggle';
 import { CompanionPicker } from '../../../components/meetings/CompanionPicker';
 import { SelectedClientCard } from '../../../components/meetings/SelectedClientCard';
 import { AutoCapturedPanel } from '../../../components/meetings/AutoCapturedPanel';
@@ -34,10 +34,23 @@ import { PoEvidenceCard } from '../../../components/meetings/PoEvidenceCard';
 import { isCloseDealPoEligible } from '../../../lib/policies/po-confirmation-status-policy';
 import { CLOSE_DEAL_AGENDA, type Client, type MeetingMode, type MeetingOutcome, type TeamRosterEntry } from '../../../types';
 
-const LOCATIONS = ['Client Office', 'Others'] as const;
+// Wireframe-Sales-BizLink.html `id="a-record"` renders ONE "Meeting location"
+// tile group (Client Office / Online / Others, `aSetMeetingLocation(kind,el)`)
+// rather than a separate "Meeting mode" toggle plus a 2-tile location group.
+// `aSetMeetingLocation` (wireframe line 1762) sets both the location kind AND
+// derives meeting mode from it (`aSetMeetingMode(kind==='online'?'online':'in_person')`)
+// — so this screen mirrors that single control instead of MeetingModeToggle's
+// separate section (which stays correct for a-recordvisit, its own screen).
+const LOCATION_TILES: Array<{ key: 'client_office' | 'online' | 'others'; label: string }> = [
+  { key: 'client_office', label: 'Client Office' },
+  { key: 'online', label: 'Online' },
+  { key: 'others', label: 'Others' },
+];
+type LocationKind = (typeof LOCATION_TILES)[number]['key'];
 
 export default function RecordMeetingScreen() {
   const insets = useSafeAreaInsets();
+  const BIZLINK_COLORS = useBizlinkColors();
   const { clientId } = useLocalSearchParams<{ clientId?: string }>();
   const { session } = useAuth();
   const { profileId, role, markSuspended } = useSession();
@@ -55,7 +68,7 @@ export default function RecordMeetingScreen() {
 
   const [contactName, setContactName] = useState('');
   const [contactPosition, setContactPosition] = useState('');
-  const [meetingLocation, setMeetingLocation] = useState<(typeof LOCATIONS)[number]>('Client Office');
+  const [locationKind, setLocationKind] = useState<LocationKind>('client_office');
   const [otherLocation, setOtherLocation] = useState('');
   const [selectedAgendas, setSelectedAgendas] = useState<string[]>([]);
   const [remarks, setRemarks] = useState('');
@@ -95,6 +108,13 @@ export default function RecordMeetingScreen() {
   useEffect(() => {
     getTeamRoster().then(setRoster);
   }, []);
+
+  // Wireframe `aSetMeetingLocation(kind,el)` (line 1762): one tap sets both
+  // the location tile AND the underlying meeting mode.
+  function selectLocation(kind: LocationKind): void {
+    setLocationKind(kind);
+    setMode(kind === 'online' ? 'online' : 'in_person');
+  }
 
   function toggleCompanion(entry: TeamRosterEntry): void {
     setSelectedCompanions((prev) => {
@@ -234,8 +254,13 @@ export default function RecordMeetingScreen() {
         logged_at: new Date().toISOString(),
         contactPerson: contactName || null,
         contactPosition: contactPosition || null,
-        locationType: meetingLocation,
-        locationName: meetingLocation === 'Others' ? otherLocation : null,
+        // Remote `location_type` only distinguishes 'Client Office' vs
+        // 'Others' (lib/remote-meeting-mapping.ts::toRemoteLocationType) —
+        // an Online meeting maps to 'Others' here, same convention as
+        // record-visit.tsx's B-085 fix, so it's never silently stored as a
+        // client-site visit.
+        locationType: locationKind === 'client_office' ? 'Client Office' : 'Others',
+        locationName: locationKind === 'others' ? otherLocation : null,
         remarks: remarks || null,
         photoToQueue: { kind: 'selfie', localUri: photoUri, userId: session.user.id },
         companions: selectedCompanions.map((entry) => ({
@@ -259,7 +284,7 @@ export default function RecordMeetingScreen() {
         // Office' meeting auto-captures the permanent office pin; Online and
         // Others must never touch it (agent may set it explicitly instead,
         // via Client Detail's Set/Update Office Location).
-        captureOfficePin: mode === 'in_person' && meetingLocation === 'Client Office',
+        captureOfficePin: mode === 'in_person' && locationKind === 'client_office',
       });
       const connectivity = await checkConnectivity();
       router.replace(routes.celebrate(connectivity === 'online', meetingId));
@@ -295,8 +320,6 @@ export default function RecordMeetingScreen() {
           onToggle={toggleCompanion}
         />
 
-        <MeetingModeToggle mode={mode} onChange={setMode} />
-
         <AutoCapturedPanel
           loadingLocation={loadingLocation}
           location={location}
@@ -317,11 +340,25 @@ export default function RecordMeetingScreen() {
 
         <BizSectionHeader title="Meeting location" />
         <XStack gap="$2" flexWrap="wrap">
-          {LOCATIONS.map((loc) => (
-            <BizChip key={loc} label={loc} selected={meetingLocation === loc} onPress={() => setMeetingLocation(loc)} />
+          {LOCATION_TILES.map((tile) => (
+            <BizChip
+              key={tile.key}
+              label={tile.label}
+              selected={locationKind === tile.key}
+              onPress={() => selectLocation(tile.key)}
+            />
           ))}
         </XStack>
-        {meetingLocation === 'Others' ? (
+        {locationKind === 'online' ? (
+          <XStack gap="$1.5" alignItems="flex-start" marginTop="$1.5">
+            <AlertTriangle size={13} color={BIZLINK_COLORS.orange} strokeWidth={1.75} style={{ marginTop: 2 }} />
+            <Text fontSize={11.5} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} flex={1} lineHeight={16}>
+              Online meeting — ang GPS na makukuha ay sa lokasyon MO, hindi sa client. Hindi ito bibilangin bilang
+              client-site visit sa maps/reports.
+            </Text>
+          </XStack>
+        ) : null}
+        {locationKind === 'others' ? (
           <YStack marginTop="$2">
             <TextInput
               value={otherLocation}

@@ -1,6 +1,6 @@
 import { Text, XStack } from 'tamagui';
 import { AlertTriangle } from 'lucide-react-native';
-import { BIZLINK_COLORS, BIZLINK_FONTS } from '../../lib/theme';
+import { useBizlinkColors, BIZLINK_FONTS } from '../../lib/theme';
 import { BizSectionHeader } from '../bizlink/BizSectionHeader';
 import { BizChip } from '../bizlink/BizChip';
 import type { MeetingMode } from '../../types';
@@ -19,6 +19,7 @@ interface MeetingModeToggleProps {
  * Tamagui theme components.
  */
 export function MeetingModeToggle({ mode, onChange }: MeetingModeToggleProps) {
+  const BIZLINK_COLORS = useBizlinkColors();
   return (
     <>
       <BizSectionHeader title="Meeting mode" helper="· ADR-012" />

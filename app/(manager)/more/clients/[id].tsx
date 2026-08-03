@@ -14,6 +14,7 @@ import { BizButton } from '../../../../components/bizlink/BizButton';
 import { ProgressRing } from '../../../../components/ui/ProgressRing';
 import { StatusBadge } from '../../../../components/ui/StatusBadge';
 import { meetingBadge } from '../../../../lib/meeting-badge';
+import { useSession } from '../../../../lib/session-store';
 
 const CHECKLIST_LABELS: Record<string, string> = {
   name: 'Company name',
@@ -33,6 +34,7 @@ export default function ManagerClientDetailScreen() {
   const insets = useSafeAreaInsets();
   const { id } = useLocalSearchParams<{ id: string }>();
   const { overview, loading, error, reload } = useTeamOverview();
+  const { profileId } = useSession();
 
   if (loading) {
     return (
@@ -64,6 +66,9 @@ export default function ManagerClientDetailScreen() {
   const clientMeetings = overview?.meetings.filter((m) => m.clientId === client.id) ?? [];
   const presented = clientMeetings.some((m) => m.agenda.includes('Product / company presentation'));
   const progress = computeTeamClientProgress(client, clientMeetings);
+  const isManagerOwned = client.agentId === profileId;
+  const lifecycleStages = ['prospect', 'in_progress', 'new', 'existing'] as const;
+  const lifecycleIndex = Math.max(0, lifecycleStages.indexOf(client.status as (typeof lifecycleStages)[number]));
 
   return (
     <YStack flex={1} backgroundColor={BIZLINK_COLORS.canvas} paddingTop={insets.top}>
@@ -103,6 +108,17 @@ export default function ManagerClientDetailScreen() {
           </YStack>
         </BizCard>
 
+        <XStack gap="$1" marginTop="$3" paddingHorizontal="$1">
+          {lifecycleStages.map((stage, index) => (
+            <YStack key={stage} flex={1} gap="$1">
+              <YStack height={4} borderRadius={2} backgroundColor={index <= lifecycleIndex ? BIZLINK_COLORS.brand : BIZLINK_COLORS.line} />
+              <Text fontSize={9.5} fontFamily={BIZLINK_FONTS.medium} color={index === lifecycleIndex ? BIZLINK_COLORS.brand : BIZLINK_COLORS.muted} textAlign="center">
+                {stage === 'in_progress' ? 'In Progress' : stage.charAt(0).toUpperCase() + stage.slice(1)}
+              </Text>
+            </YStack>
+          ))}
+        </XStack>
+
         <BizSectionHeader title="Info completion" helper={client.status === 'prospect' ? `· deadline: ${client.deadline}` : undefined} />
         <Text fontSize={12} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} marginTop={-6} marginBottom="$2">
           Para lang ito sa 1-month data-quality rule — hiwalay na sa progress % sa taas (B-001).
@@ -127,6 +143,14 @@ export default function ManagerClientDetailScreen() {
             );
           })}
         </BizCard>
+
+        <YStack alignItems="center" paddingHorizontal="$4" paddingTop="$3">
+          <Text fontSize={12} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} textAlign="center">
+            {isManagerOwned
+              ? 'Manager-owned record: direct apply allowed, pero version-checked pa rin sa sync.'
+              : 'Team record ito. Sales edit requests ang papasok sa Approvals; hindi ito tahimik na ma-o-overwrite.'}
+          </Text>
+        </YStack>
 
         <BizSectionHeader title="Meeting history" />
         {clientMeetings.length === 0 ? (

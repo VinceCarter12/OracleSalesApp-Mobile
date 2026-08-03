@@ -1,5 +1,5 @@
 import { Text, YStack } from 'tamagui';
-import { BIZLINK_COLORS, BIZLINK_FONTS } from '../../lib/theme';
+import { useBizlinkColors, BIZLINK_FONTS } from '../../lib/theme';
 import { BizCard } from '../bizlink/BizCard';
 import { BizButton } from '../bizlink/BizButton';
 import type { MeetingDraft } from '../../lib/meeting-drafts';
@@ -17,6 +17,7 @@ interface DraftResumePromptProps {
  * new screen or a general draft-editing surface (out of scope per the ADR).
  */
 export function DraftResumePrompt({ draft, onResume, onDiscard }: DraftResumePromptProps) {
+  const BIZLINK_COLORS = useBizlinkColors();
   return (
     <BizCard flat borderRadius={20} marginTop="$4">
       <Text fontFamily={BIZLINK_FONTS.semibold} fontSize={14} color={BIZLINK_COLORS.ink}>

@@ -17,7 +17,7 @@ import { useClientFlowRoutes } from '../../../lib/use-role-routes';
 import { captureGps } from '../../../lib/gps';
 import { checkConnectivity } from '../../../lib/sync/connectivity';
 import { showToast } from '../../../lib/toast';
-import { BIZLINK_COLORS, BIZLINK_FONTS } from '../../../lib/theme';
+import { useBizlinkColors, BIZLINK_FONTS } from '../../../lib/theme';
 import { BizTopBar } from '../../../components/bizlink/BizTopBar';
 import { BizButton } from '../../../components/bizlink/BizButton';
 import { ClientInfoCard } from '../../../components/clients/ClientInfoCard';
@@ -50,6 +50,7 @@ interface StartCapture {
  */
 export default function RecordVisitScreen() {
   const insets = useSafeAreaInsets();
+  const BIZLINK_COLORS = useBizlinkColors();
   const { clientId } = useLocalSearchParams<{ clientId: string }>();
   const { session } = useAuth();
   const { profileId, role, markSuspended } = useSession();

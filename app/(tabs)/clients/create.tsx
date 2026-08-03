@@ -7,7 +7,7 @@ import { Spinner, Text, XStack, YStack } from 'tamagui';
 import { useSession } from '../../../lib/session-store';
 import { checkCompanyNameDuplicate, checkLocalDuplicate, createClient, DuplicateCompanyNameError } from '../../../lib/client-service';
 import { AccountSuspendedError } from '../../../lib/app-lock/account-status';
-import { BIZLINK_COLORS, BIZLINK_FONTS } from '../../../lib/theme';
+import { useBizlinkColors, BIZLINK_FONTS, BIZLINK_ON_INK } from '../../../lib/theme';
 import { showToast } from '../../../lib/toast';
 import { BizTopBar } from '../../../components/bizlink/BizTopBar';
 import { BizField } from '../../../components/bizlink/BizField';
@@ -31,6 +31,7 @@ type DupState = 'idle' | 'checking' | 'duplicate' | 'available';
  */
 export default function CreateClientScreen() {
   const insets = useSafeAreaInsets();
+  const BIZLINK_COLORS = useBizlinkColors();
   const { profileId, markSuspended } = useSession();
   const [companyName, setCompanyName] = useState('');
   const [city, setCity] = useState('');
@@ -111,9 +112,9 @@ export default function CreateClientScreen() {
             <Text fontSize={13} fontFamily={BIZLINK_FONTS.semibold} color={BIZLINK_COLORS.text}>Two-phase creation</Text>
           </XStack>
           <Text fontSize={13} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} marginTop="$1">
-            Company name lang ang kailangan ngayon. May{' '}
+            Company name at napiling city ang kailangan ngayon. May{' '}
             <Text fontFamily={BIZLINK_FONTS.semibold} color={BIZLINK_COLORS.text}>1 buwan</Text> ka
-            para kumpletuhin ang buong info — o kumpletuhin ito mismo sa unang meeting.
+            para kumpletuhin ang buong info, o kumpletuhin ito sa unang meeting.
           </Text>
         </BizCard>
 
@@ -155,22 +156,22 @@ export default function CreateClientScreen() {
           label="CITY *"
           value={city}
           onChangeText={setCity}
-          placeholder="e.g. Cabanatuan"
+          placeholder="Search city…"
         />
 
         <XStack gap="$2" alignItems="flex-start" marginBottom="$4">
           <Lightbulb size={14} color={BIZLINK_COLORS.muted} strokeWidth={1.75} style={{ marginTop: 2 }} />
           <Text fontSize={13} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} flex={1}>
-            Bawal ang duplicate na parehong pangalan sa parehong city — pero pwede ang parehong
-            company name kung ibang city, hal. Oracle Petroleum sa Bataan at sa Pampanga.
+            Bawal ang duplicate — pero pwede ang parehong company na may ibang area, hal.
+            &quot;Oracle Petroleum (Bataan)&quot; at &quot;Oracle Petroleum (Pampanga)&quot;.
           </Text>
         </XStack>
 
         <BizButton
-          label={saving ? 'Creating…' : 'Create Client'}
+          label={saving ? 'Creating…' : 'Create client'}
           onPress={handleCreate}
           disabled={!canCreate}
-          icon={saving ? <Spinner color={BIZLINK_COLORS.card} /> : undefined}
+          icon={saving ? <Spinner color={BIZLINK_ON_INK.solid} /> : undefined}
         />
         <Text fontSize={13} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} textAlign="center" marginTop="$3">
           Gagana kahit OFFLINE — sa sync queue mapupunta.

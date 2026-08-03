@@ -3,14 +3,19 @@ import { Pressable, ScrollView } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router, useFocusEffect } from 'expo-router';
 import {
+  BarChart3,
   Bell,
   Building2,
-  Camera,
-  ClipboardList,
+  CalendarDays,
+  ClipboardCheck,
+  Clock,
   Handshake,
+  History,
   Hourglass,
-  Magnet,
+  Map as MapIcon,
   Plus,
+  RotateCcw,
+  ShieldCheck,
   Target,
   Users,
 } from 'lucide-react-native';
@@ -18,7 +23,7 @@ import { Text, View, XStack, YStack } from 'tamagui';
 import { useBizlinkColors, BIZLINK_FONTS } from '../../lib/theme';
 import { useClients } from '../../lib/useClients';
 import { useMeetings } from '../../lib/useMeetings';
-import { getClientStatus, SALES_CLIENT_STATUS_BADGES, WAITING_MANAGER_APPROVAL_BADGE } from '../../lib/client-status';
+import { getClientStatus } from '../../lib/client-status';
 import { getClientIdsWithPendingManagerTagAlong } from '../../lib/tag-along-service';
 import { countCreatedSince } from '../../lib/team-remote-mappers';
 import { Avatar } from '../../components/ui/Avatar';
@@ -27,13 +32,17 @@ import { BizStatCard } from '../../components/bizlink/BizStatCard';
 import { BizHeroCard } from '../../components/bizlink/BizHeroCard';
 import { BizSectionHeader } from '../../components/bizlink/BizSectionHeader';
 import { BizDashboardAlert } from '../../components/bizlink/BizDashboardAlert';
+import { BizPrimaryActionCard } from '../../components/bizlink/BizPrimaryActionCard';
 import { BizQuickAction } from '../../components/bizlink/BizQuickAction';
 import { AvatarStatusRing } from '../../components/bizlink/AvatarStatusRing';
 import { SyncStatusChip } from '../../components/sync/SyncStatusChip';
 import { SyncCenterSheet } from '../../components/sync/SyncCenterSheet';
 import { useSession } from '../../lib/session-store';
 import { firstName, initialsFromName } from '../../lib/display-name';
-import { RSR_DAILY_VISIT_QUOTA, type Client, type Meeting } from '../../types';
+import { CutoffQuotaCard } from '../../components/cutoff/CutoffQuotaCard';
+import { useCutoffQuotaFlag } from '../../lib/use-cutoff-quota-flag';
+import { getDashboardActionHref } from '../../lib/dashboard-action-registry';
+import { RSR_DAILY_VISIT_QUOTA, type Meeting } from '../../types';
 
 // F-012 (RSR only): today's in-person visits vs the daily quota. Online
 // meetings never count (ADR-012); fast-path visits do (they are in-person by
@@ -76,43 +85,6 @@ function RsrQuotaWidget({ meetings }: { meetings: Meeting[] }) {
   );
 }
 
-function ClientPreviewRow({ client, waitingManagerApproval }: { client: Client; waitingManagerApproval: boolean }) {
-  const BIZLINK_COLORS = useBizlinkColors();
-  const badge = SALES_CLIENT_STATUS_BADGES[getClientStatus(client)];
-  return (
-    <Pressable onPress={() => router.push(`/(tabs)/clients/${client.id}`)}>
-      <XStack
-        alignItems="center"
-        gap="$3"
-        backgroundColor={BIZLINK_COLORS.card}
-        borderRadius={20}
-        padding={14}
-        marginBottom={10}
-        flexWrap="wrap"
-      >
-        <YStack flex={1} gap="$0.5">
-          <Text fontFamily={BIZLINK_FONTS.semibold} fontSize={14} color={BIZLINK_COLORS.text}>{client.company_name}</Text>
-          <Text fontSize={11.5} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted}>
-            {client.contact_person || 'Walang contact person pa'}
-          </Text>
-        </YStack>
-        <YStack alignItems="flex-end" gap="$1">
-          <StatusBadge {...badge} />
-          {/* F-204: overlay badge, NOT a replacement for the status pill above. */}
-          {waitingManagerApproval ? (
-            <StatusBadge
-              label={WAITING_MANAGER_APPROVAL_BADGE.label}
-              background={BIZLINK_COLORS[WAITING_MANAGER_APPROVAL_BADGE.background]}
-              color={BIZLINK_COLORS[WAITING_MANAGER_APPROVAL_BADGE.color]}
-            />
-          ) : null}
-        </YStack>
-        <Text color={BIZLINK_COLORS.muted} fontSize={16}>›</Text>
-      </XStack>
-    </Pressable>
-  );
-}
-
 function AgentHomeHeader({ greetingName, isRsr, fullName }: { greetingName: string; isRsr: boolean; fullName: string | null }) {
   const BIZLINK_COLORS = useBizlinkColors();
   return (
@@ -151,6 +123,11 @@ export default function AgentHomeScreen() {
   const { meetings, refresh: refreshMeetings } = useMeetings();
   const { role, fullName, profileId } = useSession();
   const isRsr = role === 'rsr';
+  // Batch 7C (ADR-053, W-1): when the flag is ON, the shared cutoff/quota
+  // card replaces the RSR-only legacy widget for BOTH roles; when OFF, the
+  // legacy widget renders exactly as before (RSR only) — fully untouched.
+  const cutoffQuotaFlagOn = useCutoffQuotaFlag();
+  const isCutoffQuotaRole = role === 'sales_specialist' || role === 'rsr';
   const greetingName = firstName(fullName);
   const [syncSheetOpen, setSyncSheetOpen] = useState(false);
   // B-023: remounts the chip on sheet-close so a "Retry All" inside the
@@ -240,16 +217,62 @@ export default function AgentHomeScreen() {
           onPress={() => router.push('/(tabs)/meetings')}
         />
 
-        {/* Quick Actions directly under the hero card (Wireframe-Sales-BizLink.html a-home, 2026-07-14 client feedback). */}
-        <BizSectionHeader title="Quick Actions" />
-        <XStack gap="$2.5" flexWrap="wrap">
-          <BizQuickAction icon={<Plus size={20} color={BIZLINK_COLORS.ink} strokeWidth={1.75} />} label="Create Client" onPress={() => router.push('/(tabs)/clients/create')} />
-          <BizQuickAction icon={<Camera size={20} color={BIZLINK_COLORS.ink} strokeWidth={1.75} />} label="Record Meeting" onPress={() => router.push('/(tabs)/meetings/select-client')} />
-          <BizQuickAction icon={<ClipboardList size={20} color={BIZLINK_COLORS.ink} strokeWidth={1.75} />} label="My Clients" onPress={() => router.push('/(tabs)/clients')} />
-          <BizQuickAction icon={<Users size={20} color={BIZLINK_COLORS.ink} strokeWidth={1.75} />} label="Tag-Along" onPress={() => router.push('/(tabs)/more/tag-along')} />
+        {/* Wireframe-Sales-BizLink.html#a-home "Mga Gawain" — two dominant
+            wide action cards (2026-08-03 visual-parity redesign, replaces
+            the previous 4-equal-circle Quick Actions row). */}
+        <BizSectionHeader title="Mga Gawain" />
+        <XStack gap="$2.5">
+          <BizPrimaryActionCard
+            variant="dark"
+            icon={<Plus size={18} color="#FFFFFF" strokeWidth={1.75} />}
+            title="Gumawa ng client"
+            subtitle="Company at city muna"
+            onPress={() => router.push(getDashboardActionHref('create-client', role))}
+          />
+          <BizPrimaryActionCard
+            variant="alt"
+            icon={<Handshake size={18} color={BIZLINK_COLORS.ink} strokeWidth={1.75} />}
+            title="I-record ang meeting"
+            subtitle="Pumili muna ng client"
+            onPress={() => router.push(getDashboardActionHref('record-meeting', role))}
+          />
         </XStack>
 
-        {isRsr ? <RsrQuotaWidget meetings={meetings} /> : null}
+        {/* Wireframe "Iba pang gawain" — full secondary action hub, 3-column
+            grid, previously hidden behind the More tab. Every tile keeps its
+            existing real destination/route. */}
+        <BizSectionHeader title="Iba pang gawain" />
+        {/* Wireframe `.qa` is an explicit 3-column grid (grid-template-columns:
+            repeat(3,1fr)), not natural flex-wrap — rowed manually so wider
+            screens don't silently reflow to 4-per-row and drift from the
+            wireframe's fixed column count. */}
+        <YStack gap="$3">
+          <XStack justifyContent="space-between">
+            <BizQuickAction icon={<Building2 size={20} color={BIZLINK_COLORS.ink} strokeWidth={1.75} />} label="My Clients" onPress={() => router.push(getDashboardActionHref('my-clients', role))} />
+            <BizQuickAction icon={<CalendarDays size={20} color={BIZLINK_COLORS.ink} strokeWidth={1.75} />} label="Meeting Details" onPress={() => router.push('/(tabs)/meetings')} />
+            <BizQuickAction icon={<Bell size={20} color={BIZLINK_COLORS.ink} strokeWidth={1.75} />} label="Notifications" onPress={() => router.push('/(tabs)/more/notifications')} />
+          </XStack>
+          <XStack justifyContent="space-between">
+            <BizQuickAction icon={<Clock size={20} color={BIZLINK_COLORS.ink} strokeWidth={1.75} />} label="Clock In/Out" onPress={() => router.push('/(tabs)/more/clock-in-out')} />
+            <BizQuickAction icon={<Users size={20} color={BIZLINK_COLORS.ink} strokeWidth={1.75} />} label="Tag-Along Status" onPress={() => router.push(getDashboardActionHref('tag-along', role))} />
+            <BizQuickAction icon={<ClipboardCheck size={20} color={BIZLINK_COLORS.ink} strokeWidth={1.75} />} label="My Requests" onPress={() => router.push('/(tabs)/more/my-requests')} />
+          </XStack>
+          <XStack justifyContent="space-between">
+            <BizQuickAction icon={<History size={20} color={BIZLINK_COLORS.ink} strokeWidth={1.75} />} label="Sync History" onPress={() => router.push('/(tabs)/more/sync-history')} />
+            <BizQuickAction icon={<BarChart3 size={20} color={BIZLINK_COLORS.ink} strokeWidth={1.75} />} label="Performance" onPress={() => router.push('/(tabs)/more/reports')} />
+            <BizQuickAction icon={<RotateCcw size={20} color={BIZLINK_COLORS.ink} strokeWidth={1.75} />} label="Lost opportunities" onPress={() => router.push('/(tabs)/more/lost-opportunities')} />
+          </XStack>
+          <XStack justifyContent="flex-start" gap="$2.5">
+            <BizQuickAction icon={<MapIcon size={20} color={BIZLINK_COLORS.ink} strokeWidth={1.75} />} label="Maps" onPress={() => router.push('/(tabs)/more/maps')} />
+            <BizQuickAction icon={<ShieldCheck size={20} color={BIZLINK_COLORS.ink} strokeWidth={1.75} />} label="Account" onPress={() => router.push('/(tabs)/more/account')} />
+          </XStack>
+        </YStack>
+
+        {cutoffQuotaFlagOn && isCutoffQuotaRole ? (
+          <CutoffQuotaCard agentId={profileId} role={role === 'rsr' ? 'rsr' : 'sales_specialist'} />
+        ) : isRsr ? (
+          <RsrQuotaWidget meetings={meetings} />
+        ) : null}
 
         {/* T-014 Phase 1 (ADR-024): shared, BizLink-styled — same worst-state-wins logic/copy as before. */}
         <SyncStatusChip key={syncChipKey} onPress={() => setSyncSheetOpen(true)} />
@@ -276,24 +299,6 @@ export default function AgentHomeScreen() {
             caption="Hinihintay ang sagot ng manager sa tag-along bago mag-progress"
             onPress={() => router.push('/(tabs)/clients')}
           />
-        ) : null}
-
-        <BizSectionHeader
-          title="Mga Client Ko"
-          actionLabel="Tingnan lahat"
-          onAction={() => router.push('/(tabs)/clients')}
-        />
-        {clients.slice(0, 3).map((client) => (
-          <ClientPreviewRow
-            key={client.id}
-            client={client}
-            waitingManagerApproval={waitingManagerApprovalIds.has(client.id)}
-          />
-        ))}
-        {clients.length === 0 ? (
-          <Text fontSize={13} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} paddingVertical="$3">
-            Wala ka pang clients — magsimula sa Create Client.
-          </Text>
         ) : null}
       </ScrollView>
 

@@ -1,10 +1,10 @@
-import { useCallback, useState } from 'react';
-import { ScrollView } from 'react-native';
+import { useCallback, useMemo, useState } from 'react';
+import { ScrollView, TextInput } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect } from 'expo-router';
 import { AlertTriangle, Bell, CircleAlert, FileCheck2, RefreshCw, Users } from 'lucide-react-native';
 import { Spinner, Text, XStack, YStack } from 'tamagui';
-import { BIZLINK_COLORS, BIZLINK_FONTS } from '../../../lib/theme';
+import { useBizlinkColors, BIZLINK_FONTS } from '../../../lib/theme';
 import { getOutboxCounts, type OutboxCounts } from '../../../lib/sync-engine';
 import { getRecentCompanionTagsForInvitee, type RecentManagerTag } from '../../../lib/tag-along-invitee-service';
 import { getMyPoConfirmationStatuses, type PoConfirmationRecord } from '../../../lib/po-confirmation-service';
@@ -12,6 +12,23 @@ import { PO_CONFIRMATION_STATUS_LABELS, PO_CONFIRMATION_BADGE_TONES } from '../.
 import { getClientById } from '../../../lib/client-service';
 import { useSession } from '../../../lib/session-store';
 import { BizTopBar } from '../../../components/bizlink/BizTopBar';
+import { BizFilterScroll, type BizFilterOption } from '../../../components/bizlink/BizFilterScroll';
+
+type NotificationCategory = 'sync' | 'tagalong' | 'po';
+
+interface NotificationItem {
+  category: NotificationCategory;
+  icon: React.ReactNode;
+  title: string;
+  body: string;
+}
+
+const CATEGORY_FILTERS: BizFilterOption<'all' | NotificationCategory>[] = [
+  { value: 'all', label: 'Lahat' },
+  { value: 'sync', label: 'Sync' },
+  { value: 'tagalong', label: 'Tag-Along' },
+  { value: 'po', label: 'PO evidence' },
+];
 
 /**
  * Wireframe `id="a-notifications"` (`aRenderNotifications()`, ~line 1159)
@@ -32,11 +49,14 @@ import { BizTopBar } from '../../../components/bizlink/BizTopBar';
  */
 export default function NotificationsScreen() {
   const insets = useSafeAreaInsets();
+  const BIZLINK_COLORS = useBizlinkColors();
   const { profileId } = useSession();
   const [counts, setCounts] = useState<OutboxCounts | null>(null);
   const [managerTags, setManagerTags] = useState<RecentManagerTag[]>([]);
   const [poConfirmations, setPoConfirmations] = useState<Array<{ record: PoConfirmationRecord; clientName: string | null }>>([]);
   const [loading, setLoading] = useState(true);
+  const [search, setSearch] = useState('');
+  const [categoryFilter, setCategoryFilter] = useState<'all' | NotificationCategory>('all');
 
   const load = useCallback(() => {
     setLoading(true);
@@ -61,51 +81,92 @@ export default function NotificationsScreen() {
 
   useFocusEffect(useCallback(() => { load(); }, [load]));
 
-  const items: Array<{ icon: React.ReactNode; title: string; body: string }> = [];
-  if (counts) {
-    if (counts.failed > 0) {
+  const allItems = useMemo(() => {
+    const items: NotificationItem[] = [];
+    if (counts) {
+      if (counts.failed > 0) {
+        items.push({
+          category: 'sync',
+          icon: <AlertTriangle size={16} color={BIZLINK_COLORS.red} strokeWidth={1.75} />,
+          title: `${counts.failed} record${counts.failed === 1 ? '' : 's'} failed to sync`,
+          body: 'Needs attention — check Sync History for details.',
+        });
+      }
+      if (counts.conflict > 0) {
+        items.push({
+          category: 'sync',
+          icon: <CircleAlert size={16} color={BIZLINK_COLORS.orange} strokeWidth={1.75} />,
+          title: `${counts.conflict} sync conflict${counts.conflict === 1 ? '' : 's'}`,
+          body: 'A record was changed on both the device and the server.',
+        });
+      }
+      if (counts.pending > 0) {
+        items.push({
+          category: 'sync',
+          icon: <RefreshCw size={16} color={BIZLINK_COLORS.brand} strokeWidth={1.75} />,
+          title: `${counts.pending} record${counts.pending === 1 ? '' : 's'} queued for sync`,
+          body: 'Auto-uploads kapag may signal.',
+        });
+      }
+    }
+    for (const tag of managerTags) {
+      const managerName = tag.requesterName ?? 'Manager mo';
       items.push({
-        icon: <AlertTriangle size={16} color={BIZLINK_COLORS.red} strokeWidth={1.75} />,
-        title: `${counts.failed} record${counts.failed === 1 ? '' : 's'} failed to sync`,
-        body: 'Needs attention — check Sync History for details.',
+        category: 'tagalong',
+        icon: <Users size={16} color={BIZLINK_COLORS.brand} strokeWidth={1.75} />,
+        title: `${managerName} tinag ka sa isang meeting`,
+        body: tag.clientName ? `${tag.clientName} — ${new Date(tag.createdAt).toLocaleDateString()}` : new Date(tag.createdAt).toLocaleDateString(),
       });
     }
-    if (counts.conflict > 0) {
+    for (const { record, clientName } of poConfirmations) {
+      const tone = PO_CONFIRMATION_BADGE_TONES[record.displayStatus];
       items.push({
-        icon: <CircleAlert size={16} color={BIZLINK_COLORS.orange} strokeWidth={1.75} />,
-        title: `${counts.conflict} sync conflict${counts.conflict === 1 ? '' : 's'}`,
-        body: 'A record was changed on both the device and the server.',
+        category: 'po',
+        icon: <FileCheck2 size={16} color={BIZLINK_COLORS[tone.color]} strokeWidth={1.75} />,
+        title: clientName ? `PO evidence — ${clientName}` : 'PO evidence update',
+        body: `${PO_CONFIRMATION_STATUS_LABELS[record.displayStatus]} — ${new Date(record.updatedAt).toLocaleDateString()}`,
       });
     }
-    if (counts.pending > 0) {
-      items.push({
-        icon: <RefreshCw size={16} color={BIZLINK_COLORS.brand} strokeWidth={1.75} />,
-        title: `${counts.pending} record${counts.pending === 1 ? '' : 's'} queued for sync`,
-        body: 'Auto-uploads kapag may signal.',
-      });
-    }
-  }
-  for (const tag of managerTags) {
-    const managerName = tag.requesterName ?? 'Manager mo';
-    items.push({
-      icon: <Users size={16} color={BIZLINK_COLORS.brand} strokeWidth={1.75} />,
-      title: `${managerName} tinag ka sa isang meeting`,
-      body: tag.clientName ? `${tag.clientName} — ${new Date(tag.createdAt).toLocaleDateString()}` : new Date(tag.createdAt).toLocaleDateString(),
+    return items;
+  }, [counts, managerTags, poConfirmations, BIZLINK_COLORS]);
+
+  const items = useMemo(() => {
+    const query = search.trim().toLowerCase();
+    return allItems.filter((item) => {
+      if (categoryFilter !== 'all' && item.category !== categoryFilter) return false;
+      if (!query) return true;
+      return item.title.toLowerCase().includes(query) || item.body.toLowerCase().includes(query);
     });
-  }
-  for (const { record, clientName } of poConfirmations) {
-    const tone = PO_CONFIRMATION_BADGE_TONES[record.displayStatus];
-    items.push({
-      icon: <FileCheck2 size={16} color={BIZLINK_COLORS[tone.color]} strokeWidth={1.75} />,
-      title: clientName ? `PO evidence — ${clientName}` : 'PO evidence update',
-      body: `${PO_CONFIRMATION_STATUS_LABELS[record.displayStatus]} — ${new Date(record.updatedAt).toLocaleDateString()}`,
-    });
-  }
+  }, [allItems, search, categoryFilter]);
 
   return (
     <YStack flex={1} backgroundColor={BIZLINK_COLORS.canvas} paddingTop={insets.top}>
       <BizTopBar title="Notifications" fallbackHref="/(tabs)/more" />
       <ScrollView contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 24 }}>
+        <Text fontSize={13} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} marginBottom="$2.5" lineHeight={18}>
+          Mga update na naka-sync sa phone mo. Action needed ang inuuna para walang makaligtaan.
+        </Text>
+        <TextInput
+          value={search}
+          onChangeText={setSearch}
+          placeholder="Search notification..."
+          placeholderTextColor={BIZLINK_COLORS.muted}
+          style={{
+            height: 52,
+            borderRadius: 16,
+            paddingHorizontal: 16,
+            fontFamily: BIZLINK_FONTS.medium,
+            fontSize: 14.5,
+            color: BIZLINK_COLORS.text,
+            backgroundColor: BIZLINK_COLORS.card,
+            borderWidth: 1,
+            borderColor: BIZLINK_COLORS.line,
+            marginBottom: 12,
+          }}
+        />
+        <YStack marginBottom="$3">
+          <BizFilterScroll options={CATEGORY_FILTERS} value={categoryFilter} onChange={setCategoryFilter} />
+        </YStack>
         {loading && !counts ? (
           <YStack alignItems="center" padding="$8">
             <Spinner size="large" color={BIZLINK_COLORS.brand} />
@@ -114,7 +175,7 @@ export default function NotificationsScreen() {
           <YStack alignItems="center" padding="$8" gap="$2.5">
             <Bell size={40} color={BIZLINK_COLORS.muted} strokeWidth={1.75} />
             <Text fontSize={13} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} textAlign="center">
-              Wala pang sync alerts.
+              {allItems.length === 0 ? 'Wala pang sync alerts.' : 'Walang notification na tumugma sa search/filter.'}
             </Text>
           </YStack>
         ) : (

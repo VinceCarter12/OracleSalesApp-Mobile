@@ -3,7 +3,7 @@ import { ScrollView } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Download } from 'lucide-react-native';
 import { Spinner, Text, XStack, YStack } from 'tamagui';
-import { BIZLINK_COLORS, BIZLINK_FONTS } from '../../../lib/theme';
+import { BIZLINK_FONTS, useBizlinkColors } from '../../../lib/theme';
 import { useTeamOverview } from '../../../lib/use-team-overview';
 import {
   countNewClientsAcquired,
@@ -15,7 +15,6 @@ import { BizCard } from '../../../components/bizlink/BizCard';
 import { BizChip } from '../../../components/bizlink/BizChip';
 import { BizButton } from '../../../components/bizlink/BizButton';
 import { StatListRow } from '../../../components/ui/StatListRow';
-import { showToast } from '../../../lib/toast';
 
 const TIMEFRAMES: ReportTimeframe[] = ['This month', 'Last 30 days', 'This quarter', 'Custom'];
 
@@ -30,6 +29,7 @@ const TIMEFRAMES: ReportTimeframe[] = ['This month', 'Last 30 days', 'This quart
  * entirely, while only "New clients acquired" was real and timeframe-scoped.
  */
 export default function ManagerReportsScreen() {
+  const BIZLINK_COLORS = useBizlinkColors();
   const insets = useSafeAreaInsets();
   const { overview, loading, error, reload } = useTeamOverview();
   const [timeframe, setTimeframe] = useState<ReportTimeframe>(TIMEFRAMES[0]);
@@ -37,16 +37,20 @@ export default function ManagerReportsScreen() {
 
   const filteredMeetings = useMemo(() => {
     if (!overview) return [];
-    return filterMeetingsByTimeframe(overview.meetings, timeframe, new Date());
-  }, [overview, timeframe]);
+    return filterMeetingsByTimeframe(overview.meetings, timeframe, new Date())
+      .filter((meeting) => agentFilter === 'all' || meeting.agentId === agentFilter);
+  }, [overview, timeframe, agentFilter]);
 
   const successful = filteredMeetings.filter((m) => m.outcome === 'success').length;
   const lost = filteredMeetings.filter((m) => m.outcome === 'lost').length;
 
   const newClientsAcquired = useMemo(() => {
     if (!overview) return 0;
-    return countNewClientsAcquired(overview.clients, timeframe, new Date());
-  }, [overview, timeframe]);
+    const clients = agentFilter === 'all'
+      ? overview.clients
+      : overview.clients.filter((client) => client.agentId === agentFilter);
+    return countNewClientsAcquired(clients, timeframe, new Date());
+  }, [overview, timeframe, agentFilter]);
 
   return (
     <YStack flex={1} backgroundColor={BIZLINK_COLORS.canvas} paddingTop={insets.top}>
@@ -94,15 +98,16 @@ export default function ManagerReportsScreen() {
 
         <YStack marginTop="$4">
           <BizButton
-            label="Download Excel"
+            label="Excel export unavailable"
             variant="navy"
             icon={<Download size={15} color={BIZLINK_COLORS.card} strokeWidth={1.75} />}
-            onPress={() => showToast('Report generated — Excel download simulated')}
+            onPress={() => {}}
+            disabled
           />
         </YStack>
         <Text fontSize={12.5} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} textAlign="center" marginTop="$2.5" lineHeight={18}>
-          Bilang manager, ma-download mo ang report ng BUONG TEAM. Admin lang ang makaka-download ng lahat ng agents
-          company-wide. Walang customer contact info dito — buod/numero lang — kaya walang fingerprint na kailangan.
+          Naka-ready ang team summary. Hindi pa available ang Excel export sa mobile app, kaya walang fake download na
+          ipapakita. Walang customer contact info dito — buod at numero lang.
         </Text>
       </ScrollView>
     </YStack>

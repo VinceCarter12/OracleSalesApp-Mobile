@@ -15,11 +15,11 @@ export default function ManagerMoreScreen() {
   return (
     <YStack flex={1} backgroundColor={BIZLINK_COLORS.canvas} paddingTop={insets.top}>
       <XStack alignItems="center" paddingHorizontal="$4" paddingTop="$2.5" paddingBottom="$1.5">
-        <Text fontFamily={BIZLINK_FONTS.semibold} fontSize={21} color={BIZLINK_COLORS.text}>More</Text>
+        <Text fontFamily={BIZLINK_FONTS.semibold} fontSize={26} color={BIZLINK_COLORS.text}>More</Text>
       </XStack>
       <ScrollView contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 24 }}>
         <Text fontSize={13} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} marginBottom="$3.5" lineHeight={19}>
-          Mga karagdagang feature.
+          Mga karagdagang feature at settings para sa iyong team.
         </Text>
         <YStack backgroundColor={BIZLINK_COLORS.card} borderRadius={20} padding={14} marginBottom="$3.5" gap="$1">
           <XStack alignItems="center" gap="$1.5">
@@ -34,7 +34,7 @@ export default function ManagerMoreScreen() {
           </Text>
         </YStack>
 
-        <XStack flexWrap="wrap" gap="$3">
+        <XStack flexWrap="wrap" gap="$3" justifyContent="space-between">
           <BizMoreTile
             icon={<Bell size={19} color={BIZLINK_COLORS.text} strokeWidth={1.75} />}
             title="Notifications"
@@ -87,7 +87,7 @@ export default function ManagerMoreScreen() {
           <BizMoreTile
             icon={<User size={19} color={BIZLINK_COLORS.text} strokeWidth={1.75} />}
             title="Account & Security"
-            subtitle={<Text fontSize={10.5} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted}>Profile, passcode, sign out</Text>}
+            subtitle={<Text fontSize={10.5} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted}>Profile, device lock, sign out</Text>}
             onPress={() => router.push('/(manager)/more/account')}
           />
         </XStack>

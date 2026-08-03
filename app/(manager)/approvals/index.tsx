@@ -4,7 +4,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { CircleCheckBig } from 'lucide-react-native';
 import { Spinner, Text, YStack } from 'tamagui';
-import { BIZLINK_COLORS, BIZLINK_FONTS } from '../../../lib/theme';
+import { BIZLINK_FONTS, useBizlinkColors } from '../../../lib/theme';
 import { useManagerApprovalFeed } from '../../../lib/use-manager-approval-feed';
 import type { ApprovalDecisionStatus, ApprovalRequestKind } from '../../../lib/manager-approval-feed-service';
 import { BizTopBar } from '../../../components/bizlink/BizTopBar';
@@ -42,6 +42,7 @@ const KIND_FILTER_OPTIONS: BizFilterOption<ApprovalRequestKind>[] = [
  * manager's full team inbox.
  */
 export default function ManagerApprovalsScreen() {
+  const BIZLINK_COLORS = useBizlinkColors();
   const insets = useSafeAreaInsets();
   const { rows, loading, error, reload } = useManagerApprovalFeed();
   const [statusFilter, setStatusFilter] = useState<StatusFilterValue>('all');

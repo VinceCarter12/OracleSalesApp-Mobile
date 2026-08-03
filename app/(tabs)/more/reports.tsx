@@ -1,8 +1,9 @@
 import { Pressable, ScrollView } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
+import Svg, { Defs, Pattern, Line, Rect } from 'react-native-svg';
 import { Text, View, XStack, YStack } from 'tamagui';
-import { BIZLINK_COLORS, BIZLINK_FONTS } from '../../../lib/theme';
+import { useBizlinkColors, BIZLINK_FONTS } from '../../../lib/theme';
 import { useMeetings } from '../../../lib/useMeetings';
 import { useClients } from '../../../lib/useClients';
 import { SALES_CLIENT_STATUS_BADGES, getClientStatus } from '../../../lib/client-status';
@@ -38,7 +39,42 @@ function countMeetingsThisWeekByDay(meetings: Meeting[]): number[] {
   });
 }
 
+const HATCH_BAR_WIDTH = 20;
+
+/**
+ * Design-System-Catalog §3 "Mini bar chart" / wireframe `.minichart .bar.hatch`
+ * (`repeating-linear-gradient(45deg,var(--ink) 0 2.5px,transparent 2.5px 7px)`
+ * plus a 1.5px `--ink` border) — solid `--ink` bars alternate with a
+ * diagonal-hatch fill on odd columns (wireframe demo: Tue/Thu use `.hatch`,
+ * Mon/Wed/Fri stay solid). RN has no CSS repeating-linear-gradient, so the
+ * hatch fill is reproduced with an SVG tiled line pattern instead.
+ */
+function HatchBar({ width, height, patternId, ink }: { width: number; height: number; patternId: string; ink: string }) {
+  return (
+    <Svg width={width} height={height}>
+      <Defs>
+        <Pattern id={patternId} patternUnits="userSpaceOnUse" width={7} height={7} patternTransform="rotate(45)">
+          <Rect width={7} height={7} fill="transparent" />
+          <Line x1={0} y1={0} x2={0} y2={7} stroke={ink} strokeWidth={2.5} />
+        </Pattern>
+      </Defs>
+      <Rect
+        x={0.75}
+        y={0.75}
+        width={width - 1.5}
+        height={height - 1.5}
+        rx={6}
+        ry={2.25}
+        fill={`url(#${patternId})`}
+        stroke={ink}
+        strokeWidth={1.5}
+      />
+    </Svg>
+  );
+}
+
 function WeeklyMeetingsChart({ meetings }: { meetings: Meeting[] }) {
+  const BIZLINK_COLORS = useBizlinkColors();
   const counts = countMeetingsThisWeekByDay(meetings);
   const max = Math.max(1, ...counts);
   return (
@@ -47,26 +83,38 @@ function WeeklyMeetingsChart({ meetings }: { meetings: Meeting[] }) {
         Meetings this week
       </Text>
       <XStack alignItems="flex-end" justifyContent="space-between" gap="$2" height={90} marginTop={14}>
-        {counts.map((count, i) => (
-          <YStack key={WEEKDAY_LABELS[i]} alignItems="center" gap="$1.5" flex={1}>
-            <Text fontSize={11} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted}>{count}</Text>
-            <View
-              width={20}
-              height={Math.max(4, (count / max) * 64)}
-              borderRadius={6}
-              backgroundColor={i % 2 === 0 ? BIZLINK_COLORS.ink : BIZLINK_COLORS.soft}
-            />
-            <Text fontSize={11} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted}>
-              {WEEKDAY_LABELS[i]}
-            </Text>
-          </YStack>
-        ))}
+        {counts.map((count, i) => {
+          const barHeight = Math.max(4, (count / max) * 64);
+          const isHatch = i % 2 === 1;
+          return (
+            <YStack key={WEEKDAY_LABELS[i]} alignItems="center" gap="$1.5" flex={1}>
+              <Text fontSize={11} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted}>{count}</Text>
+              {isHatch ? (
+                <HatchBar width={HATCH_BAR_WIDTH} height={barHeight} patternId={`weekly-hatch-${i}`} ink={BIZLINK_COLORS.ink} />
+              ) : (
+                <View
+                  width={HATCH_BAR_WIDTH}
+                  height={barHeight}
+                  borderTopLeftRadius={8}
+                  borderTopRightRadius={8}
+                  borderBottomLeftRadius={3}
+                  borderBottomRightRadius={3}
+                  backgroundColor={BIZLINK_COLORS.ink}
+                />
+              )}
+              <Text fontSize={11} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted}>
+                {WEEKDAY_LABELS[i]}
+              </Text>
+            </YStack>
+          );
+        })}
       </XStack>
     </YStack>
   );
 }
 
 function MyClientRow({ client }: { client: Client }) {
+  const BIZLINK_COLORS = useBizlinkColors();
   const badge = SALES_CLIENT_STATUS_BADGES[getClientStatus(client)];
   return (
     <Pressable onPress={() => router.push(`/(tabs)/clients/${client.id}`)}>
@@ -93,6 +141,7 @@ function MyClientRow({ client }: { client: Client }) {
 /** Wireframe a-reports — My Performance: own stats only (managers see team-wide elsewhere). */
 export default function MyPerformanceScreen() {
   const insets = useSafeAreaInsets();
+  const BIZLINK_COLORS = useBizlinkColors();
   const { meetings } = useMeetings();
   const { clients } = useClients();
 

@@ -191,7 +191,8 @@ export default function LoginScreen() {
             textAlign="center"
             marginTop="$4"
           >
-            Sessions last the whole workday — auto-logout at 12:00 midnight only
+            Gumamit ng sariling account password para mag-sign in. Kapag naka-on ang device lock, native phone
+            credential ang gagamitin sa pag-unlock ng app.
           </Text>
         </YStack>
       </ScrollView>

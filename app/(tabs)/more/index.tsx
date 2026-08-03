@@ -3,13 +3,14 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { BarChart3, Bell, History, Map, User, Users } from 'lucide-react-native';
 import { Text, XStack, YStack } from 'tamagui';
-import { BIZLINK_COLORS, BIZLINK_FONTS } from '../../../lib/theme';
+import { useBizlinkColors, BIZLINK_FONTS } from '../../../lib/theme';
 import { BizMoreTile } from '../../../components/bizlink/BizMoreTile';
 import { StatusBadge } from '../../../components/ui/StatusBadge';
 
 /** Wireframe a-more — grid of secondary destinations; lock dots mark gated (sensitive) info. */
 export default function MoreScreen() {
   const insets = useSafeAreaInsets();
+  const BIZLINK_COLORS = useBizlinkColors();
   return (
     <YStack flex={1} backgroundColor={BIZLINK_COLORS.canvas} paddingTop={insets.top}>
       <XStack alignItems="center" paddingHorizontal="$4" paddingTop="$2.5" paddingBottom="$1.5">
@@ -17,7 +18,7 @@ export default function MoreScreen() {
       </XStack>
       <ScrollView contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 24 }}>
         <Text fontSize={13} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} marginBottom="$3.5">
-          Ang sensitibong impormasyon ay nangangailangan ng fingerprint/passcode.
+          Ang sensitibong impormasyon ay nangangailangan ng fingerprint o device lock.
         </Text>
         <XStack flexWrap="wrap" gap="$3" justifyContent="space-between">
           <BizMoreTile
@@ -53,7 +54,7 @@ export default function MoreScreen() {
           <BizMoreTile
             icon={<User size={18} color={BIZLINK_COLORS.ink} strokeWidth={1.75} />}
             title="Account & Security"
-            subtitle={<Text fontSize={10.5} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted}>Profile, passcode, sign out</Text>}
+            subtitle={<Text fontSize={10.5} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted}>Profile, device lock, sign out</Text>}
             onPress={() => router.push('/(tabs)/more/account')}
           />
         </XStack>

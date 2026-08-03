@@ -4,7 +4,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router, useFocusEffect } from 'expo-router';
 import { ImagePlus } from 'lucide-react-native';
 import { Text, View, XStack, YStack } from 'tamagui';
-import { BIZLINK_COLORS, BIZLINK_FONTS } from '../../../lib/theme';
+import { BIZLINK_FONTS, useBizlinkColors } from '../../../lib/theme';
 import { useManagerDashboard } from '../../../lib/useManagerDashboard';
 import { useSession } from '../../../lib/session-store';
 import { useAuth } from '../../../lib/useAuth';
@@ -26,6 +26,7 @@ import { clearSnapshot } from '../../../lib/app-lock/session-snapshot';
 
 /** Wireframe s-account (was Profile) — ungated: this-month stats, security row, sign out. */
 export default function ManagerAccountScreen() {
+  const BIZLINK_COLORS = useBizlinkColors();
   const insets = useSafeAreaInsets();
   const { summary } = useManagerDashboard();
   const { signOut, fullName, teamId, profileId } = useSession();
@@ -116,8 +117,8 @@ export default function ManagerAccountScreen() {
             <Text fontSize={12.5} fontFamily={BIZLINK_FONTS.semibold} color={BIZLINK_COLORS.text}>Session policy</Text>
           </XStack>
           <Text fontSize={13} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} marginTop="$1" lineHeight={18}>
-            Naka-login ka buong araw kahit offline. Auto-logout tuwing 12:00 midnight. Kapag nawala ang phone, admin
-            ang magde-deactivate ng account.
+            Kapag naka-on ang device-credential unlock, ang phone fingerprint, PIN, pattern, o device password ang
+            gagamitin sa pag-unlock ng app. Hindi nagse-save ang app ng hiwalay na passcode.
           </Text>
         </BizCard>
 
@@ -130,6 +131,7 @@ export default function ManagerAccountScreen() {
 }
 
 function StatBox({ value, label }: { value: number | string; label: string }) {
+  const BIZLINK_COLORS = useBizlinkColors();
   return (
     <YStack flex={1} backgroundColor={BIZLINK_COLORS.card} borderRadius={20} padding={14}>
       <Text fontSize={20} fontFamily={BIZLINK_FONTS.semibold} color={BIZLINK_COLORS.brand}>{value}</Text>
