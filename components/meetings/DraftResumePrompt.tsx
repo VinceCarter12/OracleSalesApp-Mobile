@@ -10,6 +10,21 @@ interface DraftResumePromptProps {
   onDiscard: () => void;
 }
 
+// 2026-08-02 (Step B controller consolidation): the fast path's original
+// disclosure copy is preserved verbatim — only mode/GPS/time/companions
+// restore, agenda still needs re-ticking. The full form's draft persistence
+// is new (it previously had none at all); its resume is even more partial —
+// outcome and remarks are collected post-Start in that flow and were never
+// part of MeetingDraftPayload either — the exact field set each flow still
+// needs re-entered is the single source of truth in
+// `getFieldsRequiringReentryAfterResume()`
+// (lib/policies/meeting-draft-resume-policy.ts); keep these two strings in
+// sync with that function if either flow's post-Start fields ever change.
+const RESUME_DETAIL_TL: Record<MeetingDraft['flow'], string> = {
+  visit: 'mananatili ang GPS/oras ng simula, pero kailangan mo ulit i-tick ang agenda',
+  full: 'mananatili ang GPS/oras ng simula at ang mga kasamang napili, pero kailangan mong ulitin ang agenda, outcome, at remarks',
+};
+
 /**
  * ADR-026 P1 item 3 (Meeting Draft Recovery) — small interstitial shown on
  * mount when a same-day, still-valid draft exists for this client. Two
@@ -32,8 +47,7 @@ export function DraftResumePrompt({ draft, onResume, onDiscard }: DraftResumePro
         lineHeight={17}
       >
         Na-start ang meeting na ito noong {new Date(draft.payload.capturedAt).toLocaleTimeString()} — bago naabala
-        ang app. Ipagpatuloy (mananatili ang GPS/oras ng simula, pero kailangan mo ulit i-tick ang agenda) o simulan
-        ulit?
+        ang app. Ipagpatuloy ({RESUME_DETAIL_TL[draft.flow]}) o simulan ulit?
       </Text>
       <YStack gap="$2">
         <BizButton label="Ipagpatuloy" onPress={onResume} />

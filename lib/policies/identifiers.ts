@@ -17,10 +17,22 @@ export const POLICY_ERROR_IDS = [
   'session_abandoned',
   'quota_policy_unconfigured',
   'approval_not_permitted',
+  // Batch 7C (ADR-053): new cutoff/quota feature error ids — additive only,
+  // none of the ids above are renamed/removed.
+  'cutoff_period_unconfigured',
+  'cutoff_role_quota_unconfigured',
+  'cutoff_client_cap_unconfigured',
 ] as const;
+
+// Batch 7C (ADR-053): stable ids for the new per-role cutoff quota policy —
+// separate id space from QUOTA_POLICY_IDS (the legacy RSR-only daily quota),
+// since this is a distinct engine (lib/policies/cutoff-policy.ts), not an
+// extension of the legacy one.
+export const CUTOFF_QUOTA_POLICY_IDS = ['cutoff_sales_specialist_quota', 'cutoff_rsr_quota'] as const;
 
 export type StageId = (typeof STAGE_IDS)[number];
 export type EvidenceKind = (typeof EVIDENCE_KINDS)[number];
 export type QuotaPolicyId = (typeof QUOTA_POLICY_IDS)[number];
 export type RolePolicyId = (typeof ROLE_POLICY_IDS)[number];
 export type PolicyErrorId = (typeof POLICY_ERROR_IDS)[number];
+export type CutoffQuotaPolicyId = (typeof CUTOFF_QUOTA_POLICY_IDS)[number];

@@ -1,9 +1,12 @@
+import { useEffect, useState } from 'react';
 import { router, useLocalSearchParams } from 'expo-router';
 import { CloudUpload, RefreshCw } from 'lucide-react-native';
 import { Text, View, XStack, YStack } from 'tamagui';
 import { BIZLINK_COLORS, BIZLINK_FONTS, BIZLINK_ON_INK } from '../../../lib/theme';
 import { useClientFlowRoutes } from '../../../lib/use-role-routes';
 import { BizButton } from '../../../components/bizlink/BizButton';
+import { PostRecordCutoffStatus } from '../../../components/cutoff/PostRecordCutoffStatus';
+import { getCutoffClientAllowance } from '../../../lib/cutoff-quota-service';
 
 /**
  * Wireframe a-celebrate — full-bleed dark emerald success screen after a
@@ -20,9 +23,27 @@ import { BizButton } from '../../../components/bizlink/BizButton';
  * "you're offline, this is genuinely waiting."
  */
 export default function MeetingCelebrateScreen() {
-  const { online, meetingId } = useLocalSearchParams<{ online?: string; meetingId?: string }>();
+  const { online, meetingId, clientId } = useLocalSearchParams<{ online?: string; meetingId?: string; clientId?: string }>();
   const isOnline = online === 'true';
   const routes = useClientFlowRoutes();
+
+  // W-3 (ADR-053): provisional over-cap signal, read from the (currently
+  // always-empty until Batch 7B) local allowance snapshot — never blocks
+  // this screen, purely informational.
+  const [wasAtCap, setWasAtCap] = useState(false);
+  useEffect(() => {
+    if (!clientId) return;
+    let cancelled = false;
+    getCutoffClientAllowance(clientId)
+      .then((allowance) => {
+        if (cancelled || !allowance || allowance.cap === null) return;
+        setWasAtCap(allowance.usedCount >= allowance.cap);
+      })
+      .catch((err) => console.error('[MeetingCelebrate] cutoff allowance check failed:', err));
+    return () => {
+      cancelled = true;
+    };
+  }, [clientId]);
 
   return (
     <YStack flex={1} backgroundColor={BIZLINK_COLORS.ink} alignItems="center" justifyContent="center" gap="$4" paddingHorizontal="$6">
@@ -63,6 +84,9 @@ export default function MeetingCelebrateScreen() {
           </>
         )}
       </XStack>
+      <YStack width="100%">
+        <PostRecordCutoffStatus wasAtCap={wasAtCap} />
+      </YStack>
       <YStack width="100%" marginTop="$5">
         <BizButton
           label="Continue"

@@ -1,7 +1,7 @@
 import { ScrollView } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
-import { BarChart3, Bell, Building2, History, Info, Map, PenLine, User, Users } from 'lucide-react-native';
+import { BarChart3, Bell, Building2, History, Info, Map, PenLine, RotateCcw, User, Users } from 'lucide-react-native';
 import { Text, XStack, YStack } from 'tamagui';
 import { BIZLINK_COLORS, BIZLINK_FONTS } from '../../../lib/theme';
 import { useSession } from '../../../lib/session-store';
@@ -71,6 +71,12 @@ export default function ManagerMoreScreen() {
             title="Approvals"
             subtitle={<Text fontSize={10.5} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted}>Client edit + PO confirmation requests</Text>}
             onPress={() => router.push('/(manager)/approvals')}
+          />
+          <BizMoreTile
+            icon={<RotateCcw size={19} color={BIZLINK_COLORS.text} strokeWidth={1.75} />}
+            title="Lost Opportunities"
+            subtitle={<Text fontSize={10.5} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted}>Team visibility lang, walang claim action</Text>}
+            onPress={() => router.push('/(manager)/more/lost-opportunities/index')}
           />
           <BizMoreTile
             icon={<BarChart3 size={19} color={BIZLINK_COLORS.text} strokeWidth={1.75} />}

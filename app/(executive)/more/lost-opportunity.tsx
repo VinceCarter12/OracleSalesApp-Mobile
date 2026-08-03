@@ -4,8 +4,8 @@ import { Spinner, Text, XStack, YStack } from 'tamagui';
 import { BIZLINK_COLORS, BIZLINK_FONTS } from '../../../lib/theme';
 import {
   useExecutiveLostOpportunities,
+  type ExecLostOpportunityStatus,
 } from '../../../lib/use-executive-lost-opportunities';
-import type { ExecLostOpportunityStatus } from '../../../lib/executive-lost-opportunity-service';
 import { BizTopBar } from '../../../components/bizlink/BizTopBar';
 import { BizCard } from '../../../components/bizlink/BizCard';
 import { BizButton } from '../../../components/bizlink/BizButton';
@@ -23,8 +23,10 @@ function formatDate(iso: string | null): string {
 
 /**
  * Wireframe x-lostopp — company-wide lost-opportunity list, Admin-level
- * visibility. Real data (B-060 addendum, 2026-07-23) via
- * lib/executive-lost-opportunity-service.ts. Status is DERIVED from
+ * visibility. Real data (B-060 addendum, 2026-07-23; migrated onto the
+ * shared `lib/lost-opportunity-read-service.ts` scope='company' read in
+ * Batch 9 Step D, 2026-08-02) via lib/use-executive-lost-opportunities.ts.
+ * Status is DERIVED from
  * `reassignable_at` vs now (cooldown/released), not a real column — see that
  * service's header comment. "Claimed by" is deliberately omitted: once
  * another agent claims a lost client, the row's `status` moves away from

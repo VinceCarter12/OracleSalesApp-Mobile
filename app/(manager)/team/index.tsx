@@ -8,37 +8,26 @@ import { useTeamOverview } from '../../../lib/use-team-overview';
 import { avatarPaletteFor } from '../../../lib/avatar-palette';
 import { BizButton } from '../../../components/bizlink/BizButton';
 import { BizFilterScroll } from '../../../components/bizlink/BizFilterScroll';
-import { BizTopBar } from '../../../components/bizlink/BizTopBar';
 import { Avatar } from '../../../components/ui/Avatar';
-
-type TeamFilter = 'all' | 'attention' | 'on_track';
-
-const TEAM_FILTERS: { value: TeamFilter; label: string }[] = [
-  { value: 'all', label: 'All' },
-  { value: 'attention', label: 'Needs attention' },
-  { value: 'on_track', label: 'On track' },
-];
+import { TEAM_FILTER_OPTIONS, filterTeamAgents, type TeamFilterValue } from '../../../lib/team-attention-filter';
 
 /** Wireframe s-team — ungated: staff stats only, no client data, so no fingerprint needed. Real data (B-054 Phase 1). */
 export default function ManagerTeamScreen() {
   const insets = useSafeAreaInsets();
   const { overview, loading, error, reload } = useTeamOverview();
-  const [filter, setFilter] = useState<TeamFilter>('all');
-  const agents = overview?.agents ?? [];
-  const filteredAgents = useMemo(
-    () => agents.filter((agent) => filter === 'all' || (filter === 'attention' ? agent.successRate < 70 : agent.successRate >= 70)),
-    [agents, filter]
-  );
+  const [filter, setFilter] = useState<TeamFilterValue>('all');
+  const shownAgents = useMemo(() => filterTeamAgents(overview?.agents ?? [], filter), [overview, filter]);
 
   return (
     <YStack flex={1} backgroundColor={BIZLINK_COLORS.canvas} paddingTop={insets.top}>
-      <BizTopBar title="My Team" fallbackHref="/(manager)" />
+      <XStack alignItems="center" paddingHorizontal="$4" paddingTop="$2.5" paddingBottom="$1.5">
+        <Text fontFamily={BIZLINK_FONTS.semibold} fontSize={21} color={BIZLINK_COLORS.text}>My Team</Text>
+      </XStack>
       <ScrollView contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 24 }}>
         <Text fontSize={13} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} marginBottom="$3" lineHeight={19}>
           Makikita mo dito ang lahat ng agents sa ilalim mo — kanya-kanyang stats para malaman mo kung sino ang
           kailangan ng tulong. (Staff stats lang ito — hindi customer data, kaya walang fingerprint na kailangan.)
         </Text>
-        <BizFilterScroll options={TEAM_FILTERS} value={filter} onChange={setFilter} />
 
         {loading ? (
           <YStack alignItems="center" paddingVertical="$6">
@@ -51,55 +40,59 @@ export default function ManagerTeamScreen() {
             </Text>
             <BizButton small label="Ulitin" variant="white" onPress={reload} />
           </YStack>
-        ) : agents.length === 0 ? (
+        ) : !overview || overview.agents.length === 0 ? (
           <YStack alignItems="center" paddingVertical="$6">
             <Text fontSize={13} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted}>
               Walang agent na naka-assign sa team mo.
             </Text>
           </YStack>
-        ) : filteredAgents.length === 0 ? (
-          <YStack alignItems="center" paddingVertical="$6">
-            <Text fontSize={13} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} textAlign="center">
-              Walang team member sa filter na ito.
-            </Text>
-          </YStack>
         ) : (
-          filteredAgents.map((agent, index) => {
-            const color = avatarPaletteFor(agent.id);
-            return (
-              <XStack
-                key={agent.id}
-                alignItems="center"
-                gap="$3"
-                backgroundColor={BIZLINK_COLORS.card}
-                borderRadius={20}
-                padding={14}
-                marginBottom={10}
-                onPress={() => router.push(`/(manager)/team/${agent.id}`)}
-                pressStyle={{ opacity: 0.85 }}
-              >
-                <YStack width={26} height={26} borderRadius={13} alignItems="center" justifyContent="center" backgroundColor={BIZLINK_COLORS.soft}>
-                  <Text fontSize={11} fontFamily={BIZLINK_FONTS.semibold} color={BIZLINK_COLORS.muted}>{index + 1}</Text>
-                </YStack>
-                <Avatar initials={agent.initials} background={color.background} color={color.color} />
-                <YStack flex={1}>
-                  <Text fontFamily={BIZLINK_FONTS.semibold} fontSize={14} color={BIZLINK_COLORS.text}>{agent.name}</Text>
-                  <XStack gap="$2.5" marginTop={3}>
-                    <Text fontSize={10.5} fontFamily={BIZLINK_FONTS.semibold} color={BIZLINK_COLORS.muted}>
-                      <Text color={BIZLINK_COLORS.brand}>{agent.meetingsThisMonth}</Text> meetings
-                    </Text>
-                    <Text fontSize={10.5} fontFamily={BIZLINK_FONTS.semibold} color={BIZLINK_COLORS.muted}>
-                      <Text color={BIZLINK_COLORS.brand}>{agent.activeClients}</Text> clients
-                    </Text>
-                    <Text fontSize={10.5} fontFamily={BIZLINK_FONTS.semibold} color={BIZLINK_COLORS.muted}>
-                      <Text color={BIZLINK_COLORS.brand}>{agent.successRate}%</Text> success
-                    </Text>
+          <>
+            <YStack marginBottom="$2.5">
+              <BizFilterScroll options={TEAM_FILTER_OPTIONS} value={filter} onChange={setFilter} />
+            </YStack>
+            {shownAgents.length === 0 ? (
+              <YStack alignItems="center" paddingVertical="$6">
+                <Text fontSize={13} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted}>
+                  Walang team member sa filter na ito.
+                </Text>
+              </YStack>
+            ) : (
+              shownAgents.map((agent) => {
+                const color = avatarPaletteFor(agent.id);
+                return (
+                  <XStack
+                    key={agent.id}
+                    alignItems="center"
+                    gap="$3"
+                    backgroundColor={BIZLINK_COLORS.card}
+                    borderRadius={20}
+                    padding={14}
+                    marginBottom={10}
+                    onPress={() => router.push(`/(manager)/team/${agent.id}`)}
+                    pressStyle={{ opacity: 0.85 }}
+                  >
+                    <Avatar initials={agent.initials} background={color.background} color={color.color} />
+                    <YStack flex={1}>
+                      <Text fontFamily={BIZLINK_FONTS.semibold} fontSize={14} color={BIZLINK_COLORS.text}>{agent.name}</Text>
+                      <XStack gap="$2.5" marginTop={3}>
+                        <Text fontSize={10.5} fontFamily={BIZLINK_FONTS.semibold} color={BIZLINK_COLORS.muted}>
+                          <Text color={BIZLINK_COLORS.brand}>{agent.meetingsThisMonth}</Text> meetings
+                        </Text>
+                        <Text fontSize={10.5} fontFamily={BIZLINK_FONTS.semibold} color={BIZLINK_COLORS.muted}>
+                          <Text color={BIZLINK_COLORS.brand}>{agent.activeClients}</Text> clients
+                        </Text>
+                        <Text fontSize={10.5} fontFamily={BIZLINK_FONTS.semibold} color={BIZLINK_COLORS.muted}>
+                          <Text color={BIZLINK_COLORS.brand}>{agent.successRate}%</Text> success
+                        </Text>
+                      </XStack>
+                    </YStack>
+                    <Text color={BIZLINK_COLORS.muted} fontSize={16}>›</Text>
                   </XStack>
-                </YStack>
-                <Text color={BIZLINK_COLORS.muted} fontSize={16}>›</Text>
-              </XStack>
-            );
-          })
+                );
+              })
+            )}
+          </>
         )}
       </ScrollView>
     </YStack>

@@ -1,7 +1,8 @@
 import { useCallback, useMemo, useState } from 'react';
-import { ScrollView, TextInput } from 'react-native';
+import { Pressable, ScrollView, TextInput } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useFocusEffect } from 'expo-router';
+import { router, useFocusEffect } from 'expo-router';
+import type { Href } from 'expo-router';
 import { AlertTriangle, Bell, CircleAlert, FileCheck2, RefreshCw, Users } from 'lucide-react-native';
 import { Spinner, Text, XStack, YStack } from 'tamagui';
 import { useBizlinkColors, BIZLINK_FONTS } from '../../../lib/theme';
@@ -11,6 +12,7 @@ import { getMyPoConfirmationStatuses, type PoConfirmationRecord } from '../../..
 import { PO_CONFIRMATION_STATUS_LABELS, PO_CONFIRMATION_BADGE_TONES } from '../../../lib/policies/po-confirmation-status-policy';
 import { getClientById } from '../../../lib/client-service';
 import { useSession } from '../../../lib/session-store';
+import { useClientFlowRoutes } from '../../../lib/use-role-routes';
 import { BizTopBar } from '../../../components/bizlink/BizTopBar';
 import { BizFilterScroll, type BizFilterOption } from '../../../components/bizlink/BizFilterScroll';
 
@@ -21,6 +23,8 @@ interface NotificationItem {
   icon: React.ReactNode;
   title: string;
   body: string;
+  /** Batch 7a: each item's one authorized navigation destination on tap, when it has one. */
+  href?: Href;
 }
 
 const CATEGORY_FILTERS: BizFilterOption<'all' | NotificationCategory>[] = [
@@ -51,6 +55,7 @@ export default function NotificationsScreen() {
   const insets = useSafeAreaInsets();
   const BIZLINK_COLORS = useBizlinkColors();
   const { profileId } = useSession();
+  const clientFlowRoutes = useClientFlowRoutes();
   const [counts, setCounts] = useState<OutboxCounts | null>(null);
   const [managerTags, setManagerTags] = useState<RecentManagerTag[]>([]);
   const [poConfirmations, setPoConfirmations] = useState<Array<{ record: PoConfirmationRecord; clientName: string | null }>>([]);
@@ -81,6 +86,12 @@ export default function NotificationsScreen() {
 
   useFocusEffect(useCallback(() => { load(); }, [load]));
 
+  // Batch 7a: each item's `href` (when present) is its one authorized
+  // navigation destination on tap — sync items go to the existing Sync
+  // History screen, client-scoped items (manager tag, PO evidence) go to
+  // that client's own Client Detail. Merged with this pass's category
+  // tagging + search/filter so both features coexist.
+  const syncHistoryHref = '/(tabs)/more/sync-history' as Href;
   const allItems = useMemo(() => {
     const items: NotificationItem[] = [];
     if (counts) {
@@ -90,6 +101,7 @@ export default function NotificationsScreen() {
           icon: <AlertTriangle size={16} color={BIZLINK_COLORS.red} strokeWidth={1.75} />,
           title: `${counts.failed} record${counts.failed === 1 ? '' : 's'} failed to sync`,
           body: 'Needs attention — check Sync History for details.',
+          href: syncHistoryHref,
         });
       }
       if (counts.conflict > 0) {
@@ -98,6 +110,7 @@ export default function NotificationsScreen() {
           icon: <CircleAlert size={16} color={BIZLINK_COLORS.orange} strokeWidth={1.75} />,
           title: `${counts.conflict} sync conflict${counts.conflict === 1 ? '' : 's'}`,
           body: 'A record was changed on both the device and the server.',
+          href: syncHistoryHref,
         });
       }
       if (counts.pending > 0) {
@@ -106,6 +119,7 @@ export default function NotificationsScreen() {
           icon: <RefreshCw size={16} color={BIZLINK_COLORS.brand} strokeWidth={1.75} />,
           title: `${counts.pending} record${counts.pending === 1 ? '' : 's'} queued for sync`,
           body: 'Auto-uploads kapag may signal.',
+          href: syncHistoryHref,
         });
       }
     }
@@ -116,6 +130,7 @@ export default function NotificationsScreen() {
         icon: <Users size={16} color={BIZLINK_COLORS.brand} strokeWidth={1.75} />,
         title: `${managerName} tinag ka sa isang meeting`,
         body: tag.clientName ? `${tag.clientName} — ${new Date(tag.createdAt).toLocaleDateString()}` : new Date(tag.createdAt).toLocaleDateString(),
+        href: tag.clientId ? clientFlowRoutes.clientDetail(tag.clientId) : undefined,
       });
     }
     for (const { record, clientName } of poConfirmations) {
@@ -125,10 +140,11 @@ export default function NotificationsScreen() {
         icon: <FileCheck2 size={16} color={BIZLINK_COLORS[tone.color]} strokeWidth={1.75} />,
         title: clientName ? `PO evidence — ${clientName}` : 'PO evidence update',
         body: `${PO_CONFIRMATION_STATUS_LABELS[record.displayStatus]} — ${new Date(record.updatedAt).toLocaleDateString()}`,
+        href: clientFlowRoutes.clientDetail(record.clientId),
       });
     }
     return items;
-  }, [counts, managerTags, poConfirmations, BIZLINK_COLORS]);
+  }, [counts, managerTags, poConfirmations, BIZLINK_COLORS, clientFlowRoutes, syncHistoryHref]);
 
   const items = useMemo(() => {
     const query = search.trim().toLowerCase();
@@ -179,27 +195,36 @@ export default function NotificationsScreen() {
             </Text>
           </YStack>
         ) : (
-          items.map((item, index) => (
-            <XStack
-              key={index}
-              gap="$3"
-              alignItems="flex-start"
-              backgroundColor={BIZLINK_COLORS.card}
-              borderRadius={20}
-              padding={16}
-              marginTop={index === 0 ? 0 : 10}
-            >
-              {item.icon}
-              <YStack flex={1} gap="$1">
-                <Text fontFamily={BIZLINK_FONTS.semibold} fontSize={13.5} color={BIZLINK_COLORS.text}>
-                  {item.title}
-                </Text>
-                <Text fontSize={12} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} lineHeight={17}>
-                  {item.body}
-                </Text>
-              </YStack>
-            </XStack>
-          ))
+          items.map((item, index) => {
+            const card = (
+              <XStack
+                gap="$3"
+                alignItems="flex-start"
+                backgroundColor={BIZLINK_COLORS.card}
+                borderRadius={20}
+                padding={16}
+                marginTop={index === 0 ? 0 : 10}
+                minHeight={44}
+              >
+                {item.icon}
+                <YStack flex={1} gap="$1">
+                  <Text fontFamily={BIZLINK_FONTS.semibold} fontSize={13.5} color={BIZLINK_COLORS.text}>
+                    {item.title}
+                  </Text>
+                  <Text fontSize={12} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} lineHeight={17}>
+                    {item.body}
+                  </Text>
+                </YStack>
+              </XStack>
+            );
+            return item.href ? (
+              <Pressable key={index} onPress={() => router.push(item.href as Href)} hitSlop={4}>
+                {card}
+              </Pressable>
+            ) : (
+              <YStack key={index}>{card}</YStack>
+            );
+          })
         )}
       </ScrollView>
     </YStack>

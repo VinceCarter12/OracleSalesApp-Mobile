@@ -147,6 +147,8 @@ export interface RecentManagerTag {
   id: string;
   requesterName: string | null;
   clientName: string | null;
+  /** Batch 7a: added so the Notifications screen can route a tap to the client's own Client Detail. */
+  clientId: string | null;
   createdAt: string;
 }
 
@@ -154,6 +156,7 @@ interface RecentManagerTagRow {
   id: string;
   requester_name: string | null;
   client_name: string | null;
+  client_id: string | null;
   created_at: string;
 }
 
@@ -187,7 +190,7 @@ interface RecentManagerTagRow {
 export async function getRecentCompanionTagsForInvitee(inviteeId: string, limit = 5): Promise<RecentManagerTag[]> {
   const db = await getDb();
   const rows = await db.getAllAsync<RecentManagerTagRow>(
-    `SELECT tar.id, trs.full_name AS requester_name, c.company_name AS client_name, tar.created_at
+    `SELECT tar.id, trs.full_name AS requester_name, c.company_name AS client_name, tar.related_client_id AS client_id, tar.created_at
        FROM tag_along_requests tar
        JOIN team_roster_snapshot trs ON trs.profile_id = tar.requester_id
        LEFT JOIN clients c ON c.id = tar.related_client_id
@@ -203,6 +206,7 @@ export async function getRecentCompanionTagsForInvitee(inviteeId: string, limit 
     id: row.id,
     requesterName: row.requester_name,
     clientName: row.client_name,
+    clientId: row.client_id,
     createdAt: row.created_at,
   }));
 }

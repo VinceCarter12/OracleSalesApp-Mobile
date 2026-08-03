@@ -335,7 +335,8 @@ export interface TeamRosterEntry {
 // real instances of them from Supabase. `lib/executive-data.ts` itself was
 // deleted 2026-07-23 (B-060 addendum) once its last three mock consumers
 // (Lost Opportunity, Approvals Log → Tag-Along Log, Maps) were wired to real
-// data — see lib/executive-lost-opportunity-service.ts and
+// data — see lib/lost-opportunity-read-service.ts (Lost Opportunity, scope
+// 'company' as of Batch 9 Step D 2026-08-02) and
 // lib/executive-tagalong-log-service.ts for the two new read paths.
 
 export interface ExecAvatarStyle {

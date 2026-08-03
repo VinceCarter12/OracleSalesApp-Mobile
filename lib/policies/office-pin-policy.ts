@@ -14,3 +14,23 @@
 export function hasOfficePin(lat: number | null | undefined, lng: number | null | undefined): boolean {
   return lat != null && lng != null;
 }
+
+export type OfficePinSourceValue = 'manual' | 'client_office_meeting' | null | undefined;
+
+/**
+ * Batch 8 (2026-08-02): Wireframe `a-maps`/`aRenderOfficeMaps()`
+ * (Wireframe-Sales-BizLink.html ~line 1377) splits pins into
+ * verified/unverified. The auto-capture path
+ * (`createMeeting()` → `writeOfficePinLocal()` with
+ * `source: 'client_office_meeting'`, see lib/office-pin-service.ts) is the
+ * ONLY source that counts as verified — it is a GPS fix taken at the moment
+ * of an actual Client Office visit. The manual Set/Update Office Location
+ * flow (`app/(tabs)/clients/office-location.tsx`) always writes
+ * `source: 'manual'`, even though it also captures live GPS, because the
+ * agent could be capturing it from anywhere, not necessarily standing at the
+ * client's office — so it stays unverified until a real Client Office visit
+ * happens.
+ */
+export function isOfficePinVerified(source: OfficePinSourceValue): boolean {
+  return source === 'client_office_meeting';
+}

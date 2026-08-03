@@ -1,16 +1,18 @@
 import { ScrollView } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
-import { BarChart3, Bell, History, Map, User, Users } from 'lucide-react-native';
+import { BarChart3, Bell, ClipboardCheck, History, Map, RotateCcw, User, Users } from 'lucide-react-native';
 import { Text, XStack, YStack } from 'tamagui';
 import { useBizlinkColors, BIZLINK_FONTS } from '../../../lib/theme';
+import { useSession } from '../../../lib/session-store';
+import { canClaimLostOpportunity } from '../../../lib/policies/lost-opportunity-claim-policy';
 import { BizMoreTile } from '../../../components/bizlink/BizMoreTile';
-import { StatusBadge } from '../../../components/ui/StatusBadge';
 
 /** Wireframe a-more — grid of secondary destinations; lock dots mark gated (sensitive) info. */
 export default function MoreScreen() {
   const insets = useSafeAreaInsets();
   const BIZLINK_COLORS = useBizlinkColors();
+  const { role } = useSession();
   return (
     <YStack flex={1} backgroundColor={BIZLINK_COLORS.canvas} paddingTop={insets.top}>
       <XStack alignItems="center" paddingHorizontal="$4" paddingTop="$2.5" paddingBottom="$1.5">
@@ -48,9 +50,23 @@ export default function MoreScreen() {
           <BizMoreTile
             icon={<Map size={18} color={BIZLINK_COLORS.ink} strokeWidth={1.75} />}
             title="Maps"
-            subtitle={<StatusBadge label="Pending confirmation" background={BIZLINK_COLORS.tintB} color={BIZLINK_COLORS.red} />}
+            subtitle={<Text fontSize={10.5} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted}>Read-only office pins</Text>}
             onPress={() => router.push('/(tabs)/more/maps')}
           />
+          <BizMoreTile
+            icon={<ClipboardCheck size={18} color={BIZLINK_COLORS.ink} strokeWidth={1.75} />}
+            title="My Requests"
+            subtitle={<Text fontSize={10.5} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted}>PO, edit, at tag-along status</Text>}
+            onPress={() => router.push('/(tabs)/more/my-requests')}
+          />
+          {canClaimLostOpportunity(role) ? (
+            <BizMoreTile
+              icon={<RotateCcw size={18} color={BIZLINK_COLORS.ink} strokeWidth={1.75} />}
+              title="Lost Opportunities"
+              subtitle={<Text fontSize={10.5} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted}>Claim released prospects</Text>}
+              onPress={() => router.push('/(tabs)/more/lost-opportunities')}
+            />
+          ) : null}
           <BizMoreTile
             icon={<User size={18} color={BIZLINK_COLORS.ink} strokeWidth={1.75} />}
             title="Account & Security"
