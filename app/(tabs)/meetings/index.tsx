@@ -210,7 +210,7 @@ export default function MeetingsScreen() {
           data={filtered}
           keyExtractor={(item) => item.id}
           style={{ flex: 1 }}
-          contentContainerStyle={{ paddingHorizontal: 16, paddingTop: 8 }}
+          contentContainerStyle={{ paddingHorizontal: 16, paddingTop: 8, paddingBottom: 16 + insets.bottom }}
           renderItem={({ item }) => <MeetingRow meeting={item} hasTagAlong={tagAlongMeetingIds.has(item.id)} />}
           refreshControl={<RefreshControl refreshing={loading} onRefresh={refresh} />}
           ListEmptyComponent={

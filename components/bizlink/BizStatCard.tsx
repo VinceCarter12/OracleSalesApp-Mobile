@@ -31,6 +31,7 @@ export function BizStatCard({ value, label, caption, tone = 'white', minWidth = 
   return (
     <YStack
       onPress={onPress}
+      flex={1}
       minWidth={minWidth}
       minHeight={118}
       backgroundColor={TONE_BG[tone]}

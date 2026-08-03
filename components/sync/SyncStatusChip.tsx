@@ -1,11 +1,50 @@
-import { useCallback, useState } from 'react';
-import { Pressable } from 'react-native';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { Animated, Easing, Pressable } from 'react-native';
 import { useFocusEffect } from 'expo-router';
 import { AlertCircle, GitBranch, RefreshCw } from 'lucide-react-native';
 import { Text, XStack, YStack } from 'tamagui';
 import { BIZLINK_COLORS, BIZLINK_FONTS } from '../../lib/theme';
 import { getOutboxCounts, type OutboxCounts } from '../../lib/sync-engine';
 import { getLastSyncAt } from '../../lib/sync/last-sync';
+
+/**
+ * Wireframe `.spin` (2026-08-03 spinner pass): 18dp, 3dp border, 1.1s linear
+ * infinite rotation — a real animated ring, not a static icon, and only
+ * while a sync is actively in flight (`counts.syncing > 0`). Idle/pending/
+ * failed/conflict states keep the existing static Lucide icon.
+ */
+function ActiveSyncSpinner() {
+  const rotation = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    const loop = Animated.loop(
+      Animated.timing(rotation, {
+        toValue: 1,
+        duration: 1100,
+        easing: Easing.linear,
+        useNativeDriver: true,
+      })
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [rotation]);
+
+  const spin = rotation.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '360deg'] });
+
+  return (
+    <Animated.View
+      style={{
+        width: 18,
+        height: 18,
+        borderRadius: 9,
+        borderWidth: 3,
+        borderColor: BIZLINK_COLORS.soft,
+        borderTopColor: BIZLINK_COLORS.navy,
+        transform: [{ rotate: spin }],
+      }}
+    />
+  );
+}
 
 // T-014 Phase 1 (ADR-024 Phase 1 shared foundation): BizLink-styled
 // extraction of the sync chip that previously lived inline in
@@ -91,6 +130,10 @@ export function SyncStatusChip({ counts: countsProp, onPress }: SyncStatusChipPr
   const alarm = isAlarm(counts);
   const background = alarm ? BIZLINK_COLORS.tintB : BIZLINK_COLORS.card;
   const accent = alarm ? BIZLINK_COLORS.red : BIZLINK_COLORS.navy;
+  // Wireframe `.spin`: an actively-in-flight sync gets the real animated
+  // ring, taking priority over the static icon — failed/conflict still win
+  // visually once a sync attempt actually finishes and fails.
+  const activelySyncing = counts.syncing > 0;
   const Icon = counts.failed > 0 ? AlertCircle : counts.conflict > 0 ? GitBranch : RefreshCw;
 
   const content = (
@@ -103,7 +146,7 @@ export function SyncStatusChip({ counts: countsProp, onPress }: SyncStatusChipPr
       paddingVertical={11}
       marginTop={12}
     >
-      <Icon size={16} color={accent} strokeWidth={1.75} />
+      {activelySyncing ? <ActiveSyncSpinner /> : <Icon size={16} color={accent} strokeWidth={1.75} />}
       <YStack>
         <Text fontSize={12} fontFamily={BIZLINK_FONTS.medium} color={accent}>
           {primaryLine(counts)}

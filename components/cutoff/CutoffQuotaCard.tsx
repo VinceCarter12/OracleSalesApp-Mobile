@@ -3,7 +3,6 @@ import { CircleAlert, Clock, Target } from 'lucide-react-native';
 import { Text, View, XStack, YStack } from 'tamagui';
 import { useBizlinkColors, BIZLINK_FONTS } from '../../lib/theme';
 import { getCutoffQuotaCard, type CutoffQuotaCardData } from '../../lib/cutoff-quota-service';
-import { useCutoffQuotaFlag } from '../../lib/use-cutoff-quota-flag';
 import type { CutoffQuotaRole } from '../../lib/policies/cutoff-policy';
 
 interface CutoffQuotaCardProps {
@@ -14,22 +13,26 @@ interface CutoffQuotaCardProps {
 /**
  * W-1 (Wireframe-Sales-BizLink.html `#a-quotaWidget`): shared Sales/RSR
  * cutoff/quota card, reusing the RSR widget's visual pattern (ADR-053
- * contract item 6). Renders nothing when the `cutoff_quota_v1` flag is OFF,
- * when there's no signed-in agent, or when the snapshot has no active
- * period/usage row for this role yet (Batch 7B not landed — the snapshot is
- * always empty right now, so this renders the "No quota configured" empty
- * state rather than a broken zero).
+ * contract item 6).
+ *
+ * 2026-08-03 (Vince direction): always renders for Sales/RSR — the
+ * `cutoff_quota_v1` flag continues to gate the SEPARATE background
+ * sync-down job (lib/sync/cutoff-sync-down.ts) that populates the local
+ * `cutoff_role_usage_snapshot` table, but this component always attempts a
+ * plain local SQLite read regardless of that flag. When no row exists yet
+ * (flag off, sync-down never run, or Batch 7B simply has no active period
+ * seeded), it renders the honest "No quota configured" state — never a
+ * hardcoded fallback.
  */
 export function CutoffQuotaCard({ agentId, role }: CutoffQuotaCardProps) {
   const BIZLINK_COLORS = useBizlinkColors();
-  const flagOn = useCutoffQuotaFlag();
   const [data, setData] = useState<CutoffQuotaCardData | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     let cancelled = false;
     async function load() {
-      if (!flagOn || !agentId) {
+      if (!agentId) {
         await Promise.resolve();
         if (!cancelled) setLoading(false);
         return;
@@ -47,9 +50,9 @@ export function CutoffQuotaCard({ agentId, role }: CutoffQuotaCardProps) {
     return () => {
       cancelled = true;
     };
-  }, [flagOn, agentId, role]);
+  }, [agentId, role]);
 
-  if (!flagOn || loading) return null;
+  if (loading) return null;
 
   const unconfigured = !data || data.target === null;
   const remaining = data && data.target !== null ? Math.max(0, data.target - data.confirmedCount) : 0;
