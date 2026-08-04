@@ -1,22 +1,12 @@
-import { useEffect, useState } from 'react';
-import { isFeatureEnabled } from './feature-flags';
-
 /**
- * Batch 7C (ADR-053): shared read of the `cutoff_quota_v1` flag (defaults
- * OFF, see lib/feature-flags.ts). Every cutoff/quota UI surface gates on
- * this hook so the whole feature stays inert until explicitly activated —
- * fails closed (starts `false`) the same way `isFeatureEnabled` itself does.
+ * Batch 7C (ADR-053): the `cutoff_quota_v1` staged-rollout gate applied
+ * while Batch 7B's server-side schema/RPCs were unverified. That
+ * verification is complete (2026-08-04, physical device) and the RSR-target
+ * fix landed (Web PR #53 / migration 065) — every cutoff/quota UI surface
+ * now renders unconditionally, same as CutoffQuotaCard already did per the
+ * 2026-08-03 direction. This hook is kept only so PostRecordCutoffStatus and
+ * ClientCutoffAllowanceBlock don't need a separate code path.
  */
 export function useCutoffQuotaFlag(): boolean {
-  const [enabled, setEnabled] = useState(false);
-  useEffect(() => {
-    let cancelled = false;
-    isFeatureEnabled('cutoff_quota_v1').then((value) => {
-      if (!cancelled) setEnabled(value);
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-  return enabled;
+  return true;
 }

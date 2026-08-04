@@ -31,11 +31,25 @@ interface CutoffPeriodRow {
   version: number | null;
 }
 
-/** `public.cutoff_periods` — only the active row(s), broad authenticated read RLS. */
+/**
+ * `public.cutoff_periods` — only the row covering today, broad authenticated
+ * read RLS. Periods are generated ahead as `status='active'` (Settings'
+ * "Generate" — dozens of rows can carry that status at once), so `status`
+ * alone is not enough; the date filter mirrors web's `activePeriod()` and the
+ * two RPCs' own `active` CTE (migration 066).
+ */
 export async function pullCutoffPeriods(db: SQLiteDatabase, now: string): Promise<void> {
   try {
+    const today = now.slice(0, 10);
     const { data, error } = await withTimeout(
-      Promise.resolve(supabase.from('cutoff_periods').select('*').eq('status', 'active')),
+      Promise.resolve(
+        supabase
+          .from('cutoff_periods')
+          .select('*')
+          .eq('status', 'active')
+          .lte('starts_on', today)
+          .gte('ends_on', today)
+      ),
       SYNC_TIMEOUT_MS,
       'sync-down cutoff periods'
     );
@@ -142,7 +156,7 @@ export async function pullCutoffClientAllowance(db: SQLiteDatabase, agentId: str
   let clientIds: string[];
   try {
     const rows = await db.getAllAsync<{ id: string }>(
-      "SELECT id FROM clients WHERE agent_id = ? AND status IN ('new', 'existing')",
+      "SELECT id FROM clients WHERE agent_id = ? AND customer_type IN ('new', 'existing')",
       [agentId]
     );
     clientIds = rows.map((r) => r.id);
