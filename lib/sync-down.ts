@@ -5,7 +5,6 @@ import { getDb } from './db';
 import { ENTITY_REGISTRY, type EntityTableName } from './sync/entity-registry';
 import { syncAgendaPolicyAndCycles } from './sync/policy-sync-down';
 import { syncCutoffQuotaSnapshots } from './sync/cutoff-sync-down';
-import { isFeatureEnabled } from './feature-flags';
 import type { SQLiteDatabase } from 'expo-sqlite';
 
 // T-002/T-005/T-014: the pull half of the sync engine — split out of
@@ -194,14 +193,13 @@ export async function syncDown(agentId: string, teamId?: string | null): Promise
   // so one bad pull never blocks another).
   await syncAgendaPolicyAndCycles(db, agentId);
 
-  // Batch 7C (ADR-053): the three cutoff/quota pulls only run when the
-  // `cutoff_quota_v1` flag is ON — this keeps the flag's "OFF = byte-
-  // identical to today" guarantee true at the network level too, not just
-  // the UI level (no request to `cutoff_periods`, `get_my_cutoff_usage_
-  // summary()`, or `get_client_cutoff_allowance()` is ever made while OFF).
-  if (await isFeatureEnabled('cutoff_quota_v1')) {
-    await syncCutoffQuotaSnapshots(db, agentId);
-  }
+  // Batch 7C (ADR-053): the `cutoff_quota_v1` staged-rollout gate applied
+  // while Batch 7B's server-side schema/RPCs (migrations 057-065) were
+  // unverified. That verification is complete (2026-08-04, physical device)
+  // and the fix landed (Web PR #53 / migration 065) — the three cutoff/quota
+  // pulls now always run, same as every other sync-down pull, no per-device
+  // toggle required.
+  await syncCutoffQuotaSnapshots(db, agentId);
 }
 
 /**
