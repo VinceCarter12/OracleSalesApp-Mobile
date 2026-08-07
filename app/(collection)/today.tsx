@@ -12,6 +12,7 @@ import {
   formatClockTime,
   formatPeso,
   getCollectionSummary,
+  sortAdditionalFirst,
   type CollectionStore,
 } from '../../lib/collection-delivery-data';
 import { useCollectionStores } from '../../lib/use-collection-delivery';
@@ -38,14 +39,20 @@ function StoreRow({ store, onPress }: { store: CollectionStore; onPress?: () => 
     >
       <Avatar initials={store.initials} size="sm" background={BIZLINK_COLORS.tintA} color={BIZLINK_COLORS.ink} />
       <YStack flex={1} gap="$0.5">
-        <Text
-          fontFamily={BIZLINK_FONTS.semibold}
-          fontSize={13.5}
-          color={collected ? BIZLINK_COLORS.muted : BIZLINK_COLORS.text}
-          textDecorationLine={collected ? 'line-through' : 'none'}
-        >
-          {store.name}
-        </Text>
+        <XStack alignItems="center" gap="$1.5">
+          <Text
+            fontFamily={BIZLINK_FONTS.semibold}
+            fontSize={13.5}
+            color={collected ? BIZLINK_COLORS.muted : BIZLINK_COLORS.text}
+            textDecorationLine={collected ? 'line-through' : 'none'}
+            flexShrink={1}
+          >
+            {store.name}
+          </Text>
+          {store.isAdditional && store.status === 'pending' ? (
+            <StatusBadge label="Additional" background={COLORS.purpleSoft} color={COLORS.purple} />
+          ) : null}
+        </XStack>
         <XStack gap="$2.5">
           <Text fontSize={10.5} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted}>{store.area}</Text>
           <Text fontSize={10.5} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted}>Due {formatPeso(store.due)}</Text>
@@ -83,6 +90,9 @@ export default function CollectionTodayScreen() {
   const { stores, refresh } = useCollectionStores();
   useFocusEffect(useCallback(() => { refresh(); }, [refresh]));
   const summary = getCollectionSummary(stores);
+  // Additional (admin added mid-day) pending stores float to the top so a late
+  // urgent addition isn't stranded at the bottom of the list.
+  const orderedStores = sortAdditionalFirst(stores);
 
   return (
     <YStack flex={1} backgroundColor={BIZLINK_COLORS.canvas} paddingTop={insets.top}>
@@ -99,7 +109,7 @@ export default function CollectionTodayScreen() {
             The count goes down as you visit — finished stores are crossed out below.
           </Text>
         </YStack>
-        {stores.map((store) => (
+        {orderedStores.map((store) => (
           <StoreRow
             key={store.id}
             store={store}

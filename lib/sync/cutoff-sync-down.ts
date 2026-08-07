@@ -94,6 +94,17 @@ interface CutoffUsageSummaryRow {
   remaining: number | null;
 }
 
+// The quota is a Sales-Specialist/RSR concept only (ADR-053) — those are the
+// sole roles with a target, and `cutoff_role_usage_snapshot` enforces it with
+// a CHECK (role IN ('sales_specialist', 'rsr')). But this pull now runs for
+// EVERY signed-in role (the `cutoff_quota_v1` gate was removed), so a manager
+// (or any non-quota role) reaches here too. Their session has no personal
+// quota, so we treat them exactly like "no usage row": clear any stale
+// snapshot and skip the insert, rather than attempting a write the CHECK
+// constraint would reject. Without this guard, non-quota roles hit
+// "CHECK constraint failed: role IN ('sales_specialist', 'rsr')" every sync.
+const QUOTA_ROLES = new Set(['sales_specialist', 'rsr']);
+
 /** `public.get_my_cutoff_usage_summary()` — caller's own role-scoped usage; at most one row. */
 export async function pullCutoffRoleUsage(db: SQLiteDatabase, agentId: string, now: string): Promise<void> {
   try {
@@ -109,7 +120,10 @@ export async function pullCutoffRoleUsage(db: SQLiteDatabase, agentId: string, n
 
     await db.withTransactionAsync(async () => {
       await db.runAsync('DELETE FROM cutoff_role_usage_snapshot WHERE agent_id = ?', [agentId]);
-      if (!row) return;
+      // No row (no active period / no target), or a role that carries no quota
+      // (e.g. sales_manager) — either way there's nothing valid to store, and
+      // the cleared snapshot correctly yields the "No quota configured" state.
+      if (!row || !QUOTA_ROLES.has(row.role)) return;
       await db.runAsync(
         `INSERT INTO cutoff_role_usage_snapshot
           (agent_id, period_id, period_label, starts_on, ends_on, role, target, confirmed_count, remaining, synced_at)

@@ -12,7 +12,7 @@ export const DATABASE_NAME = 'oracle-sales-app.db';
 
 // Bump this and add a new `case` below whenever the schema changes — never
 // edit an already-shipped case, since devices may have already run it.
-const LATEST_SCHEMA_VERSION = 22;
+const LATEST_SCHEMA_VERSION = 24;
 
 /**
  * Runs once per app launch via `SQLiteProvider`'s `onInit` (see app/_layout.tsx).
@@ -1020,6 +1020,25 @@ export async function migrateDbIfNeeded(db: SQLiteDatabase): Promise<void> {
       );
     `);
     currentVersion = 23;
+  }
+
+  // F-007 "Additional store" (Additional Collection, 2026-08-07): the admin
+  // (web) can add a store to the day's list AFTER it was published — a store
+  // that "wasn't for collection today, but now is". `is_additional` flags such
+  // a row so the collector app can badge it and float it to the top of the
+  // list (a mid-day addition is easy to miss otherwise). Additive column,
+  // default 0; a normal published row stays 0. Populated by web on the
+  // `collection_visits` row (see COLLECTION_DELIVERY_STATUS_MOBILE.md
+  // "Additional store" contract); until web sends it, every row reads 0 and
+  // the app behaves exactly as before. The two acknowledgment columns
+  // (received-by-phone / seen-by-collector) are deliberately NOT added here —
+  // they're a write-back that needs the matching web columns + UPDATE RLS
+  // first, tracked as Phase B in that same status note.
+  if (currentVersion === 23) {
+    await db.execAsync(`
+      ALTER TABLE collection_visits ADD COLUMN is_additional INTEGER NOT NULL DEFAULT 0;
+    `);
+    currentVersion = 24;
   }
 
   await db.execAsync(`PRAGMA user_version = ${currentVersion}`);

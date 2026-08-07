@@ -19,6 +19,7 @@ import {
   formatPeso,
   formatPesoCompact,
   getCollectionSummary,
+  sortAdditionalFirst,
   type CollectionStore,
 } from '../../lib/collection-delivery-data';
 import { useCollectionStores } from '../../lib/use-collection-delivery';
@@ -95,7 +96,12 @@ function RoutePreviewRow({ store, onPress }: { store: CollectionStore; onPress: 
       >
         <Avatar initials={store.initials} size="sm" background={BIZLINK_COLORS.tintA} color={BIZLINK_COLORS.ink} />
         <YStack flex={1} gap="$0.5">
-          <Text fontFamily={BIZLINK_FONTS.semibold} fontSize={14} color={BIZLINK_COLORS.text}>{store.name}</Text>
+          <XStack alignItems="center" gap="$1.5">
+            <Text fontFamily={BIZLINK_FONTS.semibold} fontSize={14} color={BIZLINK_COLORS.text} flexShrink={1}>{store.name}</Text>
+            {store.isAdditional && store.status === 'pending' ? (
+              <StatusBadge label="Additional" background={COLORS.purpleSoft} color={COLORS.purple} />
+            ) : null}
+          </XStack>
           <Text fontSize={11.5} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted}>
             {store.area} · Due {formatPeso(store.due)}
           </Text>
@@ -120,7 +126,9 @@ export default function CollectionDashboardScreen() {
   useFocusEffect(useCallback(() => { refresh(); }, [refresh]));
 
   const summary = getCollectionSummary(stores);
-  const pendingStores = stores.filter((s) => s.status === 'pending');
+  // Additional (admin added mid-day) stores float to the front so the 3-row
+  // route preview surfaces an urgent late addition instead of burying it.
+  const pendingStores = sortAdditionalFirst(stores.filter((s) => s.status === 'pending'));
   const routePreview = pendingStores.slice(0, 3);
   const greetingName = firstName(fullName) || 'Collector';
 
