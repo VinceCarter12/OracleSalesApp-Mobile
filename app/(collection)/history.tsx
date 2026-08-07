@@ -1,45 +1,55 @@
-import { useState } from 'react';
+import { useCallback, useState } from 'react';
 import { Pressable, ScrollView } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useFocusEffect } from 'expo-router';
+import { Vault } from 'lucide-react-native';
 import { Text, XStack, YStack } from 'tamagui';
 import { useBizlinkColors, BIZLINK_FONTS, BIZLINK_ON_INK, COLORS } from '../../lib/theme';
+import { useSession } from '../../lib/session-store';
 import { StatusBadge } from '../../components/ui/StatusBadge';
 import { BizTopBar } from '../../components/bizlink/BizTopBar';
-import {
-  COLLECTION_HISTORY,
-  formatPeso,
-  type CollectionHistoryEntry,
-  type CollectionHistoryResult,
-} from '../../lib/collection-delivery-data';
+import { formatPeso, formatShortDateTime } from '../../lib/collection-delivery-data';
+import { useRemittanceHistory, type RemittanceHistoryEntry } from '../../lib/use-remittance';
+import type { RemitDestination } from '../../lib/remittance-write';
 
 /**
- * F-007 first draft (2026-07-25): Collection History — wireframe `c-history`.
- * Gated in the wireframe (customer info); the security gate isn't wired yet
- * (same as `today.tsx`), so this renders the list directly for now. Mock data
- * only — no F-007 schema exists (Database.md "Planned schema notes").
+ * F-007 Remittance History — the collector's submitted `remittances` (web 043),
+ * read from the synced local mirror via useRemittanceHistory. Replaces the
+ * earlier mock `COLLECTION_HISTORY` list. Filterable by destination; a row still
+ * riding the outbox (sync_status != 'synced') is flagged "Syncing…" so the
+ * collector knows it hasn't reached the office yet.
  */
 
-type HistFilter = 'all' | CollectionHistoryResult;
+type DestFilter = 'all' | RemitDestination;
 
-const FILTERS: { key: HistFilter; label: string }[] = [
+const FILTERS: { key: DestFilter; label: string }[] = [
   { key: 'all', label: 'All' },
-  { key: 'collected', label: 'Collected' },
-  { key: 'resched', label: 'Rescheduled' },
-  { key: 'remitted', label: 'Remitted' },
+  { key: 'office', label: 'Office' },
+  { key: 'bayad_center', label: 'Bayad Center' },
+  { key: 'bank_deposit', label: 'Bank' },
 ];
 
-function ResultBadge({ result }: { result: CollectionHistoryResult }) {
-  if (result === 'collected') {
-    return <StatusBadge label="Collected" background={COLORS.greenSoft} color={COLORS.ledgeGreen} />;
+const DESTINATION_LABEL: Record<RemitDestination, string> = {
+  office: 'Office',
+  bayad_center: 'Bayad Center',
+  bank_deposit: 'Bank Deposit',
+};
+
+function DestinationBadge({ destination }: { destination: RemitDestination }) {
+  if (destination === 'office') {
+    return <StatusBadge label="Office" background={COLORS.greenSoft} color={COLORS.ledgeGreen} />;
   }
-  if (result === 'resched') {
-    return <StatusBadge label="Rescheduled" background={COLORS.amberSoft} color={COLORS.orange} />;
+  if (destination === 'bayad_center') {
+    return <StatusBadge label="Bayad Center" background={COLORS.blueSoft} color={COLORS.blue} />;
   }
-  return <StatusBadge label="Remitted" background={COLORS.purpleSoft} color={COLORS.purple} />;
+  return <StatusBadge label="Bank Deposit" background={COLORS.purpleSoft} color={COLORS.purple} />;
 }
 
-function HistoryRow({ entry }: { entry: CollectionHistoryEntry }) {
+function HistoryRow({ entry }: { entry: RemittanceHistoryEntry }) {
   const BIZLINK_COLORS = useBizlinkColors();
+  const covers = entry.visitCount > 0 ? `${entry.visitCount} store${entry.visitCount > 1 ? 's' : ''}` : null;
+  const receiver = entry.destination === 'office' ? entry.receiverName : DESTINATION_LABEL[entry.destination];
+  const subParts = [formatShortDateTime(entry.submittedAt) || 'Just now', receiver, covers].filter(Boolean);
   return (
     <XStack
       alignItems="center"
@@ -49,19 +59,24 @@ function HistoryRow({ entry }: { entry: CollectionHistoryEntry }) {
       padding={14}
       marginBottom={10}
     >
+      <YStack width={40} height={40} borderRadius={14} backgroundColor={BIZLINK_COLORS.tintA} alignItems="center" justifyContent="center">
+        <Vault size={18} color={BIZLINK_COLORS.ink} strokeWidth={1.75} />
+      </YStack>
       <YStack flex={1} gap="$0.5">
         <Text fontFamily={BIZLINK_FONTS.semibold} fontSize={13.5} color={BIZLINK_COLORS.text}>
-          {entry.store}
+          Remitted {formatPeso(entry.amountRemitted)}
         </Text>
-        <Text fontSize={11.5} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted}>
-          {entry.date} · {entry.method}
+        <Text fontSize={11.5} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} numberOfLines={1}>
+          {subParts.join(' · ')}
         </Text>
       </YStack>
       <YStack alignItems="flex-end" gap="$1">
-        <Text fontFamily={BIZLINK_FONTS.semibold} fontSize={13.5} color={BIZLINK_COLORS.text}>
-          {formatPeso(entry.amount)}
-        </Text>
-        <ResultBadge result={entry.result} />
+        <DestinationBadge destination={entry.destination} />
+        {!entry.synced ? (
+          <Text fontSize={10.5} fontFamily={BIZLINK_FONTS.semibold} color={BIZLINK_COLORS.orange}>
+            Syncing…
+          </Text>
+        ) : null}
       </YStack>
     </XStack>
   );
@@ -70,13 +85,16 @@ function HistoryRow({ entry }: { entry: CollectionHistoryEntry }) {
 export default function CollectionHistoryScreen() {
   const BIZLINK_COLORS = useBizlinkColors();
   const insets = useSafeAreaInsets();
-  const [filter, setFilter] = useState<HistFilter>('all');
+  const { profileId } = useSession();
+  const [filter, setFilter] = useState<DestFilter>('all');
+  const { entries, loading, refresh } = useRemittanceHistory(profileId);
+  useFocusEffect(useCallback(() => { refresh(); }, [refresh]));
 
-  const list = COLLECTION_HISTORY.filter((h) => filter === 'all' || h.result === filter);
+  const list = entries.filter((e) => filter === 'all' || e.destination === filter);
 
   return (
     <YStack flex={1} backgroundColor={BIZLINK_COLORS.canvas} paddingTop={insets.top}>
-      <BizTopBar title="Collection History" />
+      <BizTopBar title="Remittance History" />
       <ScrollView contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 40 }}>
         <Text
           fontSize={10.5}
@@ -85,7 +103,7 @@ export default function CollectionHistoryScreen() {
           color={BIZLINK_COLORS.muted}
           marginBottom={8}
         >
-          FILTER BY RESULT
+          FILTER BY DESTINATION
         </Text>
         <XStack gap="$2" flexWrap="wrap" marginBottom={12}>
           {FILTERS.map((f) => {
@@ -111,12 +129,16 @@ export default function CollectionHistoryScreen() {
           })}
         </XStack>
 
-        {list.length === 0 ? (
+        {loading ? (
           <Text fontSize={13} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} textAlign="center" paddingVertical="$6">
-            Nothing matches this filter.
+            Loading…
+          </Text>
+        ) : list.length === 0 ? (
+          <Text fontSize={13} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} textAlign="center" paddingVertical="$6">
+            {entries.length === 0 ? 'No remittances yet.' : 'Nothing matches this filter.'}
           </Text>
         ) : (
-          list.map((entry, i) => <HistoryRow key={`${entry.store}-${i}`} entry={entry} />)
+          list.map((entry) => <HistoryRow key={entry.id} entry={entry} />)
         )}
       </ScrollView>
     </YStack>

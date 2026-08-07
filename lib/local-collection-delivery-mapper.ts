@@ -33,6 +33,7 @@ export interface LocalCollectionVisitRow {
   claimed_by: string | null;
   claimed_at: string | null;
   claimed_by_name: string | null;
+  is_additional: number | null;
   created_at: string | null;
   updated_at: string | null;
 }
@@ -107,6 +108,9 @@ export function rowToStore(row: LocalCollectionVisitRow): CollectionStore {
     onTheWay: pending && !!row.claimed_by,
     claimedBy: row.claimed_by_name ?? undefined,
     claimedById: row.claimed_by ?? undefined,
+    // Additional Collection: a store the admin added after the list was
+    // published. Web sets is_additional=1; absent/0 for a normal published row.
+    isAdditional: row.is_additional === 1,
   };
 }
 

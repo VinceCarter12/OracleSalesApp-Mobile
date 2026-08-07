@@ -48,6 +48,31 @@ export function formatClockTime(iso?: string): string {
   return `${h}:${m.toString().padStart(2, '0')} ${ampm}`;
 }
 
+const SHORT_MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+/** Formats an ISO timestamp as a short date + wall-clock time, e.g. 'Jul 9 · 5:40 PM'. Empty for null/invalid. */
+export function formatShortDateTime(iso?: string | null): string {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '';
+  return `${SHORT_MONTHS[d.getMonth()]} ${d.getDate()} · ${formatClockTime(iso)}`;
+}
+
+/**
+ * Floats additional (admin-added mid-day) PENDING stores to the top so a late
+ * addition isn't missed at the bottom of the day's list. Stable: ties keep
+ * their original order (Array.sort is stable on Hermes/V8). Only pending
+ * additional stores rise — an already-collected additional store stays in
+ * place, since the urgency is about getting to it, not reviewing it.
+ */
+export function sortAdditionalFirst(stores: CollectionStore[]): CollectionStore[] {
+  return [...stores].sort((a, b) => {
+    const aRank = a.isAdditional && a.status === 'pending' ? 0 : 1;
+    const bRank = b.isAdditional && b.status === 'pending' ? 0 : 1;
+    return aRank - bRank;
+  });
+}
+
 export interface CollectionStore {
   /** UUID string (web `collection_visits.id`) — ints don't survive offline creation across devices. */
   id: string;
@@ -76,6 +101,14 @@ export interface CollectionStore {
   claimedBy?: string;
   /** Raw `claimed_by` profile id — compare to your own to tell mine vs someone else's. */
   claimedById?: string;
+  /**
+   * Additional Collection (web `collection_visits.is_additional`): the admin
+   * added this store to the day's list AFTER it was published — a store that
+   * wasn't for collection today until an urgent change. Badged and floated to
+   * the top of the list so a mid-day addition isn't missed. Defaults false
+   * until the web contract lands.
+   */
+  isAdditional?: boolean;
 }
 
 export const COLLECTION_STORES: CollectionStore[] = [
@@ -227,26 +260,6 @@ export function markPoFailed(id: string, backloadCaptured: boolean, gps?: { lat:
     p.gpsLng = gps.lng;
   }
 }
-
-// Wireframe c-history `cHist` — gated Collection History rows. Mock only;
-// `method` here is display text, so it's unaffected by the lowercase enum.
-export type CollectionHistoryResult = 'collected' | 'resched' | 'remitted';
-
-export interface CollectionHistoryEntry {
-  store: string;
-  date: string;
-  amount: number;
-  method: string;
-  result: CollectionHistoryResult;
-}
-
-export const COLLECTION_HISTORY: CollectionHistoryEntry[] = [
-  { store: 'KVR Hardware', date: 'Jul 9 · 8:32 AM', amount: 12500, method: 'Cash', result: 'collected' },
-  { store: 'RMC Fuels', date: 'Jul 9 · 9:05 AM', amount: 18000, method: 'Check', result: 'collected' },
-  { store: 'Oracle Petroleum (Bataan)', date: 'Jul 9 · 9:28 AM', amount: 12000, method: 'GCash', result: 'collected' },
-  { store: 'Delta Auto Supply', date: 'Jul 8', amount: 7250, method: '—', result: 'resched' },
-  { store: 'Office remittance — Grace V.', date: 'Jul 8 · 5:40 PM', amount: 38750, method: 'Signed proof', result: 'remitted' },
-];
 
 export interface RemitReceiver {
   id: number;

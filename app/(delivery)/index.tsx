@@ -2,7 +2,7 @@ import { useCallback, useState } from 'react';
 import { Pressable, ScrollView } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router, useFocusEffect } from 'expo-router';
-import { Bell, History, Package, PackageX, TriangleAlert, User, Vault } from 'lucide-react-native';
+import { Bell, History, Package, PackageX, User, Vault } from 'lucide-react-native';
 import { Text, XStack, YStack } from 'tamagui';
 import { useBizlinkColors, BIZLINK_FONTS, COLORS } from '../../lib/theme';
 import { useSession } from '../../lib/session-store';
@@ -111,23 +111,6 @@ export default function DeliveryDashboardScreen() {
       </XStack>
 
       <ScrollView contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 40 }}>
-        {/* Wireframe d-home pendbanner: the delivery spec is still thin (OQ-5) —
-            these screens are a proposal until the client specs the module. */}
-        <XStack
-          alignItems="center"
-          gap="$2.5"
-          backgroundColor={BIZLINK_COLORS.amberSoft}
-          borderRadius={20}
-          paddingHorizontal={16}
-          paddingVertical={13}
-          marginTop={4}
-        >
-          <TriangleAlert size={16} color={BIZLINK_COLORS.orange} strokeWidth={1.75} />
-          <Text flex={1} fontSize={12} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.orange} lineHeight={17}>
-            Still mock data — based on the web’s authoritative model (043/044). Not yet wired to the backend.
-          </Text>
-        </XStack>
-
         <XStack gap={10} marginTop={10}>
           <YStack flex={1}>
             <BizStatCard

@@ -70,6 +70,14 @@ should reflect those with no change.
   Remaining items are polish: a "your claim didn't stick" (23505) surface, and a
   remittance history view.
 
+## 👉 Where the WEB dev picks up (Additional Collection — 2026-08-07)
+
+New feature: the admin can add a store to an **already-published** day list
+("this store wasn't for collection today, but now it is"). Mobile models it as
+an **Additional** store (badged + floated to the top). The mobile half (Phase A)
+is built; web owns a flag column, the BusyBee **SMS fallback**, and two
+acknowledgment columns. **Full contract: see `ADDITIONAL_COLLECTION_CONTRACT.md`.**
+
 ## 👉 Where the WEB dev picks up (remittances)
 
 - The admin board should show submitted `remittances` / `cod_remittances` and
