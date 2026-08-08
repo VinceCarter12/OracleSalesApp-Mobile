@@ -1,6 +1,7 @@
 import { supabase } from '../supabase';
 import { withTimeout } from '../with-timeout';
 import type { SQLiteDatabase } from 'expo-sqlite';
+import { manilaCalendarDate } from '../manila-calendar';
 
 // Batch 7C (ADR-053): real sync-down pulls for the LIVE Batch 7B surfaces
 // (migrations 057-060, deployed 2026-08-02): `cutoff_periods`,
@@ -40,7 +41,7 @@ interface CutoffPeriodRow {
  */
 export async function pullCutoffPeriods(db: SQLiteDatabase, now: string): Promise<void> {
   try {
-    const today = now.slice(0, 10);
+    const today = manilaCalendarDate(now);
     const { data, error } = await withTimeout(
       Promise.resolve(
         supabase
