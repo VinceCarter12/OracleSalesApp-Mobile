@@ -377,8 +377,8 @@ export async function upsertSyncedCollectionVisit(
       (id, client_id, client_name, area, status, scheduled_for, amount_due, collector_id,
        amount_collected, payment_method, payment_photo_url, delivery_receipt_photo_url,
        gps_lat, gps_lng, remarks, rescheduled_to, visited_at, claimed_by, claimed_at,
-       claimed_by_name, created_at, updated_at, sync_status, local_updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'synced', ?)
+       claimed_by_name, is_additional, created_at, updated_at, sync_status, local_updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'synced', ?)
      ON CONFLICT(id) DO UPDATE SET
        client_id = excluded.client_id, client_name = excluded.client_name, area = excluded.area,
        status = excluded.status, scheduled_for = excluded.scheduled_for, amount_due = excluded.amount_due,
@@ -387,7 +387,8 @@ export async function upsertSyncedCollectionVisit(
        delivery_receipt_photo_url = excluded.delivery_receipt_photo_url, gps_lat = excluded.gps_lat,
        gps_lng = excluded.gps_lng, remarks = excluded.remarks, rescheduled_to = excluded.rescheduled_to,
        visited_at = excluded.visited_at, claimed_by = excluded.claimed_by, claimed_at = excluded.claimed_at,
-       claimed_by_name = excluded.claimed_by_name, created_at = excluded.created_at,
+       claimed_by_name = excluded.claimed_by_name, is_additional = excluded.is_additional,
+       created_at = excluded.created_at,
        updated_at = excluded.updated_at, sync_status = 'synced', sync_error = NULL,
        local_updated_at = excluded.local_updated_at
      WHERE collection_visits.sync_status = 'synced'`,
@@ -412,6 +413,9 @@ export async function upsertSyncedCollectionVisit(
       (row.claimed_by as string) ?? null,
       (row.claimed_at as string) ?? null,
       (row.claimed_by_name as string) ?? null,
+      // web's `is_additional` (Additional Collection contract). Absent until
+      // web ships the column — defaults to 0, so pre-contract rows are normal.
+      row.is_additional ? 1 : 0,
       (row.created_at as string) ?? null,
       (row.updated_at as string) ?? null,
       now,
