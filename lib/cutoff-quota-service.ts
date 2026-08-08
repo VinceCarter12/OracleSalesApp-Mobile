@@ -1,5 +1,6 @@
 import { getDb } from './db';
 import type { CutoffQuotaRole } from './policies/cutoff-policy';
+import { isDateWithinInclusiveRange, manilaCalendarDate } from './manila-calendar';
 
 // Batch 7C (ADR-053): read-only local access to the LIVE cutoff/quota
 // snapshot mirrors (lib/db.ts SQLite v23), populated by
@@ -73,12 +74,15 @@ async function countPendingQualifyingMeetings(
      FROM meetings
      WHERE agent_id = ?
        AND sync_status != 'synced'
-       AND start_captured_at IS NOT NULL
-       AND date(start_captured_at) >= date(?)
-       AND date(start_captured_at) <= date(?)`,
-    [agentId, startsOn, endsOn]
+       AND start_captured_at IS NOT NULL`,
+    [agentId]
   );
-  return rows.filter(isQualifyingLocalMeeting).length;
+  return rows.filter((row) => {
+    if (!isQualifyingLocalMeeting(row)) return false;
+    if (!row.start_captured_at) return false;
+    const localDate = manilaCalendarDate(row.start_captured_at);
+    return isDateWithinInclusiveRange(localDate, startsOn, endsOn);
+  }).length;
 }
 
 function formatPeriodLabel(label: string | null, startsOn: string | null, endsOn: string | null): string {
