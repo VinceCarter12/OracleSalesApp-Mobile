@@ -10,19 +10,18 @@ interface DraftResumePromptProps {
   onDiscard: () => void;
 }
 
-// 2026-08-02 (Step B controller consolidation): the fast path's original
-// disclosure copy is preserved verbatim — only mode/GPS/time/companions
-// restore, agenda still needs re-ticking. The full form's draft persistence
-// is new (it previously had none at all); its resume is even more partial —
+// 2026-08-04 (Vince direction): agenda ticks now persist too
+// (MeetingDraftPayload.agendas) — the fast path's resume is a FULL restore
+// (nothing left to re-enter). The full form's resume is still PARTIAL:
 // outcome and remarks are collected post-Start in that flow and were never
-// part of MeetingDraftPayload either — the exact field set each flow still
-// needs re-entered is the single source of truth in
+// part of MeetingDraftPayload — the exact field set each flow still needs
+// re-entered is the single source of truth in
 // `getFieldsRequiringReentryAfterResume()`
 // (lib/policies/meeting-draft-resume-policy.ts); keep these two strings in
 // sync with that function if either flow's post-Start fields ever change.
 const RESUME_DETAIL_TL: Record<MeetingDraft['flow'], string> = {
-  visit: 'mananatili ang GPS/oras ng simula, pero kailangan mo ulit i-tick ang agenda',
-  full: 'mananatili ang GPS/oras ng simula at ang mga kasamang napili, pero kailangan mong ulitin ang agenda, outcome, at remarks',
+  visit: 'mananatili ang GPS/oras ng simula at ang mga na-tick na agenda',
+  full: 'mananatili ang GPS/oras ng simula, ang mga kasamang napili, at ang mga na-tick na agenda, pero kailangan mong ulitin ang outcome at remarks',
 };
 
 /**

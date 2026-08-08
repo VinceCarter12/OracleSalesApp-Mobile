@@ -3,6 +3,7 @@ import { useSQLiteContext } from 'expo-sqlite';
 import { useSession } from './session-store';
 import { rowToClient, type LocalClientRow } from './local-client-mapper';
 import { subscribeSyncComplete } from './sync/sync-events';
+import { perfEnd, perfStart } from './perf-trace';
 import type { Client } from '../types';
 
 // T-003: local SQLite is the primary read path (ADR-001) — every write
@@ -26,6 +27,7 @@ export function useClients() {
       setLoading(false);
       return;
     }
+    perfStart('clients.sqlite.read');
     setLoading(true);
     const rows = await db.getAllAsync<LocalClientRow>(
       'SELECT * FROM clients WHERE agent_id = ? ORDER BY created_at DESC',
@@ -33,6 +35,7 @@ export function useClients() {
     );
     setClients(rows.map(rowToClient));
     setLoading(false);
+    perfEnd('clients.sqlite.read', { rows: rows.length });
   }, [db, profileId]);
 
   useEffect(() => {

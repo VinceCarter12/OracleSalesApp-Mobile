@@ -14,7 +14,7 @@ import {
 import { usePagination, PAGINATION_PAGE_SIZE } from '../../../../lib/use-pagination';
 import { BizTopBar } from '../../../../components/bizlink/BizTopBar';
 import { BizButton } from '../../../../components/bizlink/BizButton';
-import { BizPager } from '../../../../components/bizlink/BizPager';
+import { BizFloatingPager } from '../../../../components/bizlink/BizFloatingPager';
 import { BizFilterScroll } from '../../../../components/bizlink/BizFilterScroll';
 import { BizLostOpportunityRow } from '../../../../components/bizlink/BizLostOpportunityRow';
 
@@ -90,7 +90,7 @@ export default function ManagerLostOpportunitiesScreen() {
         <FlatList
           data={pageItems}
           keyExtractor={(item) => item.id}
-          contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 16 }}
+          contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 120 }}
           renderItem={({ item, index }) => (
             <BizLostOpportunityRow
               item={item}
@@ -109,11 +109,12 @@ export default function ManagerLostOpportunitiesScreen() {
               </Text>
             </YStack>
           }
-          ListFooterComponent={
-            filtered.length > 0 ? <BizPager page={page} totalPages={totalPages} onPageChange={setPage} /> : null
-          }
         />
       )}
+
+      {filtered.length > 0 ? (
+        <BizFloatingPager page={page} totalPages={totalPages} onPageChange={setPage} bottomOffset={insets.bottom + 16} />
+      ) : null}
     </YStack>
   );
 }

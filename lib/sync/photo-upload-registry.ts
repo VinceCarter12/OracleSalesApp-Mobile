@@ -1,7 +1,7 @@
 import { File } from 'expo-file-system';
 import { supabase } from '../supabase';
 import { uuidv4 } from '../uuid';
-import { runSync } from '../sync-engine';
+import { isSyncRunning, runSync } from '../sync-engine';
 import { enqueueOutboxRow, type EntityTableName } from './entity-registry';
 import { isLikelyOnline } from './connectivity';
 import { withTimeout } from '../with-timeout';
@@ -183,6 +183,17 @@ export async function enqueuePhotoUrlUpdate(
     });
   });
 
+  // Phase 1 adaptive sync scheduling (2026-08-04): this is always called
+  // from inside `processPendingUploads()`, itself always called from inside
+  // an in-flight `runSyncOnce()` pass (sync-engine.ts) — that enclosing
+  // pass's own subsequent `processOutbox()` call already pushes the row
+  // this just enqueued, within the SAME pass. Calling `runSync()` here
+  // unconditionally would therefore queue a guaranteed-redundant coalesced
+  // follow-up pass (lib/sync/coalescing-runner.ts) every single photo
+  // upload — skip it whenever a sync is already running. Kept (not removed
+  // outright) as a genuine best-effort trigger for the rare case this ever
+  // runs outside a sync pass.
+  if (isSyncRunning()) return;
   await runSync(agentId).catch((err) => {
     console.error('[photo-upload-registry] photo-url patch sync failed:', err instanceof Error ? err.message : String(err));
   });

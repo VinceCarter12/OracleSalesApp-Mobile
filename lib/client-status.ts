@@ -72,6 +72,37 @@ export const WAITING_MANAGER_APPROVAL_BADGE = {
   color: 'orange' as const,
 };
 
+/**
+ * Vince 2026-08-04 direction: an OVERLAY badge (like the one above), driven
+ * by a same-day `meeting_drafts` row (lib/meeting-drafts.ts) for this
+ * client — reuses the same green tint as the wireframe's own in-screen
+ * "Meeting in progress" banner (`--green-tint`/ink), not a new color.
+ */
+export const MEETING_IN_PROGRESS_BADGE = {
+  label: 'Meeting in progress',
+  background: 'tintA' as const,
+  color: 'ink' as const,
+};
+
+/**
+ * Vince 2026-08-04 direction (Tagalog): "kung in progress na tapos success
+ * meeting at nakapag submit ng PO is ang ilalagay is waiting for managers
+ * approval" — an OVERLAY badge (same pattern as the two above), distinct
+ * from `WAITING_MANAGER_APPROVAL_BADGE` above since that one is the
+ * prospect→new tag-along-approval domain (Migration 023) while this one is
+ * the separate in_progress PO-confirmation domain (ADR-044/Migration 039,
+ * `lib/po-confirmation-service.ts`/`lib/policies/po-confirmation-status-
+ * policy.ts`'s `'pending'` display status). Reuses the same amber/orange
+ * tokens as `WAITING_MANAGER_APPROVAL_BADGE` since both are literally "an
+ * agent action is waiting on a Manager decision," just named distinctly so
+ * the two can never be confused at a call site.
+ */
+export const WAITING_MANAGER_PO_APPROVAL_BADGE = {
+  label: "Waiting for Manager's Approval",
+  background: 'amberSoft' as const,
+  color: 'orange' as const,
+};
+
 /** True once a client's resolved status (via getClientStatus) reaches the photo-only fast path — 'new' or 'existing' (ADR-015). */
 export function isFastPathEligible(client: Pick<Client, 'status'>): boolean {
   const status = getClientStatus(client);

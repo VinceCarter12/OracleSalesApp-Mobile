@@ -2,100 +2,89 @@ import { useCallback, useMemo, useState } from 'react';
 import { FlatList, Pressable, RefreshControl, ScrollView, TextInput } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router, useFocusEffect } from 'expo-router';
-import { Calendar, Handshake, Plus, Users } from 'lucide-react-native';
+import { Calendar, ChevronLeft, ChevronRight, Handshake, Plus, SlidersHorizontal } from 'lucide-react-native';
 import { Spinner, Text, XStack, YStack } from 'tamagui';
-import { OUTCOME_BADGE_STYLES, useBizlinkColors, BIZLINK_FONTS, BIZLINK_ON_INK } from '../../../lib/theme';
+import { useBizlinkColors, BIZLINK_FONTS, BIZLINK_ON_INK } from '../../../lib/theme';
 import { useMeetings } from '../../../lib/useMeetings';
+import { useClients } from '../../../lib/useClients';
 import { useSession } from '../../../lib/session-store';
 import { getMyCompanionRequests } from '../../../lib/tag-along-service';
-import { StatusBadge } from '../../../components/ui/StatusBadge';
-import { SyncBadge } from '../../../components/sync/SyncBadge';
-import { BizCard } from '../../../components/bizlink/BizCard';
+import { formatMeetingLocation } from '../../../lib/format-meeting-location';
+import { MeetingRow } from '../../../components/meetings/MeetingRow';
+import {
+  MeetingFilterPanel,
+  ALL_LOCATIONS,
+  ALL_AGENDAS,
+  type LocationFilter,
+  type AgendaFilter,
+  type MeetingSortOption,
+} from '../../../components/meetings/MeetingFilterPanel';
 import { BizChip } from '../../../components/bizlink/BizChip';
-import type { OutboxStatus } from '../../../lib/sync/outbox-status';
-import { MEETING_OUTCOMES, type Meeting, type MeetingOutcome } from '../../../types';
-
-/** Mirrors [id].tsx's `formatMeetingLocation` — human-readable Location line for the row description. */
-function formatMeetingLocation(meeting: Meeting): string | null {
-  if (!meeting.location_type) return null;
-  return meeting.location_type === 'Others' ? (meeting.location_name || 'Others') : 'Client Office';
-}
+import { BizFloatingPager } from '../../../components/bizlink/BizFloatingPager';
+import { BizTopBar } from '../../../components/bizlink/BizTopBar';
+import { PAGINATION_PAGE_SIZE, usePagination } from '../../../lib/use-pagination';
+import { MEETING_OUTCOMES, type Client, type Meeting, type MeetingOutcome } from '../../../types';
 
 type OutcomeFilter = MeetingOutcome | 'all';
 
-// Wireframe a-meetings' static "Jul 2026"-style month chip (~line 722) — a
-// decorative/informational label, not an interactive picker (confirmed
-// non-interactive in the wireframe JS: no onclick handler). Computed from
-// the current date, matching the wireframe's simplicity. Moved to the LEFT
-// of the header row (2026-07-21) per Vince's placement correction.
-function currentMonthLabel(): string {
-  return new Date().toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
+function sortMeetings(list: Meeting[], sort: MeetingSortOption): Meeting[] {
+  const copy = [...list];
+  if (sort === 'company_az') {
+    copy.sort((a, b) => (a.client_name ?? '').localeCompare(b.client_name ?? ''));
+    return copy;
+  }
+  copy.sort((a, b) => {
+    const diff = new Date(b.logged_at).getTime() - new Date(a.logged_at).getTime();
+    return sort === 'oldest' ? -diff : diff;
+  });
+  return copy;
 }
 
-function MeetingRow({ meeting, hasTagAlong }: { meeting: Meeting; hasTagAlong: boolean }) {
-  const BIZLINK_COLORS = useBizlinkColors();
-  const outcomeStyle = meeting.outcome ? OUTCOME_BADGE_STYLES[meeting.outcome] : null;
-  const location = formatMeetingLocation(meeting);
-  const descriptionParts = [
-    new Date(meeting.logged_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
-    new Date(meeting.logged_at).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }),
-    location,
-  ].filter(Boolean);
+// Wireframe a-meetings' outcome chip row (aRenderMeetings): short display
+// labels mapped to the real MeetingOutcome enum values — the chip text is
+// NEVER compared directly against a meeting's outcome.
+const OUTCOME_FILTERS: Array<{ value: OutcomeFilter; label: string }> = [
+  { value: 'all', label: 'All' },
+  ...MEETING_OUTCOMES.map((outcome) => ({
+    value: outcome as OutcomeFilter,
+    label:
+      outcome === 'Follow-up Required' ? 'Follow-up' :
+      outcome === 'No Decision' ? 'No decision' :
+      outcome === 'Lost Opportunity' ? 'Lost' :
+      outcome,
+  })),
+];
 
-  return (
-    <Pressable onPress={() => router.push(`/(tabs)/meetings/${meeting.id}`)}>
-      <BizCard gap="$1.5" paddingVertical={16} paddingHorizontal={18} marginBottom={10}>
-        <Text fontFamily={BIZLINK_FONTS.semibold} fontSize={15} letterSpacing={-0.2} color={BIZLINK_COLORS.text}>
-          {meeting.client_name ?? 'Unknown Client'}
-        </Text>
-        <XStack alignItems="center" gap="$1.5">
-          <Text
-            flexShrink={1}
-            minWidth={0}
-            numberOfLines={1}
-            ellipsizeMode="tail"
-            fontSize={11.5}
-            fontFamily={BIZLINK_FONTS.medium}
-            color={BIZLINK_COLORS.muted}
-          >
-            {descriptionParts.join(' · ')}
-          </Text>
-          {hasTagAlong ? (
-            <XStack
-              flexShrink={0}
-              alignItems="center"
-              gap="$1"
-              backgroundColor={BIZLINK_COLORS.soft}
-              borderRadius={999}
-              paddingHorizontal={8}
-              paddingVertical={2}
-            >
-              <Users size={10} color={BIZLINK_COLORS.navy} strokeWidth={1.75} />
-              <Text fontSize={10.5} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.navy}>tag-along</Text>
-            </XStack>
-          ) : null}
-        </XStack>
-        <XStack alignItems="center" gap="$2">
-          {outcomeStyle && meeting.outcome ? (
-            <StatusBadge label={meeting.outcome} {...outcomeStyle} />
-          ) : (
-            <StatusBadge label="Photo visit" background={BIZLINK_COLORS.tintA} color={BIZLINK_COLORS.ink} />
-          )}
-          {meeting.sync_status ? <SyncBadge status={meeting.sync_status as OutboxStatus} /> : null}
-        </XStack>
-      </BizCard>
-    </Pressable>
-  );
+/** `YYYY-MM` key for a Date, used by the month selector and filter matching. */
+function monthKey(date: Date): string {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+}
+
+function shiftMonthKey(key: string, delta: number): string {
+  const [year, month] = key.split('-').map(Number);
+  const shifted = new Date(year, month - 1 + delta, 1);
+  return monthKey(shifted);
+}
+
+function formatMonthKey(key: string): string {
+  const [year, month] = key.split('-').map(Number);
+  return new Date(year, month - 1, 1).toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
 }
 
 export default function MeetingsScreen() {
   const BIZLINK_COLORS = useBizlinkColors();
   const insets = useSafeAreaInsets();
   const { meetings, loading, refresh } = useMeetings();
+  const { clients } = useClients();
   const { profileId } = useSession();
   useFocusEffect(useCallback(() => { refresh(); }, [refresh]));
   const [filter, setFilter] = useState<OutcomeFilter>('all');
   const [search, setSearch] = useState('');
+  const [monthFilter, setMonthFilter] = useState<string | null>(null);
+  const [locationFilter, setLocationFilter] = useState<LocationFilter>(ALL_LOCATIONS);
+  const [agendaFilter, setAgendaFilter] = useState<AgendaFilter>(ALL_AGENDAS);
+  const [sort, setSort] = useState<MeetingSortOption>('newest');
+  const [filterOpen, setFilterOpen] = useState(false);
   const [tagAlongMeetingIds, setTagAlongMeetingIds] = useState<Set<string>>(new Set());
 
   // Bulk-loaded once (not per-row) to avoid an N+1 query per list render —
@@ -112,21 +101,42 @@ export default function MeetingsScreen() {
     }, [profileId])
   );
 
+  const clientsById = useMemo(() => {
+    const map = new Map<string, Client>();
+    clients.forEach((c) => map.set(c.id, c));
+    return map;
+  }, [clients]);
+
+  const currentMonthKeyValue = monthKey(new Date());
+
   const filtered = useMemo(() => {
     const query = search.trim().toLowerCase();
-    return meetings.filter((m) => {
+    const matched = meetings.filter((m) => {
       if (filter !== 'all' && m.outcome !== filter) return false;
+      if (monthFilter && monthKey(new Date(m.logged_at)) !== monthFilter) return false;
+      if (locationFilter !== ALL_LOCATIONS && m.location_type !== locationFilter) return false;
+      if (agendaFilter !== ALL_AGENDAS && !m.agendas.includes(agendaFilter)) return false;
       if (!query) return true;
       const location = formatMeetingLocation(m) ?? '';
       return (m.client_name ?? '').toLowerCase().includes(query) || location.toLowerCase().includes(query);
     });
-  }, [meetings, filter, search]);
+    return sortMeetings(matched, sort);
+  }, [meetings, filter, monthFilter, locationFilter, agendaFilter, search, sort]);
+
+  // Reset to page 1 whenever any filter/search input changes, matching the
+  // wireframe's aFiltMeetings/aSearchMeetings/aSetMeetingMonth (each sets
+  // aMeetingPage=1) — same pattern as My Clients (lib/use-pagination.ts).
+  const resetKey = `${filter}:${monthFilter ?? 'all'}:${locationFilter}:${agendaFilter}:${sort}:${search.trim().toLowerCase()}`;
+  const { page, totalPages, pageItems, setPage } = usePagination(filtered, resetKey);
+
+  const filtersActive = locationFilter !== ALL_LOCATIONS || agendaFilter !== ALL_AGENDAS || sort !== 'newest';
 
   return (
     <YStack flex={1} backgroundColor={BIZLINK_COLORS.canvas} paddingTop={insets.top}>
-      <XStack alignItems="center" paddingHorizontal="$4" paddingTop="$2.5" paddingBottom="$1.5">
-        <Text fontSize={26} fontFamily={BIZLINK_FONTS.semibold} color={BIZLINK_COLORS.text}>My Meetings</Text>
-        <XStack marginLeft="auto" gap="$2" alignItems="center">
+      <BizTopBar
+        title="Meeting Details"
+        fallbackHref="/(tabs)"
+        right={
           <Pressable
             onPress={() => router.push('/(tabs)/meetings/select-client')}
             style={{
@@ -141,28 +151,68 @@ export default function MeetingsScreen() {
             }}
           >
             <Plus size={14} color={BIZLINK_ON_INK.solid} strokeWidth={1.75} />
-            <Text fontSize={12.5} fontFamily={BIZLINK_FONTS.semibold} color={BIZLINK_ON_INK.solid}>Record Meeting</Text>
+            <Text fontSize={12.5} fontFamily={BIZLINK_FONTS.semibold} color={BIZLINK_ON_INK.solid}>Select Client</Text>
+          </Pressable>
+        }
+      />
+
+      <XStack paddingHorizontal="$4" gap="$2" alignItems="center">
+        <XStack alignItems="center" backgroundColor={BIZLINK_COLORS.card} borderRadius={999} paddingHorizontal={4} minHeight={44}>
+          <Pressable
+            accessibilityLabel="Previous month"
+            onPress={() => setMonthFilter(shiftMonthKey(monthFilter ?? currentMonthKeyValue, -1))}
+            style={{ width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center' }}
+          >
+            <ChevronLeft size={13} color={BIZLINK_COLORS.muted} strokeWidth={1.75} />
+          </Pressable>
+          <Pressable
+            accessibilityLabel="Toggle month filter"
+            onPress={() => setMonthFilter(monthFilter ? null : currentMonthKeyValue)}
+            style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 4 }}
+          >
+            <Calendar size={12} color={BIZLINK_COLORS.muted} strokeWidth={1.75} />
+            <Text fontSize={11.5} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted}>
+              {monthFilter ? formatMonthKey(monthFilter) : 'All months'}
+            </Text>
+          </Pressable>
+          <Pressable
+            accessibilityLabel="Next month"
+            onPress={() => setMonthFilter(shiftMonthKey(monthFilter ?? currentMonthKeyValue, 1))}
+            style={{ width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center' }}
+          >
+            <ChevronRight size={13} color={BIZLINK_COLORS.muted} strokeWidth={1.75} />
           </Pressable>
         </XStack>
-      </XStack>
 
-      <XStack paddingHorizontal="$4" justifyContent="flex-start">
-        <XStack
-          alignItems="center"
-          gap="$1.5"
-          backgroundColor={BIZLINK_COLORS.card}
-          borderRadius={999}
-          paddingHorizontal={13}
-          paddingVertical={7}
+        <Pressable
+          onPress={() => setFilterOpen((open) => !open)}
+          style={{
+            flexDirection: 'row',
+            alignItems: 'center',
+            gap: 6,
+            backgroundColor: filterOpen || filtersActive ? BIZLINK_COLORS.ink : BIZLINK_COLORS.card,
+            borderRadius: 999,
+            paddingHorizontal: 13,
+            paddingVertical: 7,
+            minHeight: 44,
+          }}
         >
-          <Calendar size={12} color={BIZLINK_COLORS.muted} strokeWidth={1.75} />
-          <Text fontSize={11.5} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted}>
-            {currentMonthLabel()}
+          <SlidersHorizontal
+            size={12}
+            color={filterOpen || filtersActive ? BIZLINK_ON_INK.solid : BIZLINK_COLORS.muted}
+            strokeWidth={1.75}
+          />
+          <Text
+            fontSize={11.5}
+            fontFamily={BIZLINK_FONTS.medium}
+            color={filterOpen || filtersActive ? BIZLINK_ON_INK.solid : BIZLINK_COLORS.muted}
+          >
+            Filters
           </Text>
-        </XStack>
+        </Pressable>
       </XStack>
 
-      <YStack paddingHorizontal="$4" marginTop="$2" marginBottom="$2.5">
+      <YStack paddingHorizontal="$4" gap="$2.5" marginTop="$2">
         <TextInput
           value={search}
           onChangeText={setSearch}
@@ -180,6 +230,17 @@ export default function MeetingsScreen() {
             borderColor: BIZLINK_COLORS.line,
           }}
         />
+
+        {filterOpen ? (
+          <MeetingFilterPanel
+            locationFilter={locationFilter}
+            onLocationChange={setLocationFilter}
+            agendaFilter={agendaFilter}
+            onAgendaChange={setAgendaFilter}
+            sort={sort}
+            onSortChange={setSort}
+          />
+        ) : null}
       </YStack>
 
       <ScrollView
@@ -189,13 +250,12 @@ export default function MeetingsScreen() {
         contentContainerStyle={{ paddingHorizontal: 16 }}
       >
         <XStack gap="$2" marginBottom="$2.5">
-          <BizChip label="All" selected={filter === 'all'} onPress={() => setFilter('all')} />
-          {MEETING_OUTCOMES.map((outcome) => (
+          {OUTCOME_FILTERS.map((o) => (
             <BizChip
-              key={outcome}
-              label={outcome}
-              selected={filter === outcome}
-              onPress={() => setFilter(outcome)}
+              key={o.value}
+              label={o.label}
+              selected={filter === o.value}
+              onPress={() => setFilter(o.value)}
             />
           ))}
         </XStack>
@@ -207,11 +267,19 @@ export default function MeetingsScreen() {
         </YStack>
       ) : (
         <FlatList
-          data={filtered}
+          data={pageItems}
           keyExtractor={(item) => item.id}
           style={{ flex: 1 }}
-          contentContainerStyle={{ paddingHorizontal: 16, paddingTop: 8, paddingBottom: 16 + insets.bottom }}
-          renderItem={({ item }) => <MeetingRow meeting={item} hasTagAlong={tagAlongMeetingIds.has(item.id)} />}
+          contentContainerStyle={{ paddingHorizontal: 16, paddingTop: 8, paddingBottom: 120 + insets.bottom }}
+          renderItem={({ item, index }) => (
+            <MeetingRow
+              meeting={item}
+              client={item.client_id ? clientsById.get(item.client_id) : undefined}
+              meetings={meetings}
+              hasTagAlong={tagAlongMeetingIds.has(item.id)}
+              rowNumber={(page - 1) * PAGINATION_PAGE_SIZE + index + 1}
+            />
+          )}
           refreshControl={<RefreshControl refreshing={loading} onRefresh={refresh} />}
           ListEmptyComponent={
             <YStack alignItems="center" padding="$8" gap="$2.5">
@@ -223,6 +291,10 @@ export default function MeetingsScreen() {
           }
         />
       )}
+
+      {filtered.length > 0 ? (
+        <BizFloatingPager page={page} totalPages={totalPages} onPageChange={setPage} bottomOffset={insets.bottom + 16} />
+      ) : null}
     </YStack>
   );
 }

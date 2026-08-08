@@ -2,6 +2,7 @@ import { getDb } from './db';
 import { supabase } from './supabase';
 import { syncDown } from './sync-down';
 import { checkConnectivity, type ConnectivityState } from './sync/connectivity';
+import { isNetworkConnectivityError } from './network-error';
 import { isEntityTableName } from './sync/entity-registry';
 import { pruneSyncedOutboxRows, recoverStuckSyncingRows, type OutboxStatus } from './sync/outbox-status';
 import { setLastSyncAt } from './sync/last-sync';
@@ -10,14 +11,17 @@ import { AUDIT_OUTBOX_TABLE_NAME } from './sync/audit-log';
 import { processPendingUploads, recoverStuckPendingUploads } from './sync/photo-uploads';
 import { uploadPendingAvatar } from './profile-avatar';
 import { retryFailedPendingUpload, type PendingUploadStatus } from './sync/pending-upload-status';
+import { createCoalescingRunner } from './sync/coalescing-runner';
 
 // T-002/T-005/T-014: pushes queued local writes (T-001's `outbox`) to
 // Supabase, dispatching per-table behavior via the entity registry
 // (lib/sync/entity-registry.ts) instead of hardcoded branches. Runs on
-// reconnect + a 30s foreground-only drain timer (see use-sync.ts) — never
-// assumes it's the only writer, since client-generated UUIDs make every
-// upsert idempotent. Batching/classification live in lib/sync/push-batch.ts
-// and lib/sync/outbox-status.ts, and the pull half in sync-down.ts (kept
+// login/reconnect/foreground/manual/post-write triggers plus an adaptive
+// 30-60s(+backoff) foreground-only idle timer (Phase 1, 2026-08-04 — see
+// use-sync.ts and lib/sync/adaptive-foreground-scheduler.ts) — never assumes
+// it's the only writer, since client-generated UUIDs make every upsert
+// idempotent. Batching/classification live in lib/sync/push-batch.ts and
+// lib/sync/outbox-status.ts, and the pull half in sync-down.ts (kept
 // separate to respect the 300-line file limit).
 
 async function processOutbox(agentId: string): Promise<OutboxSyncResult> {
@@ -112,79 +116,104 @@ async function syncPendingAvatarUpload(): Promise<void> {
       await uploadPendingAvatar(authUid);
     }
   } catch (err) {
-    console.error('[sync-engine] syncPendingAvatarUpload failed', err);
+    // B-087: a transient network/DNS drop here is expected under offline-first
+    // (ADR-001) and already safe — the next runSync() pass retries. Only a
+    // non-network failure (bad response shape, auth misconfig) is worth the
+    // loud log; otherwise every flaky-connection blip paints a red LogBox
+    // screen for a condition the app already handles correctly.
+    if (!isNetworkConnectivityError(err)) {
+      console.error('[sync-engine] syncPendingAvatarUpload failed', err);
+    }
   }
 }
 
-let isSyncing = false;
 // Runs once per app session — a row can only be orphaned by a kill that
 // happened before this process started, so there's nothing to recover once
 // this pass has already run.
 let hasRecoveredStuckRows = false;
 
 /**
- * Entry point for use-sync.ts. No-op if a sync is already running. Checks
- * connectivity BEFORE touching any outbox row — a network/auth problem is
- * not a per-record problem, so a failed/degraded connectivity check must
- * skip the push pass entirely rather than dead-lettering good records
- * (T-014, ADR-022 #3).
+ * Phase 1 adaptive sync scheduling (2026-08-04, Vince direction — see
+ * projects/OracleSalesApp-Mobile/Sync-Scale-and-Realtime-Options-2026-08-04.md).
+ * Replaces the old module-level `isSyncing` boolean, which silently DROPPED
+ * any call that arrived while a pass was already running — losing that
+ * caller's intent (a reconnect event, a write-service's fire-and-forget
+ * post-write sync, the foreground timer, and the manual "Sync Now" button
+ * all call `runSync()` directly and could race). Every external caller
+ * still just calls `runSync(agentId, teamId)`; this coordinator is what
+ * makes concurrent calls safe — see `lib/sync/coalescing-runner.ts`'s doc
+ * comment for the exact single-flight + one-coalesced-follow-up semantics.
  */
+const syncCoordinator = createCoalescingRunner<{ agentId: string; teamId?: string | null }, SyncResult>(
+  ({ agentId, teamId }) => runSyncOnce(agentId, teamId)
+);
+
+/** Entry point for use-sync.ts, write-services' post-write syncs, and the manual "Sync Now" button — see `syncCoordinator` above for concurrency handling. */
 export async function runSync(agentId: string, teamId?: string | null): Promise<SyncResult | null> {
-  if (isSyncing) return null;
-  isSyncing = true;
-  try {
-    const db = await getDb();
-    if (!hasRecoveredStuckRows) {
-      await recoverStuckSyncingRows(db);
-      await recoverStuckPendingUploads(db);
-      // ADR-026 P2 item 7: unlike the two recovery calls above (correctness-
-      // critical — a real problem there should surface), a prune failure
-      // must never fail or delay a sync pass, so it gets its own try/catch.
-      try {
-        await pruneSyncedOutboxRows(db);
-      } catch (err) {
-        console.error('pruneSyncedOutboxRows failed', err);
-      }
-      hasRecoveredStuckRows = true;
-    }
+  return syncCoordinator.run({ agentId, teamId });
+}
 
-    const connectivity = await checkConnectivity();
-    if (connectivity !== 'online') {
-      return { synced: 0, failed: 0, connectivity };
+/**
+ * The actual push+pull pass. Checks connectivity BEFORE touching any outbox
+ * row — a network/auth problem is not a per-record problem, so a failed/
+ * degraded connectivity check must skip the push pass entirely rather than
+ * dead-lettering good records (T-014, ADR-022 #3).
+ */
+async function runSyncOnce(agentId: string, teamId?: string | null): Promise<SyncResult> {
+  const db = await getDb();
+  if (!hasRecoveredStuckRows) {
+    await recoverStuckSyncingRows(db);
+    await recoverStuckPendingUploads(db);
+    // ADR-026 P2 item 7: unlike the two recovery calls above (correctness-
+    // critical — a real problem there should surface), a prune failure
+    // must never fail or delay a sync pass, so it gets its own try/catch.
+    try {
+      await pruneSyncedOutboxRows(db);
+    } catch (err) {
+      console.error('pruneSyncedOutboxRows failed', err);
     }
-
-    const outboxResult = await processOutbox(agentId);
-    // T-014 Phase C (ADR-026 P1 item 4): queued photo uploads run after the
-    // regular outbox pass (a photo's parent meeting must already be
-    // 'synced' — see photo-uploads.ts's dependency guard). A row that just
-    // reached 'synced' here enqueued a fresh `meetings` outbox UPDATE
-    // (enqueueMeetingPhotoUrlUpdate) to patch photo_url/end_photo_url —
-    // push it immediately with one more processOutbox() pass instead of
-    // waiting for the next 30s foreground drain tick. (That function also
-    // makes its own best-effort `runSync()` call, but it always no-ops here
-    // since `isSyncing` is still held by this very call.)
-    const uploadResult = await processPendingUploads(db, agentId);
-    await syncPendingAvatarUpload();
-    const photoPatchResult =
-      uploadResult.synced > 0 ? await processOutbox(agentId) : { synced: 0, failed: 0, conflicted: 0 };
-    await syncDown(agentId, teamId);
-    // ADR-026 P2 item 6: stamped unconditionally once the pass gets this far
-    // — even if some rows dead-lettered along the way (Vince confirmed: do
-    // NOT gate on `failed === 0`). This naturally excludes the isSyncing
-    // and offline-connectivity early-returns above, since both return
-    // before reaching this point. A SecureStore failure must never fail the
-    // sync pass or its return value.
-    await setLastSyncAt(new Date().toISOString()).catch((err: unknown) => {
-      console.error('setLastSyncAt failed', err);
-    });
-    return {
-      synced: outboxResult.synced + photoPatchResult.synced,
-      failed: outboxResult.failed + outboxResult.conflicted + uploadResult.failed + photoPatchResult.failed + photoPatchResult.conflicted,
-      connectivity,
-    };
-  } finally {
-    isSyncing = false;
+    hasRecoveredStuckRows = true;
   }
+
+  const connectivity = await checkConnectivity();
+  if (connectivity !== 'online') {
+    return { synced: 0, failed: 0, connectivity };
+  }
+
+  const outboxResult = await processOutbox(agentId);
+  // T-014 Phase C (ADR-026 P1 item 4): queued photo uploads run after the
+  // regular outbox pass (a photo's parent meeting must already be
+  // 'synced' — see photo-uploads.ts's dependency guard). A row that just
+  // reached 'synced' here enqueued a fresh `meetings` outbox UPDATE
+  // (enqueueMeetingPhotoUrlUpdate) to patch photo_url/end_photo_url — push
+  // it immediately with one more processOutbox() pass instead of waiting
+  // for the next idle tick. (That function also makes its own best-effort
+  // `runSync()` call, guarded by `isSyncRunning()` — see
+  // photo-upload-registry.ts — so it doesn't queue a redundant coalesced
+  // rerun for a row this very pass's extra processOutbox() call already covers.)
+  const uploadResult = await processPendingUploads(db, agentId);
+  await syncPendingAvatarUpload();
+  const photoPatchResult =
+    uploadResult.synced > 0 ? await processOutbox(agentId) : { synced: 0, failed: 0, conflicted: 0 };
+  await syncDown(agentId, teamId);
+  // ADR-026 P2 item 6: stamped unconditionally once the pass gets this far
+  // — even if some rows dead-lettered along the way (Vince confirmed: do
+  // NOT gate on `failed === 0`). This naturally excludes the offline-
+  // connectivity early-return above. A SecureStore failure must never fail
+  // the sync pass or its return value.
+  await setLastSyncAt(new Date().toISOString()).catch((err: unknown) => {
+    console.error('setLastSyncAt failed', err);
+  });
+  return {
+    synced: outboxResult.synced + photoPatchResult.synced,
+    failed: outboxResult.failed + outboxResult.conflicted + uploadResult.failed + photoPatchResult.failed + photoPatchResult.conflicted,
+    connectivity,
+  };
+}
+
+/** Whether a sync pass (including any coalesced follow-up) is currently in flight — used by photo-upload-registry.ts to skip a guaranteed-redundant nested trigger, not a general-purpose "should I sync" check. */
+export function isSyncRunning(): boolean {
+  return syncCoordinator.isRunning;
 }
 
 export interface OutboxCounts {

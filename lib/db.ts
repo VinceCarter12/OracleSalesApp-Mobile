@@ -1022,6 +1022,53 @@ export async function migrateDbIfNeeded(db: SQLiteDatabase): Promise<void> {
     currentVersion = 23;
   }
 
+  // 2026-08-04: `po_confirmation_requests` was missing the local-only
+  // terminal state `client_edit_requests` already has (`'superseded'`,
+  // currentVersion===20 block above) for a write that fails RLS/ownership
+  // checks permanently rather than transiently. Without it, a draft whose
+  // referenced client is no longer owned by the requester (reassigned,
+  // deleted, stale test data) retries forever via
+  // `retryDraftPoConfirmations()` on every Notifications-screen visit,
+  // logging the same console error indefinitely with no way to stop. SQLite
+  // can't ALTER a CHECK constraint, so this uses the same create-new ->
+  // copy -> drop -> rename rebuild as the v17->v18 migration above.
+  if (currentVersion === 23) {
+    await db.execAsync(`
+      CREATE TABLE po_confirmation_requests_new (
+        id TEXT PRIMARY KEY NOT NULL,
+        client_id TEXT NOT NULL,
+        cycle_id TEXT NOT NULL,
+        meeting_id TEXT NOT NULL,
+        requester_id TEXT NOT NULL,
+        po_photo_path TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'draft'
+          CHECK (status IN ('draft', 'pending', 'approved', 'rejected', 'cancelled', 'superseded')),
+        decided_by TEXT,
+        decided_at TEXT,
+        decision_note TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        synced_at TEXT
+      );
+
+      INSERT INTO po_confirmation_requests_new
+        (id, client_id, cycle_id, meeting_id, requester_id, po_photo_path,
+         status, decided_by, decided_at, decision_note, created_at, updated_at, synced_at)
+      SELECT
+        id, client_id, cycle_id, meeting_id, requester_id, po_photo_path,
+        status, decided_by, decided_at, decision_note, created_at, updated_at, synced_at
+      FROM po_confirmation_requests;
+
+      DROP TABLE po_confirmation_requests;
+      ALTER TABLE po_confirmation_requests_new RENAME TO po_confirmation_requests;
+
+      CREATE INDEX idx_po_confirmation_meeting ON po_confirmation_requests (meeting_id);
+      CREATE INDEX idx_po_confirmation_requester ON po_confirmation_requests (requester_id, status);
+      CREATE INDEX idx_po_confirmation_client ON po_confirmation_requests (client_id);
+    `);
+    currentVersion = 24;
+  }
+
   await db.execAsync(`PRAGMA user_version = ${currentVersion}`);
 }
 

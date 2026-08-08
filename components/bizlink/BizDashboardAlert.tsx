@@ -3,8 +3,8 @@ import { Text, XStack, YStack } from 'tamagui';
 import { useBizlinkColors, BIZLINK_FONTS } from '../../lib/theme';
 
 interface BizDashboardAlertProps {
-  /** `red` = 1-month prospect deadline; `amber` = pending manager tag-along (F-204). */
-  tone: 'red' | 'amber';
+  /** `red` = 1-month prospect deadline; `amber` = pending manager tag-along (F-204); `green` = meeting in progress (2026-08-04), same tint as the in-screen "Meeting in progress" banner. */
+  tone: 'red' | 'amber' | 'green';
   icon: React.ReactNode;
   title: string;
   caption: string;
@@ -18,8 +18,8 @@ interface BizDashboardAlertProps {
  */
 export function BizDashboardAlert({ tone, icon, title, caption, onPress }: BizDashboardAlertProps) {
   const BIZLINK_COLORS = useBizlinkColors();
-  const background = tone === 'red' ? BIZLINK_COLORS.tintB : BIZLINK_COLORS.amberSoft;
-  const foreground = tone === 'red' ? BIZLINK_COLORS.red : BIZLINK_COLORS.orange;
+  const background = tone === 'red' ? BIZLINK_COLORS.tintB : tone === 'amber' ? BIZLINK_COLORS.amberSoft : BIZLINK_COLORS.tintA;
+  const foreground = tone === 'red' ? BIZLINK_COLORS.red : tone === 'amber' ? BIZLINK_COLORS.orange : BIZLINK_COLORS.ink;
   return (
     <Pressable onPress={onPress} style={{ minHeight: 44 }}>
       <XStack

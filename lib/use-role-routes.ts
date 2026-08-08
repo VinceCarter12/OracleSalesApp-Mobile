@@ -26,12 +26,44 @@ export interface ClientFlowRoutes {
   completeInfo: (clientId: string) => Href;
   /** Batch 4 (2026-07-29): Client Detail's Set/Update Office Location button — GPS-capture-only screen, see [[Office-Location-Spec-2026-07-29]]. */
   officeLocation: (clientId: string) => Href;
+  /**
+   * Meeting Detail's "Client journey & activities" preview card (2026-08-04
+   * handoff) — read-only history screen, mirrors the wireframe's
+   * `aOpenClientJourney(clientId, from)`. `from` is an optional already-built
+   * `Href` string (e.g. `String(routes.meetingDetail(id))`) used as the
+   * journey screen's `BizTopBar` back fallback for the rare case it's reached
+   * outside a normal in-stack push. `(tabs)`-only today — no
+   * `app/(manager)/clients/journey.tsx` re-export exists yet. Unlike
+   * `recordVisit` (not yet wired into any Manager call site), this one IS
+   * live-reachable from Manager today via the shared
+   * `app/(tabs)/meetings/[id].tsx` (re-exported at
+   * `app/(manager)/clients/meeting/[id].tsx`) — that screen gates its own
+   * journey-preview card on `!isManager` for exactly this reason. Any new
+   * caller under `(manager)` must do the same until the re-export exists.
+   */
+  clientJourney: (clientId: string, from?: string) => Href;
   recordMeeting: (clientId: string) => Href;
+  /**
+   * Fast-path record (New/Existing) — mirrors `recordMeeting`'s URL-building
+   * pattern, but unlike `recordMeeting`, this one is `(tabs)`-only today:
+   * there is no `app/(manager)/clients/record-visit.tsx` re-export yet.
+   * Add that file (mirroring `app/(manager)/clients/record.tsx`) before
+   * wiring any Manager entry point through `isFastPathEligible()`, or this
+   * will resolve to a real `Href` that 404s at runtime for Manager.
+   */
+  recordVisit: (clientId: string) => Href;
   meetingDetail: (id: string) => Href;
   celebrate: (online: boolean, meetingId?: string, clientId?: string) => Href;
   meetingsHome: () => Href;
   clientList: () => Href;
   home: () => Href;
+  /**
+   * True when this screen is currently mounted under `(manager)`. Exposed so
+   * a shared `(tabs)`/`(manager)`-reused screen can hide UI that links to a
+   * route only added under `(tabs)` so far (e.g. `clientJourney`/`recordVisit`
+   * — see their own doc comments) instead of building a `Href` that 404s.
+   */
+  isManager: boolean;
 }
 
 export function useClientFlowRoutes(): ClientFlowRoutes {
@@ -53,7 +85,10 @@ export function useClientFlowRoutes(): ClientFlowRoutes {
     createClient: () => `${clientsBase}/create` as Href,
     completeInfo: (clientId: string) => `${clientsBase}/complete?clientId=${clientId}` as Href,
     officeLocation: (clientId: string) => `${clientsBase}/office-location?clientId=${clientId}` as Href,
+    clientJourney: (clientId: string, from?: string) =>
+      `${clientsBase}/journey?clientId=${clientId}${from ? `&from=${encodeURIComponent(from)}` : ''}` as Href,
     recordMeeting: (clientId: string) => `${meetingsBase}/record?clientId=${clientId}` as Href,
+    recordVisit: (clientId: string) => `${meetingsBase}/record-visit?clientId=${clientId}` as Href,
     meetingDetail: (id: string) => (isManager ? `${meetingsBase}/meeting/${id}` : `${meetingsBase}/${id}`) as Href,
     // Batch 7C (ADR-053): optional `clientId` param feeds the celebrate
     // screen's PostRecordCutoffStatus (W-3) — additive, existing 2-arg
@@ -63,5 +98,6 @@ export function useClientFlowRoutes(): ClientFlowRoutes {
     meetingsHome: () => (isManager ? '/(manager)/more/meetings' : '/(tabs)/meetings') as Href,
     clientList: () => clientsBase as Href,
     home: () => homeBase as Href,
+    isManager,
   };
 }

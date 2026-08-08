@@ -9,7 +9,7 @@ import { useLostOpportunities } from '../../../../lib/use-lost-opportunities';
 import { usePagination, PAGINATION_PAGE_SIZE } from '../../../../lib/use-pagination';
 import { BizTopBar } from '../../../../components/bizlink/BizTopBar';
 import { BizButton } from '../../../../components/bizlink/BizButton';
-import { BizPager } from '../../../../components/bizlink/BizPager';
+import { BizFloatingPager } from '../../../../components/bizlink/BizFloatingPager';
 import { BizLostOpportunityRow } from '../../../../components/bizlink/BizLostOpportunityRow';
 
 /**
@@ -37,7 +37,7 @@ export default function LostOpportunitiesScreen() {
 
   return (
     <YStack flex={1} backgroundColor={BIZLINK_COLORS.canvas} paddingTop={insets.top}>
-      <BizTopBar title="Lost Opportunities" fallbackHref="/(tabs)/more" />
+      <BizTopBar title="Lost Opportunities" fallbackHref="/(tabs)" />
       <YStack paddingHorizontal="$4" paddingTop="$2">
         <Text fontSize={13} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} marginBottom="$3" lineHeight={19}>
           Lost after a Sales declaration or 6 months without a meeting. After the 1-month cooldown, the first eligible
@@ -78,7 +78,7 @@ export default function LostOpportunitiesScreen() {
         <FlatList
           data={pageItems}
           keyExtractor={(item) => item.id}
-          contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 16 }}
+          contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 120 }}
           renderItem={({ item, index }) => (
             <BizLostOpportunityRow
               item={item}
@@ -95,11 +95,12 @@ export default function LostOpportunitiesScreen() {
               </Text>
             </YStack>
           }
-          ListFooterComponent={
-            filtered.length > 0 ? <BizPager page={page} totalPages={totalPages} onPageChange={setPage} /> : null
-          }
         />
       )}
+
+      {filtered.length > 0 ? (
+        <BizFloatingPager page={page} totalPages={totalPages} onPageChange={setPage} bottomOffset={insets.bottom + 16} />
+      ) : null}
     </YStack>
   );
 }

@@ -1,23 +1,27 @@
 /**
  * Step B (meeting-recording controller consolidation): pure derivation of
  * what a resumed meeting draft does NOT restore, per flow. Both
- * `record.tsx` (full form) and `record-visit.tsx` (fast path) now share the
- * same `lib/meeting-drafts.ts` persistence mechanism, but its
- * `MeetingDraftPayload` (lib/policies/meeting-draft-policy.ts) only ever
- * persisted mode/GPS/time/companions — never agenda, outcome, or remarks.
- * A resumed draft is therefore always a PARTIAL restore; this module is the
- * single place that "partial" is defined, so the disclosure UI
- * (components/meetings/DraftResumePrompt.tsx) and any future consumer can't
- * drift from each other about which fields still need re-entry.
+ * `record.tsx` (full form) and `record-visit.tsx` (fast path) share the same
+ * `lib/meeting-drafts.ts` persistence mechanism. As of 2026-08-04 (Vince
+ * direction), agenda ticks are also persisted (`MeetingDraftPayload.agendas`,
+ * lib/policies/meeting-draft-policy.ts) — the fast path's draft is now a
+ * FULL restore; the full form's is still PARTIAL, since outcome/remarks are
+ * only ever entered post-Start and have never been part of the draft
+ * payload. This module is the single place that "partial" is defined, so
+ * the disclosure UI (components/meetings/DraftResumePrompt.tsx) and any
+ * future consumer can't drift from each other about which fields still need
+ * re-entry.
  */
 
 /** Fields NOT persisted by MeetingDraftPayload, only ever entered post-Start. */
-export type ResumableMeetingField = 'agenda' | 'outcome' | 'remarks';
+export type ResumableMeetingField = 'outcome' | 'remarks';
 
-const VISIT_REENTRY_FIELDS: readonly ResumableMeetingField[] = ['agenda'];
+// Fast path (record-visit.tsx) restores everything it collects — nothing
+// left to re-enter.
+const VISIT_REENTRY_FIELDS: readonly ResumableMeetingField[] = [];
 // The full form additionally collects outcome + remarks post-Start, neither
 // of which the draft payload has ever persisted (see MeetingDraftPayload).
-const FULL_REENTRY_FIELDS: readonly ResumableMeetingField[] = ['agenda', 'outcome', 'remarks'];
+const FULL_REENTRY_FIELDS: readonly ResumableMeetingField[] = ['outcome', 'remarks'];
 
 /**
  * Returns the exact set of fields the agent must re-enter after resuming a

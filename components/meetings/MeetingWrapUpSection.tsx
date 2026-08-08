@@ -3,11 +3,15 @@ import { Text, XStack } from 'tamagui';
 import { useBizlinkColors, BIZLINK_FONTS } from '../../lib/theme';
 import { BizSectionHeader } from '../bizlink/BizSectionHeader';
 import { BizChip } from '../bizlink/BizChip';
-import { MEETING_AGENDAS, type MeetingOutcome } from '../../types';
+import { type MeetingOutcome } from '../../types';
 
 interface MeetingWrapUpSectionProps {
+  /** Meeting-Flow Wireframe Parity Audit 2026-08-03 item 5: caller-resolved, stage-aware agenda tile labels (lib/meeting-agenda-stage-source.ts) — this component no longer hardcodes the full MEETING_AGENDAS list. */
+  agendaOptions: string[];
   selectedAgendas: string[];
   onToggleAgenda: (agenda: string) => void;
+  /** Stage title + acceptance-copy card (Wireframe-Sales-BizLink.html `#a-recordStageTitle`/`#a-recordStageNote`, lines 700-703), rendered between the helper caption and the tiles. */
+  agendaNote?: React.ReactNode;
   remarks: string;
   onRemarksChange: (value: string) => void;
   outcome: MeetingOutcome | null;
@@ -21,8 +25,10 @@ interface MeetingWrapUpSectionProps {
  * record.tsx (already near the 300-line file cap) stays under it.
  */
 export function MeetingWrapUpSection({
+  agendaOptions,
   selectedAgendas,
   onToggleAgenda,
+  agendaNote,
   remarks,
   onRemarksChange,
   outcome,
@@ -32,12 +38,15 @@ export function MeetingWrapUpSection({
   const BIZLINK_COLORS = useBizlinkColors();
   return (
     <>
-      <BizSectionHeader title="Agenda" helper="· piliin lahat" />
+      {/* Wireframe-Sales-BizLink.html:699 — "Agenda · stage-aware", not the
+          generic "piliin lahat" caption this used to carry. */}
+      <BizSectionHeader title="Agenda" helper="· stage-aware" />
       <Text fontSize={12} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} marginTop={-6} marginBottom="$2" lineHeight={17}>
         Ang "Product / company presentation" tick dito ang buong basehan ng progress % ng client — hindi na Complete Info (B-001).
       </Text>
+      {agendaNote}
       <XStack gap="$2" flexWrap="wrap">
-        {MEETING_AGENDAS.map((agenda) => (
+        {agendaOptions.map((agenda) => (
           <BizChip
             key={agenda}
             label={agenda}

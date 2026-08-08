@@ -22,7 +22,7 @@ export default function MyRequestsScreen() {
 
   return (
     <YStack flex={1} backgroundColor={BIZLINK_COLORS.canvas} paddingTop={insets.top}>
-      <BizTopBar title="My Requests" fallbackHref="/(tabs)/more" />
+      <BizTopBar title="My Requests" fallbackHref="/(tabs)" />
       <ScrollView contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 24 }}>
         <Text fontSize={13} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} marginBottom="$3" lineHeight={19}>
           Status ng sarili mong PO confirmation, client-edit, at tag-along requests. View-only ito: Manager lang ang

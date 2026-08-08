@@ -184,6 +184,39 @@ export function useMeetingRecordingController({ clientId, flow }: UseMeetingReco
     setStart((prev) => (prev ? { ...prev, gpsLat: gps.lat, gpsLng: gps.lng } : prev));
   }, []);
 
+  /**
+   * 2026-08-04 (Vince direction): re-saves the draft with the current agenda
+   * selection so exiting the in-progress screen no longer resets the
+   * checklist back to zero on return. Called on every toggle from both
+   * screens (a handful of discrete taps per meeting, not a render/timer
+   * tick — the "cheap, write-once-on-Start" guidance on `saveDraft` is about
+   * avoiding a write-every-render loop, not this). No-ops before Start
+   * (`start` unset) since there's nothing to attach the agenda list to yet.
+   */
+  const updateDraftAgendas = useCallback(
+    async (agendas: string[]): Promise<void> => {
+      if (!clientId || !profileId || !start) return;
+      try {
+        await saveDraft({
+          clientId,
+          agentId: profileId,
+          flow,
+          payload: {
+            mode,
+            gpsLat: start.gpsLat,
+            gpsLng: start.gpsLng,
+            capturedAt: start.capturedAt,
+            companions: companionsForDraft(selectedCompanionsRef.current),
+            agendas,
+          },
+        });
+      } catch (err) {
+        console.error('[useMeetingRecordingController] Failed to persist agenda to draft:', err);
+      }
+    },
+    [clientId, profileId, flow, mode, start]
+  );
+
   const resumeDraft = useCallback((): void => {
     if (!pendingDraft) return;
     // A draft with companions must not resume until the offline roster query
@@ -257,6 +290,7 @@ export function useMeetingRecordingController({ clientId, flow }: UseMeetingReco
     cancelStartMeeting,
     confirmStartMeeting,
     updateStartGps,
+    updateDraftAgendas,
     pendingDraft,
     resumeDraft,
     discardDraft,

@@ -121,3 +121,38 @@ export async function deleteDraft(clientId: string): Promise<void> {
   const db = await getDb();
   await db.runAsync('DELETE FROM meeting_drafts WHERE id = ?', [draftId(clientId)]);
 }
+
+/**
+ * All of this agent's same-day, still-valid drafts — powers the "meeting in
+ * progress" dashboard/My Clients indicators, so a navigating-away agent
+ * still sees (and can jump back to) an unfinished meeting from anywhere in
+ * the app instead of only from that one client's own screen. Most-recently-
+ * started first. Reuses `getDraftForClient`'s staleness rule (drop anything
+ * not created today) by filtering + deleting inline, same as that function.
+ */
+export async function getActiveDraftsForAgent(agentId: string): Promise<MeetingDraft[]> {
+  const db = await getDb();
+  const rows = await db.getAllAsync<MeetingDraftRow>(
+    'SELECT * FROM meeting_drafts WHERE agent_id = ? ORDER BY start_captured_at DESC',
+    [agentId]
+  );
+  const now = new Date().toISOString();
+  const active: MeetingDraft[] = [];
+  for (const row of rows) {
+    if (!isSameCalendarDay(row.created_at, now)) {
+      await deleteDraft(row.client_id);
+      continue;
+    }
+    active.push({
+      id: row.id,
+      clientId: row.client_id,
+      agentId: row.agent_id,
+      flow: row.flow === 'full' ? 'full' : 'visit',
+      payload: normalizeMeetingDraftPayload(JSON.parse(row.payload_json)),
+      startCapturedAt: row.start_captured_at,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at,
+    });
+  }
+  return active;
+}

@@ -15,7 +15,8 @@ import {
   type ClientCompanionRequest,
 } from '../../../lib/tag-along-service';
 import { OUTCOME_BADGE_STYLES, useBizlinkColors, BIZLINK_FONTS, BIZLINK_ON_INK } from '../../../lib/theme';
-import { SALES_CLIENT_STATUS_BADGES, getClientStatus, WAITING_MANAGER_APPROVAL_BADGE } from '../../../lib/client-status';
+import { SALES_CLIENT_STATUS_BADGES, getClientStatus, WAITING_MANAGER_APPROVAL_BADGE, WAITING_MANAGER_PO_APPROVAL_BADGE } from '../../../lib/client-status';
+import { getClientIdsWithPendingPoConfirmation } from '../../../lib/po-confirmation-service';
 import { getClientProgressBreakdown, getInfoChecklist, isInfoComplete } from '../../../lib/client-progress';
 import { useMeetings } from '../../../lib/useMeetings';
 import { useClientFlowRoutes } from '../../../lib/use-role-routes';
@@ -25,17 +26,9 @@ import { BizSectionHeader } from '../../../components/bizlink/BizSectionHeader';
 import { BizButton } from '../../../components/bizlink/BizButton';
 import { ProgressRing } from '../../../components/ui/ProgressRing';
 import { StatusBadge } from '../../../components/ui/StatusBadge';
+import { StageRail } from '../../../components/ui/StageRail';
 import { ClientCutoffAllowanceBlock } from '../../../components/cutoff/ClientCutoffAllowanceBlock';
-import type { Client, ClientStatus } from '../../../types';
-
-// Wireframe-Sales-BizLink.html `#a-detailStageRail`/`.stage-labels` (lines
-// 604-605): 4-segment lifecycle rail, matches ADR-042's four-stage lifecycle
-// (ClientStatus). 'inactive' is a terminal/dead-end status outside this
-// progression (not part of the wireframe rail) — STAGE_ORDER.indexOf returns
-// -1 for it, which correctly renders the rail as not-yet-reached rather than
-// guessing a position for it.
-const STAGE_ORDER: ClientStatus[] = ['prospect', 'in_progress', 'new', 'existing'];
-const STAGE_LABELS = ['Prospect', 'In Progress', 'New', 'Existing'];
+import type { Client } from '../../../types';
 
 export default function ClientDetailScreen() {
   const insets = useSafeAreaInsets();
@@ -47,6 +40,7 @@ export default function ClientDetailScreen() {
   const [loading, setLoading] = useState(true);
   const [companionRequests, setCompanionRequests] = useState<ClientCompanionRequest[]>([]);
   const [waitingManagerApproval, setWaitingManagerApproval] = useState(false);
+  const [waitingManagerPoApproval, setWaitingManagerPoApproval] = useState(false);
   const { meetings } = useMeetings(id);
 
   // Local SQLite is the primary read path (ADR-001/T-003) — a `pending`
@@ -80,6 +74,15 @@ export default function ClientDetailScreen() {
     setWaitingManagerApproval(ids.has(id));
   }, [id, profileId]);
 
+  // Vince 2026-08-04: same single-client-via-batch-helper approach as
+  // `loadWaitingManagerApproval` above, for the separate PO-confirmation
+  // domain (`lib/po-confirmation-service.ts#getClientIdsWithPendingPoConfirmation`).
+  const loadWaitingManagerPoApproval = useCallback(async () => {
+    if (!id || !profileId) return;
+    const ids = await getClientIdsWithPendingPoConfirmation(profileId);
+    setWaitingManagerPoApproval(ids.has(id));
+  }, [id, profileId]);
+
   useEffect(() => {
     loadCompanionRequests();
   }, [loadCompanionRequests]);
@@ -88,13 +91,18 @@ export default function ClientDetailScreen() {
     loadWaitingManagerApproval();
   }, [loadWaitingManagerApproval]);
 
+  useEffect(() => {
+    loadWaitingManagerPoApproval();
+  }, [loadWaitingManagerPoApproval]);
+
   // Refresh after Complete Info saves and navigates back.
   useFocusEffect(
     useCallback(() => {
       loadClient();
       loadCompanionRequests();
       loadWaitingManagerApproval();
-    }, [loadClient, loadCompanionRequests, loadWaitingManagerApproval])
+      loadWaitingManagerPoApproval();
+    }, [loadClient, loadCompanionRequests, loadWaitingManagerApproval, loadWaitingManagerPoApproval])
   );
 
   if (loading) {
@@ -144,6 +152,14 @@ export default function ClientDetailScreen() {
                   color={BIZLINK_COLORS[WAITING_MANAGER_APPROVAL_BADGE.color]}
                 />
               ) : null}
+              {/* Vince 2026-08-04: overlay badge for a submitted, not-yet-decided PO confirmation on an in_progress client. */}
+              {waitingManagerPoApproval ? (
+                <StatusBadge
+                  label={WAITING_MANAGER_PO_APPROVAL_BADGE.label}
+                  background={BIZLINK_COLORS[WAITING_MANAGER_PO_APPROVAL_BADGE.background]}
+                  color={BIZLINK_COLORS[WAITING_MANAGER_PO_APPROVAL_BADGE.color]}
+                />
+              ) : null}
               {client.sales_channel ? (
                 <StatusBadge label={client.sales_channel} background={BIZLINK_COLORS.soft} color={BIZLINK_COLORS.navy} />
               ) : null}
@@ -161,36 +177,9 @@ export default function ClientDetailScreen() {
 
         {/* Wireframe-Sales-BizLink.html `#a-detailStageRail`/`.stage-labels`
             (lines 604-605): 4-segment lifecycle rail driven by the client's
-            real `status` field — same STAGE_ORDER used for indexOf below. */}
-        <XStack gap="$1.5" marginTop="$3" marginBottom="$1">
-          {STAGE_ORDER.map((stage, index) => {
-            const stageIndex = STAGE_ORDER.indexOf(status);
-            const reached = stageIndex >= 0 && index <= stageIndex;
-            return (
-              <View
-                key={stage}
-                flex={1}
-                height={6}
-                borderRadius={99}
-                backgroundColor={reached ? BIZLINK_COLORS.brand : BIZLINK_COLORS.line}
-              />
-            );
-          })}
-        </XStack>
-        <XStack marginBottom="$1">
-          {STAGE_LABELS.map((label) => (
-            <Text
-              key={label}
-              flex={1}
-              textAlign="center"
-              fontSize={8.5}
-              fontFamily={BIZLINK_FONTS.semibold}
-              color={BIZLINK_COLORS.muted}
-            >
-              {label}
-            </Text>
-          ))}
-        </XStack>
+            real `status` field — shared with Record Meeting's selected-
+            company card via components/ui/StageRail.tsx. */}
+        <StageRail status={status} />
 
         {/* ADR-030 Pass 2: requester-side companion-request status — no
             literal wireframe markup exists for client-detail specifically

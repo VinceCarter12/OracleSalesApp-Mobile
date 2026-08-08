@@ -8,19 +8,17 @@ import { createMeeting } from '../../../lib/meeting-service';
 import { buildMeetingRecord } from '../../../lib/meeting-record-assembler';
 import { AccountSuspendedError } from '../../../lib/app-lock/account-status';
 import { useMeetingRecordingController } from '../../../lib/use-meeting-recording-controller';
-import { isInfoComplete } from '../../../lib/client-progress';
+import { getClientStatus } from '../../../lib/client-status';
 import { useClientFlowRoutes } from '../../../lib/use-role-routes';
 import { checkConnectivity } from '../../../lib/sync/connectivity';
 import { BIZLINK_COLORS, BIZLINK_FONTS } from '../../../lib/theme';
 import { BizTopBar } from '../../../components/bizlink/BizTopBar';
 import { BizButton } from '../../../components/bizlink/BizButton';
-import { ClientInfoCard } from '../../../components/clients/ClientInfoCard';
+import { SelectedClientCard } from '../../../components/meetings/SelectedClientCard';
 import { VisitStartPanel } from '../../../components/meetings/VisitStartPanel';
 import { VisitInProgressPanel } from '../../../components/meetings/VisitInProgressPanel';
 import { type CapturedPhoto } from '../../../components/meetings/PhotoCapture';
 import { DraftResumePrompt } from '../../../components/meetings/DraftResumePrompt';
-import { ClientInfoCompletionNotice } from '../../../components/meetings/ClientInfoCompletionNotice';
-import { ClientCutoffAllowanceBlock } from '../../../components/cutoff/ClientCutoffAllowanceBlock';
 import { StartMeetingConfirmDialog } from '../../../components/meetings/StartMeetingConfirmDialog';
 
 /**
@@ -38,6 +36,15 @@ import { StartMeetingConfirmDialog } from '../../../components/meetings/StartMee
  * so Close Deal / PO evidence is structurally impossible on this screen; see
  * the comment on `finishMeeting()` for why that is intentional, not a gap.
  */
+// Wireframe-Sales-BizLink.html:749 (`<span id="a-visitActionName">Customer
+// Visit</span> — <span id="a-visitClientName">—</span>`) plus
+// select-client.tsx's `recordPickerHint()` ('New Customer Visit' / 'Existing
+// Customer Visit') — this screen only ever sees new/existing clients
+// (prospect/in_progress route to record.tsx).
+function visitActionName(status: ReturnType<typeof getClientStatus>): string {
+  return status === 'new' ? 'New Customer Visit' : 'Existing Customer Visit';
+}
+
 export default function RecordVisitScreen() {
   const insets = useSafeAreaInsets();
   const { clientId } = useLocalSearchParams<{ clientId: string }>();
@@ -49,7 +56,7 @@ export default function RecordVisitScreen() {
     client, clientLoading, profileId, markSuspended, visibleRoster,
     selectedCompanions, toggleCompanion, companionSelections, companionsPreAccepted,
     mode, setMode, start, starting, elapsedSeconds, startConfirmOpen,
-    requestStartMeeting, cancelStartMeeting, confirmStartMeeting,
+    requestStartMeeting, cancelStartMeeting, confirmStartMeeting, updateDraftAgendas,
     pendingDraft, resumeDraft, discardDraft, clearDraft,
   } = controller;
 
@@ -57,9 +64,11 @@ export default function RecordVisitScreen() {
   const [saving, setSaving] = useState(false);
 
   function toggleAgenda(agenda: string): void {
-    setSelectedAgendas((prev) =>
-      prev.includes(agenda) ? prev.filter((a) => a !== agenda) : [...prev, agenda]
-    );
+    const next = selectedAgendas.includes(agenda)
+      ? selectedAgendas.filter((a) => a !== agenda)
+      : [...selectedAgendas, agenda];
+    setSelectedAgendas(next);
+    void updateDraftAgendas(next);
   }
 
   /**
@@ -134,35 +143,36 @@ export default function RecordVisitScreen() {
 
   return (
     <YStack flex={1} backgroundColor={BIZLINK_COLORS.canvas} paddingTop={insets.top}>
-      <BizTopBar title={`Meeting — ${client.company_name}`} />
+      <BizTopBar title={`${visitActionName(getClientStatus(client))} — ${client.company_name}`} />
       <ScrollView contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 32 }}>
-        <ClientInfoCard client={client} />
-        {!isInfoComplete(client) ? (
-          <ClientInfoCompletionNotice onCompleteInfo={() => router.push(routes.completeInfo(client.id))} />
-        ) : null}
+        <SelectedClientCard clientName={client.company_name} status={getClientStatus(client)} />
 
         {pendingDraft ? (
           <DraftResumePrompt
             draft={pendingDraft}
-            onResume={resumeDraft}
+            onResume={() => {
+              // Agenda lives in this screen's own state (not the
+              // controller), so it's restored here alongside resumeDraft()
+              // restoring mode/start/companions — same draft, one tap.
+              setSelectedAgendas(pendingDraft.payload.agendas ?? []);
+              resumeDraft();
+            }}
             onDiscard={() => {
               void discardDraft();
             }}
           />
         ) : !start ? (
-          <>
-            {/* W-5 (ADR-053): parity with the full-form pre-start allowance line. */}
-            <ClientCutoffAllowanceBlock client={client} compact />
-            <VisitStartPanel
-              roster={visibleRoster}
-              selectedCompanions={selectedCompanions}
-              onToggleCompanion={toggleCompanion}
-              mode={mode}
-              onModeChange={setMode}
-              starting={starting}
-              onStart={requestStartMeeting}
-            />
-          </>
+          <VisitStartPanel
+            client={client}
+            roster={visibleRoster}
+            selectedCompanions={selectedCompanions}
+            onToggleCompanion={toggleCompanion}
+            mode={mode}
+            onModeChange={setMode}
+            starting={starting}
+            onStart={requestStartMeeting}
+            actionName={visitActionName(getClientStatus(client))}
+          />
         ) : (
           <VisitInProgressPanel
             startedAt={start.capturedAt}
