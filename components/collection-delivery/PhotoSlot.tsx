@@ -11,6 +11,8 @@ interface PhotoSlotProps {
   subtitle: string;
   uri: string | null;
   onCaptured: (uri: string) => void;
+  /** When true and no photo is captured yet, the dashed border turns red to flag a skipped required photo. */
+  error?: boolean;
 }
 
 /**
@@ -21,7 +23,7 @@ interface PhotoSlotProps {
  * GPS binding or confirm-lock here — remit proof is a single shot, retake by
  * tapping again.
  */
-export function PhotoSlot({ title, subtitle, uri, onCaptured }: PhotoSlotProps) {
+export function PhotoSlot({ title, subtitle, uri, onCaptured, error }: PhotoSlotProps) {
   const BIZLINK_COLORS = useBizlinkColors();
   const [busy, setBusy] = useState(false);
 
@@ -45,6 +47,7 @@ export function PhotoSlot({ title, subtitle, uri, onCaptured }: PhotoSlotProps) 
   }
 
   const filled = !!uri;
+  const showError = error && !filled;
   return (
     <Pressable onPress={capture} disabled={busy}>
       <XStack
@@ -53,7 +56,7 @@ export function PhotoSlot({ title, subtitle, uri, onCaptured }: PhotoSlotProps) 
         backgroundColor={filled ? BIZLINK_COLORS.tintA : BIZLINK_COLORS.card}
         borderRadius={20}
         borderWidth={filled ? 0 : 1.5}
-        borderColor={COLORS.swanLedge}
+        borderColor={showError ? COLORS.ledgeRed : COLORS.swanLedge}
         borderStyle={filled ? 'solid' : 'dashed'}
         paddingHorizontal={15}
         paddingVertical={13}

@@ -58,6 +58,33 @@ export function formatShortDateTime(iso?: string | null): string {
   return `${SHORT_MONTHS[d.getMonth()]} ${d.getDate()} · ${formatClockTime(iso)}`;
 }
 
+/** Local calendar day as `YYYY-MM-DD` (device timezone — Manila for this app). */
+function localDateStr(d: Date): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
+/**
+ * True if `scheduledFor` falls on the local calendar day `ref` (default: now).
+ * Handles both a date-only value ('2026-08-08', compared as-is) and a full ISO
+ * timestamp (compared by its LOCAL Y/M/D). Null/blank/unparseable → false, so a
+ * row with no schedule never counts as "today".
+ */
+export function isScheduledForToday(scheduledFor: string | null | undefined, ref: Date = new Date()): boolean {
+  if (!scheduledFor) return false;
+  const todayStr = localDateStr(ref);
+  // Date-only (no time component): a plain calendar date, compare directly and
+  // avoid the UTC-parse timezone shift that `new Date('2026-08-08')` introduces.
+  if (scheduledFor.length === 10 && /^\d{4}-\d{2}-\d{2}$/.test(scheduledFor)) {
+    return scheduledFor === todayStr;
+  }
+  const d = new Date(scheduledFor);
+  if (Number.isNaN(d.getTime())) return false;
+  return localDateStr(d) === todayStr;
+}
+
 /**
  * Floats additional (admin-added mid-day) PENDING stores to the top so a late
  * addition isn't missed at the bottom of the day's list. Stable: ties keep
@@ -109,6 +136,24 @@ export interface CollectionStore {
    * until the web contract lands.
    */
   isAdditional?: boolean;
+  /**
+   * web 068 acknowledgment timestamps (Additional Collection). `additionalReceivedAt`
+   * = the row reached this phone ("Delivered ✓" on the admin board);
+   * `additionalSeenAt` = the collector opened it ("Viewed"). Both are stamped
+   * server-side (write-once) by the collector-only RPCs and mirrored down —
+   * mobile never writes them directly. See [[project_additional_collection]].
+   */
+  additionalReceivedAt?: string;
+  additionalSeenAt?: string;
+  /**
+   * Local mirror's `local_updated_at` — the wall-clock time this row was
+   * written into THIS device during sync-down (NOT a web column). Surfaces on
+   * Today's List as "when this list got into the app", and updates on
+   * pull-to-refresh. Undefined for the mock arrays (which never sync).
+   */
+  syncedAt?: string;
+  /** `scheduled_for` — the day this stop is planned for; used to scope the dashboard to TODAY. */
+  scheduledFor?: string;
 }
 
 export const COLLECTION_STORES: CollectionStore[] = [
@@ -165,6 +210,10 @@ export interface DeliveryPo {
   claimedBy?: string;
   /** Raw `claimed_by` profile id — compare to your own to tell mine vs someone else's. */
   claimedById?: string;
+  /** Local mirror's `local_updated_at` — when this PO landed on THIS device. See CollectionStore.syncedAt. */
+  syncedAt?: string;
+  /** `scheduled_for` — the delivery day; used to scope the dashboard to TODAY. */
+  scheduledFor?: string;
 }
 
 export const DELIVERY_POS: DeliveryPo[] = [

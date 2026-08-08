@@ -12,7 +12,27 @@ export const DATABASE_NAME = 'oracle-sales-app.db';
 
 // Bump this and add a new `case` below whenever the schema changes — never
 // edit an already-shipped case, since devices may have already run it.
-const LATEST_SCHEMA_VERSION = 24;
+const LATEST_SCHEMA_VERSION = 26;
+
+/**
+ * Idempotent `ADD COLUMN` — only adds `column` if the table doesn't already
+ * have it. Needed because the F-007 "Additional Collection" migration blocks
+ * were renumbered while unreleased (Phase A shipped `is_additional` at
+ * user_version 24 on some dev devices, 25 on others), so a plain `ALTER … ADD
+ * COLUMN` can hit "duplicate column name" on a device whose column already
+ * exists at the version the block runs for. Checking `PRAGMA table_info` first
+ * makes the additive step safe to (re)run from any prior Phase-A state.
+ */
+async function addColumnIfMissing(
+  db: SQLiteDatabase,
+  table: string,
+  column: string,
+  definition: string
+): Promise<void> {
+  const cols = await db.getAllAsync<{ name: string }>(`PRAGMA table_info(${table})`);
+  if (cols.some((c) => c.name === column)) return;
+  await db.runAsync(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
+}
 
 /**
  * Runs once per app launch via `SQLiteProvider`'s `onInit` (see app/_layout.tsx).
@@ -1082,10 +1102,28 @@ export async function migrateDbIfNeeded(db: SQLiteDatabase): Promise<void> {
   // they're a write-back that needs the matching web columns + UPDATE RLS
   // first, tracked as Phase B in that same status note.
   if (currentVersion === 24) {
-    await db.execAsync(`
-      ALTER TABLE collection_visits ADD COLUMN is_additional INTEGER NOT NULL DEFAULT 0;
-    `);
+    // Idempotent: some Phase-A dev devices already have is_additional at
+    // user_version 24 (see addColumnIfMissing) — re-adding it would throw.
+    await addColumnIfMissing(db, 'collection_visits', 'is_additional', 'INTEGER NOT NULL DEFAULT 0');
     currentVersion = 25;
+  }
+
+  // F-007 Additional Collection Phase B (web migrations 068/069, 2026-08-08):
+  // the acknowledgment write-back. `additional_received_at` / `additional_seen_at`
+  // MIRROR the two web columns (stamped write-once, server-side, via the
+  // collector-only RPCs mark_additional_received / mark_additional_seen — a
+  // direct UPDATE is rejected by RLS, so mobile never writes them through the
+  // outbox). `additional_seen_pending` is LOCAL-ONLY intent: set to 1 when the
+  // collector opens an additional store's screen (possibly offline), then the
+  // ack reconciler (lib/sync/additional-acks.ts) calls the seen RPC on the next
+  // online pass and clears it. Received needs no local flag — the reconciler
+  // drives off `additional_received_at IS NULL`. All additive; a normal row is
+  // untouched (received/seen stay NULL, pending 0).
+  if (currentVersion === 25) {
+    await addColumnIfMissing(db, 'collection_visits', 'additional_received_at', 'TEXT');
+    await addColumnIfMissing(db, 'collection_visits', 'additional_seen_at', 'TEXT');
+    await addColumnIfMissing(db, 'collection_visits', 'additional_seen_pending', 'INTEGER NOT NULL DEFAULT 0');
+    currentVersion = 26;
   }
 
   await db.execAsync(`PRAGMA user_version = ${currentVersion}`);

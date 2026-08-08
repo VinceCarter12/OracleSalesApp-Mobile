@@ -78,6 +78,14 @@ an **Additional** store (badged + floated to the top). The mobile half (Phase A)
 is built; web owns a flag column, the BusyBee **SMS fallback**, and two
 acknowledgment columns. **Full contract: see `ADDITIONAL_COLLECTION_CONTRACT.md`.**
 
+### Partial payment (2026-08-08, WEB-blocked)
+
+A customer can pay only PART of the due; the store must **stay open with the
+remaining balance** (`status='partial'`) and re-appear until fully paid. Needs a
+web `partial` status + a `collection_payments` child table (proof per payment) +
+a roll-up trigger before mobile can wire the write. **Full contract: see
+`PARTIAL_COLLECTION_CONTRACT.md`.**
+
 ## 👉 Where the WEB dev picks up (remittances)
 
 - The admin board should show submitted `remittances` / `cod_remittances` and
