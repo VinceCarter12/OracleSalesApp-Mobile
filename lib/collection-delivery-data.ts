@@ -14,7 +14,17 @@
 // No SQLite/Supabase schema is deployed yet (043/044 unmerged), so these arrays
 // still stand in for local-DB reads — but now on the correct shapes.
 
-export type CollectionStoreStatus = 'pending' | 'collected' | 'rescheduled';
+export type CollectionStoreStatus = 'pending' | 'collected' | 'rescheduled' | 'partial';
+
+/** A store still owing money — pending (untouched) or partial (part-paid). Both stay on the list. */
+export function isOpenForCollection(status: CollectionStoreStatus): boolean {
+  return status === 'pending' || status === 'partial';
+}
+
+/** What's still owed on a store: original due minus what's been collected so far (never negative). */
+export function remainingBalance(store: Pick<CollectionStore, 'due' | 'amountCollected'>): number {
+  return Math.max(0, store.due - (store.amountCollected ?? 0));
+}
 /**
  * Collection payment methods — lowercase; 'counter' = paid at the store's own
  * counter, 'delivery_receipt' = documented by the delivery receipt only (no
@@ -334,12 +344,18 @@ export function formatPesoCompact(n: number): string {
 
 export function getCollectionSummary(stores: CollectionStore[] = COLLECTION_STORES) {
   const collected = stores.filter((s) => s.status === 'collected');
-  const pending = stores.filter((s) => s.status === 'pending');
-  const collectedTotal = collected.reduce((sum, s) => sum + (s.amountCollected ?? s.due), 0);
+  // Still-to-collect = pending (untouched) + partial (part-paid, still owing).
+  const open = stores.filter((s) => isOpenForCollection(s.status));
+  // Cash on hand = every peso actually collected, INCLUDING partial payments —
+  // a partial store isn't 'collected' but its money is already in the bag.
+  const collectedTotal = stores.reduce(
+    (sum, s) => sum + (s.status === 'collected' ? (s.amountCollected ?? s.due) : (s.amountCollected ?? 0)),
+    0,
+  );
   return {
     total: stores.length,
     visitedCount: collected.length,
-    pendingCount: pending.length,
+    pendingCount: open.length,
     collectedTotal,
     // First draft: everything collected today is still on-hand (nothing
     // remitted yet in the mock dataset).

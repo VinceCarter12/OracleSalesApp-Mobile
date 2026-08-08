@@ -98,25 +98,34 @@ otherwise the rolled-up `amount_collected` on the visit is enough for display.
 
 ---
 
-## ⏳ What MOBILE will build (after web ships the above)
+## ✅ What MOBILE built (2026-08-09, web 070 deployed & tested)
 
-**Phase A (safe to ship now — inert until web sends `partial`):**
-- Add `'partial'` to the local status domain (type + mapper + remote enum).
-- Show a **"Partial"** badge and the **remaining balance** (`due − collected`) on
-  the store row (dashboard preview + Today's List) and the Collect screen.
-- Keep a `partial` store on the list (it's not done) and, like a pending stop,
-  openable to collect the next installment.
+**Phase A — display:**
+- `'partial'` added to the status domain (`RemoteCollectionStatus` +
+  `CollectionStoreStatus` + mapper); `remainingBalance()` / `isOpenForCollection()`
+  helpers; `getCollectionSummary` counts partial as still-to-collect and folds
+  partial cash into the collected total.
+- **"Partial"** badge + **remaining balance** on the dashboard route preview,
+  Today's List, and the Collect screen ("Balance still due" + "Already paid X of Y").
+- A `partial` store stays on the list and is openable for the next installment.
 
-**Phase B (after `collection_payments` + RLS are live):**
-- Change the collect flow from "UPDATE the visit outcome" to "**INSERT a
-  `collection_payments` row**" through the offline outbox (proof photos ride the
-  existing `pending_uploads` lane, keyed to the payment id).
-- The Collect screen validates `0 < amount ≤ remaining balance` (a payment can't
-  exceed what's left); the existing amount-due display already shows the balance.
-- After a partial payment the store returns to the list showing the reduced
-  balance; after the final payment it flips to `collected`.
-
-Ping the mobile side once #1–#4 are deployed and we'll wire Phase B.
+**Phase B — write:**
+- The collect flow now **INSERTs a `collection_payments` row** (full or partial)
+  instead of updating the visit. Because collector RLS is INSERT-only, the write
+  goes through a dedicated **offline queue + processor** (`lib/sync/collection-
+  payments.ts`, run from the sync pass before sync-down): it **uploads the proof
+  photos first, then inserts the payment with their URLs**. Idempotent on the
+  client UUID (duplicate PK = already landed); own retry/backoff.
+- Local SQLite gains a `collection_payments` queue table (schema **v27**). No
+  entity-registry/outbox changes — it's a standalone lane like `pending_uploads`.
+- The Collect screen soft-caps the amount at the remaining balance (over-payment
+  is warned, not blocked — matches the "allow overpayment" decision). counter /
+  delivery-receipt settle the **whole** balance (the `amount > 0` CHECK forbids 0).
+- Optimistic local roll-up mirrors the server trigger so the collector sees the
+  reduced balance + Partial/Collected immediately (offline too); sync-down then
+  refreshes with the authoritative totals.
+- A partial payment returns to the list (reduced balance); a full one flips to
+  `collected` and shows the celebration screen.
 
 ## Open questions for the owner
 
