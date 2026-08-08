@@ -1,5 +1,5 @@
 import { useCallback } from 'react';
-import { Pressable, ScrollView } from 'react-native';
+import { Pressable, RefreshControl, ScrollView } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router, useFocusEffect } from 'expo-router';
 import { Footprints } from 'lucide-react-native';
@@ -8,14 +8,18 @@ import { useBizlinkColors, BIZLINK_FONTS, COLORS } from '../../lib/theme';
 import { Avatar } from '../../components/ui/Avatar';
 import { StatusBadge } from '../../components/ui/StatusBadge';
 import { BizTopBar } from '../../components/bizlink/BizTopBar';
+import { BizSectionHeader } from '../../components/bizlink/BizSectionHeader';
 import {
   formatClockTime,
   formatPeso,
+  formatShortDateTime,
   getCollectionSummary,
+  isScheduledForToday,
   sortAdditionalFirst,
   type CollectionStore,
 } from '../../lib/collection-delivery-data';
 import { useCollectionStores } from '../../lib/use-collection-delivery';
+import { useSyncRefresh } from '../../lib/use-sync-refresh';
 
 /**
  * F-007 first draft (2026-07-25): Today's List — wireframe `c-today`, read-only
@@ -60,6 +64,11 @@ function StoreRow({ store, onPress }: { store: CollectionStore; onPress?: () => 
             <Text fontSize={10.5} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted}>{formatClockTime(store.visitedAt)}</Text>
           ) : null}
         </XStack>
+        {store.syncedAt ? (
+          <Text fontSize={10.5} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} marginTop={1}>
+            Received {formatShortDateTime(store.syncedAt)}
+          </Text>
+        ) : null}
         {store.onTheWay && store.status === 'pending' ? (
           <XStack alignItems="center" gap="$1.5" marginTop={2}>
             <Footprints size={12} color={COLORS.orange} strokeWidth={1.75} />
@@ -89,15 +98,43 @@ export default function CollectionTodayScreen() {
   // F-007 Phase 1: real data from the local mirror; re-read on focus.
   const { stores, refresh } = useCollectionStores();
   useFocusEffect(useCallback(() => { refresh(); }, [refresh]));
+  // Pull down to fetch a just-published list now (see index.tsx dashboard).
+  const { refreshing, onRefresh } = useSyncRefresh(refresh);
   const summary = getCollectionSummary(stores);
-  // Additional (admin added mid-day) pending stores float to the top so a late
-  // urgent addition isn't stranded at the bottom of the list.
-  const orderedStores = sortAdditionalFirst(stores);
+  // Two sections. "For today" = today's stops (Additional floated to the top so
+  // a late urgent addition isn't stranded at the bottom). "All lists" = the
+  // archive of days that have ENDED — today's rows are deliberately EXCLUDED
+  // until the date rolls over, at which point they stop matching "today" and
+  // fall into this section on their own.
+  const todayStores = sortAdditionalFirst(stores.filter((s) => isScheduledForToday(s.scheduledFor)));
+  const pastStores = sortAdditionalFirst(stores.filter((s) => !isScheduledForToday(s.scheduledFor)));
+
+  const renderRow = (store: CollectionStore) => (
+    <StoreRow
+      key={store.id}
+      store={store}
+      onPress={
+        store.status === 'pending'
+          ? () => router.push({ pathname: '/(collection)/visit', params: { id: String(store.id) } })
+          : undefined
+      }
+    />
+  );
 
   return (
     <YStack flex={1} backgroundColor={BIZLINK_COLORS.canvas} paddingTop={insets.top}>
       <BizTopBar title="Today's List" />
-      <ScrollView contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 40 }}>
+      <ScrollView
+        contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 40 }}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor={BIZLINK_COLORS.brand}
+            colors={[BIZLINK_COLORS.brand]}
+          />
+        }
+      >
         <YStack backgroundColor={BIZLINK_COLORS.tintA} borderRadius={24} padding={16} marginBottom={12}>
           <Text fontSize={13} fontFamily={BIZLINK_FONTS.semibold} color={BIZLINK_COLORS.text}>
             {summary.pendingCount} stores left
@@ -109,17 +146,24 @@ export default function CollectionTodayScreen() {
             The count goes down as you visit — finished stores are crossed out below.
           </Text>
         </YStack>
-        {orderedStores.map((store) => (
-          <StoreRow
-            key={store.id}
-            store={store}
-            onPress={
-              store.status === 'pending'
-                ? () => router.push({ pathname: '/(collection)/visit', params: { id: String(store.id) } })
-                : undefined
-            }
-          />
-        ))}
+        <BizSectionHeader title="For today" helper={`${todayStores.length} ${todayStores.length === 1 ? 'store' : 'stores'}`} />
+        {todayStores.length === 0 ? (
+          <Text fontSize={13} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} paddingVertical="$2">
+            No stores scheduled for today.
+          </Text>
+        ) : (
+          todayStores.map(renderRow)
+        )}
+
+        <BizSectionHeader title="All lists" helper={`${pastStores.length} total`} />
+        {pastStores.length === 0 ? (
+          <Text fontSize={13} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} paddingVertical="$2">
+            Past lists show up here once the day ends.
+          </Text>
+        ) : (
+          pastStores.map(renderRow)
+        )}
+
         <Text fontSize={12.5} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} textAlign="center" marginTop={14}>
           Every store visit has a GPS pinpoint + timestamp.{'\n'}No route line is drawn — just a pinpoint per visit.
         </Text>

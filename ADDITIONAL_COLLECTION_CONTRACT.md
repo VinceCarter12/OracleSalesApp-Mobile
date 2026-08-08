@@ -125,18 +125,32 @@ ALTER TABLE collection_visits
 
 ---
 
-## ⏳ What mobile will build in Phase B (after web ships #3)
+## ✅ Phase B — BUILT (mobile, 2026-08-08; web migrations 068/069)
 
-Deliberately **not** built yet — writing to columns that don't exist server-side
-would throw a PostgREST error on push (same failure class as the cutoff
-CHECK-constraint bug we just fixed). Once the columns + RLS are live:
+The web side shipped the ack as **two collector-only RPCs** instead of a plain
+UPDATE-RLS lane — `mark_additional_received(p_visit_id)` and
+`mark_additional_seen(p_visit_id)`, both write-once (COALESCE) and idempotent. A
+direct `.update()` on the three columns is **rejected by RLS on purpose**
+(migration 069), so mobile must NOT route these through the normal outbox
+(which does PostgREST upserts). Mobile wiring:
 
-- Write `additional_received_at` automatically when an `is_additional` row first
-  syncs down to this phone.
-- Write `additional_seen_at` when the collector opens that store's visit screen.
-- Add the local mirror columns + outbox update lane for both.
+- **Columns mirrored** (`is_additional`, `additional_received_at`,
+  `additional_seen_at`) into the local mirror — SQLite schema **v26** (added
+  `additional_received_at`/`additional_seen_at` + a local-only
+  `additional_seen_pending` intent flag), applier, mapper, `CollectionStore`.
+- **RECEIVED** — a dedicated ack reconciler (`lib/sync/additional-acks.ts`) runs
+  after every sync-down and calls `mark_additional_received` for any
+  `is_additional` row with a null received-stamp. Self-healing: until the RPC
+  lands the value stays null and the next online pass retries — no outbox row.
+- **SEEN** — opening the store's visit screen sets the local
+  `additional_seen_pending` flag (`markAdditionalSeen`, works offline); the same
+  reconciler calls `mark_additional_seen` on the next online pass, then clears
+  the flag.
+- **Collector-gated** — the reconciler only fires for a signed-in `collector`
+  (the RPCs raise 42501 otherwise).
 
-Ping the mobile side once the web columns + RLS are deployed and we'll wire this.
+Verify: mark a store additional on web → phone syncs (web shows **Delivered**)
+→ open the store screen (web shows **Viewed**).
 
 ---
 

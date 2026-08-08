@@ -474,6 +474,13 @@ export type Database = {
           claimed_by: string | null;
           claimed_at: string | null;
           claimed_by_name: string | null;
+          // 068 — Additional Collection: a store added to an already-published
+          // day list. `is_additional` badges + floats it; the two ack timestamps
+          // are stamped write-once via the RPCs below (mobile can't UPDATE them
+          // directly — RLS rejects it, migration 069).
+          is_additional: boolean;
+          additional_received_at: string | null;
+          additional_seen_at: string | null;
         };
         Insert: Partial<Database['public']['Tables']['collection_visits']['Row']>;
         Update: Partial<Database['public']['Tables']['collection_visits']['Row']>;
@@ -572,6 +579,20 @@ export type Database = {
       is_company_name_available: {
         Args: { p_name: string; p_city: string | null };
         Returns: boolean;
+      };
+      // Migration 069 — Additional Collection acknowledgment write-path.
+      // Collector-only (42501 for any other role); write-once via COALESCE, so
+      // idempotent — a retry / re-sync / second open is a harmless no-op.
+      // Returns the stamped timestamptz, or null if the row wasn't additional.
+      // A direct UPDATE on the columns is rejected by RLS (deliberate) — these
+      // RPCs are the ONLY sanctioned write path.
+      mark_additional_received: {
+        Args: { p_visit_id: string };
+        Returns: string | null;
+      };
+      mark_additional_seen: {
+        Args: { p_visit_id: string };
+        Returns: string | null;
       };
       get_company_directory: {
         Args: Record<string, never>;

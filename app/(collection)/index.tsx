@@ -1,5 +1,5 @@
 import { useCallback, useState } from 'react';
-import { Pressable, ScrollView } from 'react-native';
+import { Pressable, RefreshControl, ScrollView } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router, useFocusEffect } from 'expo-router';
 import { Bell, ClipboardList, History, Hourglass, User, Vault } from 'lucide-react-native';
@@ -18,11 +18,14 @@ import { SyncCenterSheet } from '../../components/sync/SyncCenterSheet';
 import {
   formatPeso,
   formatPesoCompact,
+  formatShortDateTime,
   getCollectionSummary,
+  isScheduledForToday,
   sortAdditionalFirst,
   type CollectionStore,
 } from '../../lib/collection-delivery-data';
 import { useCollectionStores } from '../../lib/use-collection-delivery';
+import { useSyncRefresh } from '../../lib/use-sync-refresh';
 
 /**
  * F-007 first draft (2026-07-25): Collector dashboard — wireframe `c-home`
@@ -105,6 +108,11 @@ function RoutePreviewRow({ store, onPress }: { store: CollectionStore; onPress: 
           <Text fontSize={11.5} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted}>
             {store.area} · Due {formatPeso(store.due)}
           </Text>
+          {store.syncedAt ? (
+            <Text fontSize={10.5} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted}>
+              Received {formatShortDateTime(store.syncedAt)}
+            </Text>
+          ) : null}
         </YStack>
         <StoreBadge store={store} />
         <Text color={BIZLINK_COLORS.muted} fontSize={16}>›</Text>
@@ -124,11 +132,16 @@ export default function CollectionDashboardScreen() {
   // Re-read on focus so a just-published list / completed stop shows on return.
   const { stores, refresh } = useCollectionStores();
   useFocusEffect(useCallback(() => { refresh(); }, [refresh]));
+  // Pull-to-refresh: fetch the day's lists now instead of waiting for the 30s
+  // timer. runSync's sync-complete re-reads the mirror; refresh() is belt-and-braces.
+  const { refreshing, onRefresh } = useSyncRefresh(refresh);
 
-  const summary = getCollectionSummary(stores);
+  // Dashboard shows only TODAY's list — the mirror holds past days too.
+  const todayStores = stores.filter((s) => isScheduledForToday(s.scheduledFor));
+  const summary = getCollectionSummary(todayStores);
   // Additional (admin added mid-day) stores float to the front so the 3-row
   // route preview surfaces an urgent late addition instead of burying it.
-  const pendingStores = sortAdditionalFirst(stores.filter((s) => s.status === 'pending'));
+  const pendingStores = sortAdditionalFirst(todayStores.filter((s) => s.status === 'pending'));
   const routePreview = pendingStores.slice(0, 3);
   const greetingName = firstName(fullName) || 'Collector';
 
@@ -152,7 +165,17 @@ export default function CollectionDashboardScreen() {
         </Pressable>
       </XStack>
 
-      <ScrollView contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 40 }}>
+      <ScrollView
+        contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 40 }}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor={BIZLINK_COLORS.brand}
+            colors={[BIZLINK_COLORS.brand]}
+          />
+        }
+      >
         <XStack gap={10} marginTop={6}>
           <YStack flex={1}>
             <BizStatCard

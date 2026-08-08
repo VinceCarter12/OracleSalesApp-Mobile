@@ -155,6 +155,28 @@ export async function releaseStop(
   runSync(profileId).catch((err) => console.error('[collection-delivery-write] release sync failed:', err));
 }
 
+/**
+ * F-007 Additional Collection (web 068/069): the collector opened an additional
+ * store's screen — flag the local "seen" intent so the ack reconciler
+ * (lib/sync/additional-acks.ts) stamps `additional_seen_at` via the
+ * collector-only RPC on the next online pass. Local-only + idempotent: the
+ * guard makes a second open, or an already-seen row, a no-op — and it kicks a
+ * best-effort sync so an online collector reports "Viewed" right away.
+ * NOTE: never sets sync_status='pending' — the ack is an RPC, not an outbox
+ * upsert, and must not block sync-down from refreshing the row.
+ */
+export async function markAdditionalSeen(db: SQLiteDatabase, id: string, profileId: string): Promise<void> {
+  const result = await db.runAsync(
+    `UPDATE collection_visits
+       SET additional_seen_pending = 1
+     WHERE id = ? AND is_additional = 1 AND additional_seen_at IS NULL AND additional_seen_pending = 0`,
+    [id],
+  );
+  if (result.changes > 0) {
+    runSync(profileId).catch((err) => console.error('[collection-delivery-write] seen sync failed:', err));
+  }
+}
+
 /** Reschedule a pending visit to a new day (wireframe cCloseResched). */
 export async function rescheduleVisit(
   db: SQLiteDatabase,

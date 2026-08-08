@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Alert, Pressable, ScrollView, TextInput } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router, useLocalSearchParams } from 'expo-router';
@@ -26,8 +26,8 @@ import { BizSectionHeader } from '../../components/bizlink/BizSectionHeader';
 import { BizButton } from '../../components/bizlink/BizButton';
 import { PhotoSlot } from '../../components/collection-delivery/PhotoSlot';
 import { SignaturePad, type SignaturePadHandle } from '../../components/collection-delivery/SignaturePad';
-import { type PaymentMethod } from '../../lib/collection-delivery-data';
-import { claimStop, collectPayment, releaseStop, rescheduleVisit } from '../../lib/collection-delivery-write';
+import { formatPeso, type PaymentMethod } from '../../lib/collection-delivery-data';
+import { claimStop, collectPayment, markAdditionalSeen, releaseStop, rescheduleVisit } from '../../lib/collection-delivery-write';
 import { useCollectionStore } from '../../lib/use-collection-delivery';
 
 /**
@@ -58,6 +58,25 @@ const PAY_LABELS: Record<PayMode, string> = {
 // Amount collected is only entered for cash/check/gcash. For counter and
 // delivery-receipt payments no cash changes hands here, so no amount is typed.
 const METHODS_WITH_AMOUNT: PayMode[] = ['cash', 'check', 'gcash'];
+
+/**
+ * Formats a raw amount entry with thousands separators as the collector types
+ * (e.g. "10000" → "10,000"), so a five-figure amount is unmistakable from a
+ * four-figure one. Keeps up to 2 decimals; strips anything else. The parse in
+ * the component already ignores separators, so the stored value stays numeric.
+ */
+function formatAmountInput(raw: string): string {
+  const cleaned = raw.replace(/[^\d.]/g, '');
+  if (cleaned === '') return '';
+  const firstDot = cleaned.indexOf('.');
+  if (firstDot === -1) {
+    return Number(cleaned).toLocaleString('en-US');
+  }
+  const intPart = cleaned.slice(0, firstDot).replace(/\./g, '');
+  const decPart = cleaned.slice(firstDot + 1).replace(/\./g, '').slice(0, 2);
+  const intFormatted = intPart === '' ? '0' : Number(intPart).toLocaleString('en-US');
+  return `${intFormatted}.${decPart}`;
+}
 
 function PayTile({
   icon,
@@ -102,10 +121,25 @@ export default function CollectPaymentScreen() {
   // WRITE goes through collection-delivery-write.ts (local update + outbox push).
   const { store, loading, refresh } = useCollectionStore(storeId);
 
+  // F-007 Additional Collection (web 068/069): opening an additional store's
+  // screen IS the "Viewed" signal. Flag the seen-intent once the row is loaded;
+  // the ack reconciler stamps it server-side (collector-only RPC) on the next
+  // online pass. Guarded + idempotent in the DB, so re-runs are harmless.
+  useEffect(() => {
+    if (!profileId || !store?.isAdditional || store.additionalSeenAt) return;
+    markAdditionalSeen(db, storeId, profileId).catch(() => {});
+  }, [db, storeId, profileId, store?.isAdditional, store?.additionalSeenAt]);
+
   const [payMode, setPayMode] = useState<PayMode>('cash');
   const [payPhotoUri, setPayPhotoUri] = useState<string | null>(null);
   const [receiptPhotoUri, setReceiptPhotoUri] = useState<string | null>(null);
   const [amount, setAmount] = useState('');
+  // Flips true once the collector leaves the amount field — an early trigger
+  // for the red "required" styling before they even tap Collected.
+  const [amountTouched, setAmountTouched] = useState(false);
+  // Flips true when the collector taps Collected while something required is
+  // still missing — reveals the red state on EVERY skipped field at once.
+  const [attempted, setAttempted] = useState(false);
   const [remarks, setRemarks] = useState('');
   // Customer acknowledgment signature — captured for every payment method.
   const [signed, setSigned] = useState(false);
@@ -132,6 +166,18 @@ export default function CollectPaymentScreen() {
     (showAmount ? amountValid : true) &&
     (showReceiptPhoto ? !!receiptPhotoUri : true) &&
     !claimedByOther;
+
+  // Red "required" flags. Amount lights up on blur (early) or on a submit
+  // attempt; the photo/receipt/signature light up on a submit attempt (they
+  // have no blur event). A captured/valid field never shows red.
+  const showAmountError = showAmount && !amountValid && (amountTouched || attempted);
+  const showPayPhotoError = attempted && !payPhotoUri;
+  const showReceiptError = attempted && showReceiptPhoto && !receiptPhotoUri;
+  const showSignError = attempted && !signed;
+  // Soft over-payment check: a valid amount above the recorded due is still
+  // ALLOWED (real overpayments happen) — just flagged so a typo like 98000 for
+  // 9800 gets a second look. Only when a real due exists (>0).
+  const overDue = showAmount && amountValid && store !== null && store.due > 0 && amountValue > store.due;
 
   function iconColor(mode: PayMode) {
     return payMode === mode ? BIZLINK_ON_INK.solid : BIZLINK_COLORS.muted;
@@ -160,6 +206,12 @@ export default function CollectPaymentScreen() {
 
   async function confirmCollect(): Promise<void> {
     if (!profileId) return;
+    // Tapped with something required still missing — reveal the red flags and
+    // stop, instead of silently doing nothing.
+    if (!canCollect) {
+      setAttempted(true);
+      return;
+    }
     // The payment-photo capture kicks off a GPS read, but the collector may tap
     // Collected before it resolves (or it may have failed) — make one solid
     // attempt here so a completed collection isn't saved with a null pin.
@@ -296,16 +348,38 @@ export default function CollectPaymentScreen() {
           subtitle="Compressed ≤3MB · saved on your phone"
           uri={payPhotoUri}
           onCaptured={onPayPhoto}
+          error={showPayPhotoError}
         />
+        {showPayPhotoError ? (
+          <Text fontSize={11.5} fontFamily={BIZLINK_FONTS.medium} color={COLORS.ledgeRed} marginTop={6}>
+            A payment photo is required.
+          </Text>
+        ) : null}
 
         {/* Amount collected — only for cash/check/gcash. Counter and delivery
             receipt take no amount here (no cash handed over on the spot). */}
         {showAmount ? (
           <>
             <BizSectionHeader title="Amount collected *" />
+            {/* Due surfaced right by the input (2026-08-08, per request) so the
+                collector can compare what's owed to what they're entering,
+                without going back to the dashboard. */}
+            <XStack
+              alignItems="center"
+              justifyContent="space-between"
+              backgroundColor={BIZLINK_COLORS.tintA}
+              borderRadius={14}
+              paddingHorizontal={14}
+              paddingVertical={10}
+              marginBottom={8}
+            >
+              <Text fontSize={12.5} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted}>Amount due</Text>
+              <Text fontSize={15} fontFamily={BIZLINK_FONTS.semibold} color={BIZLINK_COLORS.ink}>{formatPeso(store.due)}</Text>
+            </XStack>
             <TextInput
               value={amount}
-              onChangeText={setAmount}
+              onChangeText={(t) => setAmount(formatAmountInput(t))}
+              onBlur={() => setAmountTouched(true)}
               keyboardType="numeric"
               placeholder="₱ 0.00"
               placeholderTextColor={BIZLINK_COLORS.muted}
@@ -314,13 +388,27 @@ export default function CollectPaymentScreen() {
                 borderRadius: 16,
                 paddingHorizontal: 16,
                 backgroundColor: BIZLINK_COLORS.card,
+                borderWidth: showAmountError ? 1.5 : 0,
+                borderColor: showAmountError ? COLORS.ledgeRed : 'transparent',
                 fontFamily: BIZLINK_FONTS.semibold,
                 fontSize: 20,
                 letterSpacing: -0.5,
                 color: BIZLINK_COLORS.text,
               }}
             />
-            {amountValid ? (
+            {showAmountError ? (
+              <XStack backgroundColor={COLORS.redSoft} borderRadius={14} paddingHorizontal={13} paddingVertical={9} marginTop={8}>
+                <Text fontSize={11.5} fontFamily={BIZLINK_FONTS.medium} color={COLORS.ledgeRed}>
+                  Enter the amount collected — this field is required.
+                </Text>
+              </XStack>
+            ) : overDue ? (
+              <XStack backgroundColor={COLORS.amberSoft} borderRadius={14} paddingHorizontal={13} paddingVertical={9} marginTop={8}>
+                <Text fontSize={11.5} fontFamily={BIZLINK_FONTS.medium} color={COLORS.orange}>
+                  This is more than the {formatPeso(store.due)} due — double-check the amount. You can still proceed.
+                </Text>
+              </XStack>
+            ) : amountValid ? (
               <XStack backgroundColor={COLORS.greenSoft} borderRadius={14} paddingHorizontal={13} paddingVertical={9} marginTop={8}>
                 <Text fontSize={11.5} fontFamily={BIZLINK_FONTS.medium} color={COLORS.ledgeGreen}>
                   ✓ Recorded — this amount will go to the remittance.
@@ -347,7 +435,13 @@ export default function CollectPaymentScreen() {
               subtitle="Compressed ≤3MB · saved on your phone"
               uri={receiptPhotoUri}
               onCaptured={setReceiptPhotoUri}
+              error={showReceiptError}
             />
+            {showReceiptError ? (
+              <Text fontSize={11.5} fontFamily={BIZLINK_FONTS.medium} color={COLORS.ledgeRed} marginTop={6}>
+                A delivery-receipt photo is required.
+              </Text>
+            ) : null}
           </>
         ) : null}
 
@@ -388,6 +482,11 @@ export default function CollectPaymentScreen() {
           onDrawingChange={(d) => setScrollEnabled(!d)}
           hint="Have the customer sign here"
         />
+        {showSignError ? (
+          <Text fontSize={11.5} fontFamily={BIZLINK_FONTS.medium} color={COLORS.ledgeRed} marginTop={6}>
+            A customer signature is required.
+          </Text>
+        ) : null}
 
         {/* Actions */}
         <XStack gap="$2.5" marginTop={20}>
@@ -403,7 +502,9 @@ export default function CollectPaymentScreen() {
             label="Collected"
             variant="brand"
             onPress={confirmCollect}
-            disabled={!canCollect}
+            // Tappable when incomplete so confirmCollect can flag the missing
+            // fields; only the "someone else is on the way" lock disables it.
+            disabled={claimedByOther}
             icon={<Check size={17} color={BIZLINK_ON_INK.solid} strokeWidth={2} />}
             style={{ flex: 1 }}
           />

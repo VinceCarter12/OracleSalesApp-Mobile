@@ -9,6 +9,7 @@ import { setLastSyncAt } from './sync/last-sync';
 import { pushDueOutboxRows, type OutboxRow, type OutboxSyncResult } from './sync/push-batch';
 import { AUDIT_OUTBOX_TABLE_NAME } from './sync/audit-log';
 import { processPendingUploads, recoverStuckPendingUploads } from './sync/photo-uploads';
+import { reconcileAdditionalAcks } from './sync/additional-acks';
 import { uploadPendingAvatar } from './profile-avatar';
 import { retryFailedPendingUpload, type PendingUploadStatus } from './sync/pending-upload-status';
 import { createCoalescingRunner } from './sync/coalescing-runner';
@@ -196,6 +197,13 @@ async function runSyncOnce(agentId: string, teamId?: string | null): Promise<Syn
   const photoPatchResult =
     uploadResult.synced > 0 ? await processOutbox(agentId) : { synced: 0, failed: 0, conflicted: 0 };
   await syncDown(agentId, teamId);
+  // F-007 Additional Collection (web 068/069): acknowledge additional stores
+  // back to the server via the collector-only RPCs — received (just pulled) and
+  // seen (collector opened it offline earlier). Best-effort: it manages its own
+  // errors and must never fail the pass, so a throw here is swallowed.
+  await reconcileAdditionalAcks(db).catch((err: unknown) => {
+    console.error('reconcileAdditionalAcks failed', err);
+  });
   // ADR-026 P2 item 6: stamped unconditionally once the pass gets this far
   // — even if some rows dead-lettered along the way (Vince confirmed: do
   // NOT gate on `failed === 0`). This naturally excludes the offline-
