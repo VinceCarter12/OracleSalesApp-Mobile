@@ -157,7 +157,7 @@ export default function NotificationsScreen() {
 
   return (
     <YStack flex={1} backgroundColor={BIZLINK_COLORS.canvas} paddingTop={insets.top}>
-      <BizTopBar title="Notifications" fallbackHref="/(tabs)/more" />
+      <BizTopBar title="Notifications" fallbackHref="/(tabs)" />
       <ScrollView contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 24 }}>
         <Text fontSize={13} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} marginBottom="$2.5" lineHeight={18}>
           Mga update na naka-sync sa phone mo. Action needed ang inuuna para walang makaligtaan.

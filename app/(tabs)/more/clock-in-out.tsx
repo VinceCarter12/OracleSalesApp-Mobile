@@ -38,7 +38,7 @@ export default function ClockInOutScreen() {
 
   return (
     <YStack flex={1} backgroundColor={BIZLINK_COLORS.canvas} paddingTop={insets.top}>
-      <BizTopBar title="Clock In/Out" fallbackHref="/(tabs)/more" />
+      <BizTopBar title="Clock In/Out" fallbackHref="/(tabs)" />
       <ScrollView contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 24 }}>
         <XStack
           alignItems="flex-start"

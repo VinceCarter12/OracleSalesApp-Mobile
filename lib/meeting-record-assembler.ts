@@ -38,7 +38,7 @@ export interface BuildFullMeetingRecordInput extends BuildMeetingRecordCommon {
   outcome: MeetingOutcome;
   contactName: string;
   contactPosition: string;
-  meetingLocation: 'Client Office' | 'Others';
+  meetingLocation: 'Client Office' | 'Online' | 'Others';
   otherLocation: string;
   remarks: string;
   /** ADR-044/046 point 7 — already gated by isCloseDealPoEligible() at the call site; omitted/null when not applicable. */

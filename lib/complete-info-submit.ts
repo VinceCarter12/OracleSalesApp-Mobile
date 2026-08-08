@@ -1,4 +1,4 @@
-import { updateClientInfo, checkCompanyNameDuplicate, DuplicateCompanyNameError } from './client-service';
+import { updateClientInfo } from './client-service';
 import { createClientEditRequest, type ClientEditRequest } from './client-edit-request-service';
 import { computeClientEditChanges } from './client-edit-request-payload';
 import { determineCompleteInfoSubmitBranch, type CompleteInfoSubmitBranch } from './complete-info-branch';
@@ -12,12 +12,12 @@ import type { Client, SalesChannel } from '../types';
 // components render" split (_meta/engineering-principles.md). Throws the
 // same error types the screen already caught pre-Batch-6
 // (AccountSuspendedError via updateClientInfo/createClientEditRequest,
-// DuplicateCompanyNameError, ClientNotFoundLocallyError) — the screen's
-// try/catch is unchanged in shape, just now wrapping this call instead of
-// a single updateClientInfo() call.
+// ClientNotFoundLocallyError) — the screen's try/catch is unchanged in
+// shape, just now wrapping this call instead of a single updateClientInfo()
+// call. Company name became view-only here (no longer part of this form),
+// so DuplicateCompanyNameError can no longer surface from this path.
 
 export interface CompleteInfoFormValues {
-  companyName: string;
   contactPerson: string;
   position: string;
   contactNumber: string;
@@ -37,10 +37,12 @@ export interface SubmitCompleteInfoInput {
   form: CompleteInfoFormValues;
 }
 
+// Company name is view-only on this screen (not in the wireframe's a-complete
+// form — only Create Client's Phase A collects it) so it's never part of the
+// before/after diff here.
 function buildBeforeAfter(client: Client, form: CompleteInfoFormValues): { before: Record<string, unknown>; after: Record<string, unknown> } {
   return {
     before: {
-      company_name: client.company_name,
       contact_person: client.contact_person,
       contact_position: client.position ?? null,
       contact_number: client.contact_number ?? null,
@@ -50,7 +52,6 @@ function buildBeforeAfter(client: Client, form: CompleteInfoFormValues): { befor
       minor_notes: client.minor_notes ?? null,
     },
     after: {
-      company_name: form.companyName.trim(),
       contact_person: form.contactPerson.trim(),
       contact_position: form.position.trim() || null,
       contact_number: form.contactNumber.trim() || null,
@@ -60,12 +61,6 @@ function buildBeforeAfter(client: Client, form: CompleteInfoFormValues): { befor
       minor_notes: form.minorNotes.trim() || null,
     },
   };
-}
-
-async function assertNotDuplicate(client: Client, companyName: string): Promise<void> {
-  const trimmed = companyName.trim();
-  const result = await checkCompanyNameDuplicate(trimmed, client.city ?? null, client.id);
-  if (result === 'duplicate') throw new DuplicateCompanyNameError(trimmed);
 }
 
 /**
@@ -90,7 +85,6 @@ export async function submitCompleteInfo(input: SubmitCompleteInfoInput): Promis
   if (branch === 'blocked_pending') return branch;
 
   if (branch === 'direct_first_time' || branch === 'direct_manager_owns') {
-    await assertNotDuplicate(client, form.companyName);
     await updateClientInfo({
       clientId,
       agentId: profileId,
@@ -99,7 +93,6 @@ export async function submitCompleteInfo(input: SubmitCompleteInfoInput): Promis
       contactNumber: form.contactNumber,
       officeAddress: form.officeAddress,
       salesChannel: form.channel,
-      companyName: form.companyName.trim(),
       markExisting: form.existingOverride || undefined,
       minorNotes: form.minorNotes,
     });
@@ -126,7 +119,6 @@ export async function submitCompleteInfo(input: SubmitCompleteInfoInput): Promis
   // clients.updated_at as base_updated_at, or our own write would look
   // like a conflicting edit at decision time (see
   // client-edit-request-payload.ts's baseUpdatedAt doc comment).
-  await assertNotDuplicate(client, form.companyName);
   if (Object.prototype.hasOwnProperty.call(fullDiff, 'minor_notes')) {
     await updateClientInfo({
       clientId,

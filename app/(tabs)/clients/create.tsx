@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { Alert, ScrollView } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
-import { ClipboardList, Lightbulb } from 'lucide-react-native';
+import { ClipboardList, Info, Lightbulb } from 'lucide-react-native';
 import { Spinner, Text, XStack, YStack } from 'tamagui';
 import { useSession } from '../../../lib/session-store';
 import { checkCompanyNameDuplicate, checkLocalDuplicate, createClient, DuplicateCompanyNameError } from '../../../lib/client-service';
@@ -13,6 +13,8 @@ import { BizTopBar } from '../../../components/bizlink/BizTopBar';
 import { BizField } from '../../../components/bizlink/BizField';
 import { BizCard } from '../../../components/bizlink/BizCard';
 import { BizButton } from '../../../components/bizlink/BizButton';
+import { CityMunicipalitySelector } from '../../../components/bizlink/CityMunicipalitySelector';
+import type { PsgcLocality } from '../../../lib/data/psgc-localities';
 
 // 'unknown' (offline, live check failed and nothing local matched) is
 // treated as available — same soft-warning UX as before T-005, since the
@@ -34,7 +36,7 @@ export default function CreateClientScreen() {
   const BIZLINK_COLORS = useBizlinkColors();
   const { profileId, markSuspended } = useSession();
   const [companyName, setCompanyName] = useState('');
-  const [city, setCity] = useState('');
+  const [selectedLocality, setSelectedLocality] = useState<PsgcLocality | null>(null);
   const [dupState, setDupState] = useState<DupState>('idle');
   const [saving, setSaving] = useState(false);
 
@@ -47,7 +49,7 @@ export default function CreateClientScreen() {
   // re-runs the full check as the actual write-time safety gate anyway.
   useEffect(() => {
     const name = companyName.trim();
-    const cityValue = city.trim();
+    const cityValue = selectedLocality?.name.trim() ?? '';
     if (!name || !cityValue) {
       setDupState('idle');
       return;
@@ -72,7 +74,7 @@ export default function CreateClientScreen() {
       cancelled = true;
       clearTimeout(timer);
     };
-  }, [companyName, city]);
+  }, [companyName, selectedLocality]);
 
   async function handleCreate(): Promise<void> {
     if (!profileId) {
@@ -81,6 +83,7 @@ export default function CreateClientScreen() {
     }
     setSaving(true);
     try {
+      const city = selectedLocality?.name.trim() ?? '';
       await createClient({ companyName, city, agentId: profileId });
       showToast('✓ Client created — kumpletuhin ang info within 1 month');
       router.back();
@@ -100,7 +103,7 @@ export default function CreateClientScreen() {
     }
   }
 
-  const canCreate = dupState === 'available' && !saving;
+  const canCreate = dupState === 'available' && selectedLocality !== null && !saving;
 
   return (
     <YStack flex={1} backgroundColor={BIZLINK_COLORS.canvas} paddingTop={insets.top}>
@@ -152,12 +155,19 @@ export default function CreateClientScreen() {
           }
         />
 
-        <BizField
-          label="CITY *"
-          value={city}
-          onChangeText={setCity}
-          placeholder="Search city…"
-        />
+        <YStack marginBottom="$3.5" gap="$1.5">
+          <Text fontSize={11} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} letterSpacing={0.4}>
+            CITY / MUNICIPALITY *
+          </Text>
+          <CityMunicipalitySelector value={selectedLocality} onSelect={setSelectedLocality} />
+        </YStack>
+
+        <XStack gap="$2" alignItems="flex-start" marginBottom="$3">
+          <Info size={14} color={BIZLINK_COLORS.muted} strokeWidth={1.75} style={{ marginTop: 2 }} />
+          <Text fontSize={13} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} flex={1}>
+            Piliin ang city mula sa listahan. Hindi puwedeng mag-save ng free text.
+          </Text>
+        </XStack>
 
         <XStack gap="$2" alignItems="flex-start" marginBottom="$4">
           <Lightbulb size={14} color={BIZLINK_COLORS.muted} strokeWidth={1.75} style={{ marginTop: 2 }} />

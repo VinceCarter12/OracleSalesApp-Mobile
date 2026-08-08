@@ -3,11 +3,14 @@ import { Text, XStack, YStack } from 'tamagui';
 import { useBizlinkColors, BIZLINK_FONTS, BIZLINK_ON_INK } from '../../lib/theme';
 import { BizSectionHeader } from '../bizlink/BizSectionHeader';
 import { BizButton } from '../bizlink/BizButton';
+import { ClientCutoffAllowanceBlock } from '../cutoff/ClientCutoffAllowanceBlock';
 import { CompanionPicker } from './CompanionPicker';
 import { MeetingModeToggle } from './MeetingModeToggle';
-import type { MeetingMode, TeamRosterEntry } from '../../types';
+import type { Client, MeetingMode, TeamRosterEntry } from '../../types';
 
 interface VisitStartPanelProps {
+  /** W-5 (ADR-053) cutoff allowance line reads client id/status — see ClientCutoffAllowanceBlock's own prop. */
+  client: Pick<Client, 'id' | 'status'> | null;
   roster: TeamRosterEntry[];
   selectedCompanions: TeamRosterEntry[];
   onToggleCompanion: (entry: TeamRosterEntry) => void;
@@ -15,14 +18,20 @@ interface VisitStartPanelProps {
   onModeChange: (mode: MeetingMode) => void;
   starting: boolean;
   onStart: () => void;
+  /** "New Customer Visit" / "Existing Customer Visit" (record-visit.tsx's `visitActionName()`) — status-differentiates the Start button per the audit's "Align" section instead of the generic "Start visit". */
+  actionName: string;
 }
 
 /**
- * record-visit.tsx's pre-Start section (companion picker + meeting mode +
- * Start button), extracted so that already-near-the-cap screen stays under
- * the 300-line file limit.
+ * record-visit.tsx's pre-Start section (meeting mode + companion picker +
+ * cutoff allowance + Start button), extracted so that already-near-the-cap
+ * screen stays under the 300-line file limit. Order matches
+ * Wireframe-Sales-BizLink.html's `#a-recordvisit` (Meeting mode line 753 →
+ * Kasama sa visit line 764 → cutoff allowance line 770 → Start meeting line
+ * 772).
  */
 export function VisitStartPanel({
+  client,
   roster,
   selectedCompanions,
   onToggleCompanion,
@@ -30,12 +39,14 @@ export function VisitStartPanel({
   onModeChange,
   starting,
   onStart,
+  actionName,
 }: VisitStartPanelProps) {
   const BIZLINK_COLORS = useBizlinkColors();
   return (
     <YStack marginTop="$4" gap="$4">
-      <CompanionPicker roster={roster} selected={selectedCompanions} onToggle={onToggleCompanion} />
       <MeetingModeToggle mode={mode} onChange={onModeChange} />
+      <CompanionPicker roster={roster} selected={selectedCompanions} onToggle={onToggleCompanion} />
+      <ClientCutoffAllowanceBlock client={client} compact />
 
       <BizSectionHeader title="Start meeting" />
       <YStack backgroundColor={BIZLINK_COLORS.ink} borderRadius={24} padding={16}>
@@ -55,7 +66,7 @@ export function VisitStartPanel({
         </XStack>
       </YStack>
 
-      <BizButton label={starting ? 'Capturing GPS…' : 'Start'} onPress={onStart} disabled={starting} />
+      <BizButton label={starting ? 'Capturing GPS…' : `Start ${actionName}`} onPress={onStart} disabled={starting} />
       <Text fontSize={12} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} textAlign="center">
         Binds GPS + timestamp to the start of the meeting — no photo needed here anymore.
       </Text>

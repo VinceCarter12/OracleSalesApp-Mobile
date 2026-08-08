@@ -347,8 +347,11 @@ export async function upsertSyncedClientEditRequest(
       (row.reviewed_at as string) ?? null,
       row.base_updated_at as string,
       row.base_assigned_agent_id as string,
-      row.created_at as string,
-      row.updated_at as string,
+      // NOT NULL columns locally — fall back to `now` if the remote row ever
+      // omits them (observed: a synced-down row with no `updated_at` tripped
+      // the SQLite NOT NULL constraint and permanently failed this pull).
+      (row.created_at as string | undefined) ?? now,
+      (row.updated_at as string | undefined) ?? (row.created_at as string | undefined) ?? now,
       now,
     ]
   );

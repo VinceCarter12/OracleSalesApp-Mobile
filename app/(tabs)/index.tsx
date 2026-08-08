@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
 import { Pressable, ScrollView, useWindowDimensions } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -24,8 +24,11 @@ import { useBizlinkColors, BIZLINK_FONTS } from '../../lib/theme';
 import { useClients } from '../../lib/useClients';
 import { useMeetings } from '../../lib/useMeetings';
 import { getClientStatus } from '../../lib/client-status';
-import { getClientIdsWithPendingManagerTagAlong } from '../../lib/tag-along-service';
+import { getClientIdsWithPendingManagerTagAlong, getMyCompanionRequests, companionRequestDisplayStatus } from '../../lib/tag-along-service';
 import { countCreatedSince } from '../../lib/team-remote-mappers';
+import { useActiveMeetingDrafts } from '../../lib/use-active-meeting-drafts';
+import { useSync } from '../../lib/use-sync';
+import { useMyRequestStatuses } from '../../lib/use-my-request-statuses';
 import { Avatar } from '../../components/ui/Avatar';
 import { StatusBadge } from '../../components/ui/StatusBadge';
 import { BizStatCard } from '../../components/bizlink/BizStatCard';
@@ -35,6 +38,7 @@ import { BizDashboardAlert } from '../../components/bizlink/BizDashboardAlert';
 import { BizPrimaryActionCard } from '../../components/bizlink/BizPrimaryActionCard';
 import { BizQuickAction } from '../../components/bizlink/BizQuickAction';
 import { AvatarStatusRing } from '../../components/bizlink/AvatarStatusRing';
+import { ActiveMeetingDashboardAlert } from '../../components/meetings/ActiveMeetingDashboardAlert';
 import { SyncStatusChip } from '../../components/sync/SyncStatusChip';
 import { SyncCenterSheet } from '../../components/sync/SyncCenterSheet';
 import { useSession } from '../../lib/session-store';
@@ -42,7 +46,7 @@ import { firstName, initialsFromName } from '../../lib/display-name';
 import { CutoffQuotaCard } from '../../components/cutoff/CutoffQuotaCard';
 import { getDashboardActionHref } from '../../lib/dashboard-action-registry';
 
-function AgentHomeHeader({ greetingName, isRsr, fullName }: { greetingName: string; isRsr: boolean; fullName: string | null }) {
+function AgentHomeHeader({ greetingName, isRsr, fullName, notificationCount }: { greetingName: string; isRsr: boolean; fullName: string | null; notificationCount: number }) {
   const BIZLINK_COLORS = useBizlinkColors();
   return (
     <XStack alignItems="center" gap="$3" paddingHorizontal="$4" paddingTop="$2.5" paddingBottom="$1.5">
@@ -65,8 +69,12 @@ function AgentHomeHeader({ greetingName, isRsr, fullName }: { greetingName: stri
           backgroundColor={BIZLINK_COLORS.card}
           alignItems="center"
           justifyContent="center"
+          position="relative"
         >
           <Bell size={17} color={BIZLINK_COLORS.text} strokeWidth={1.75} />
+          {notificationCount > 0 ? (
+            <View position="absolute" top={9} right={10} width={8} height={8} borderRadius={4} backgroundColor={BIZLINK_COLORS.red} />
+          ) : null}
         </View>
       </Pressable>
     </XStack>
@@ -95,6 +103,7 @@ export default function AgentHomeScreen() {
   const { clients, refresh: refreshClients } = useClients();
   const { meetings, refresh: refreshMeetings } = useMeetings();
   const { role, fullName, profileId } = useSession();
+  const { activeMeetingDrafts } = useActiveMeetingDrafts(profileId);
   const isRsr = role === 'rsr';
   // 2026-08-03 (Vince direction): the CutoffQuotaCard section always renders
   // for Sales/RSR now, regardless of the `cutoff_quota_v1` flag — the flag
@@ -114,6 +123,27 @@ export default function AgentHomeScreen() {
   // pattern as meetings/index.tsx's getMyCompanionRequests bulk-load.
   const [waitingManagerApprovalIds, setWaitingManagerApprovalIds] = useState<Set<string>>(new Set());
 
+  // Notification badge counts (2026-08-04 Full Badge Implementation)
+  const { outboxCounts } = useSync(profileId, null);
+  const { rows: myRequestRows } = useMyRequestStatuses();
+  const [companionRequests, setCompanionRequests] = useState<Awaited<ReturnType<typeof getMyCompanionRequests>>>([]);
+
+  // Badge count calculations
+  const notificationBadgeCount = useMemo(
+    () => outboxCounts.failed + outboxCounts.conflict + outboxCounts.pending,
+    [outboxCounts]
+  );
+  const myRequestsBadgeCount = useMemo(
+    () => myRequestRows.filter((r) => r.status === 'pending').length,
+    [myRequestRows]
+  );
+  const tagAlongBadgeCount = useMemo(() => {
+    return companionRequests.filter((r) => {
+      const displayStatus = companionRequestDisplayStatus(r);
+      return displayStatus === 'pending_offline' || displayStatus === 'pending_synced';
+    }).length;
+  }, [companionRequests]);
+
   // Bug fix: Home was only fetching clients/meetings once on mount (its
   // hooks' own useEffect), unlike clients/index.tsx and meetings/index.tsx
   // which both re-fetch via useFocusEffect — so stat cards froze at whatever
@@ -132,6 +162,10 @@ export default function AgentHomeScreen() {
       getClientIdsWithPendingManagerTagAlong(profileId)
         .then(setWaitingManagerApprovalIds)
         .catch((err) => console.error('[Home] pending manager tag-along lookup failed:', err instanceof Error ? err.message : String(err)));
+      // Load companion requests for tag-along badge count
+      getMyCompanionRequests(profileId)
+        .then(setCompanionRequests)
+        .catch((err) => console.error('[Home] companion requests lookup failed:', err instanceof Error ? err.message : String(err)));
     }, [profileId])
   );
 
@@ -158,7 +192,7 @@ export default function AgentHomeScreen() {
 
   return (
     <YStack flex={1} backgroundColor={BIZLINK_COLORS.canvas} paddingTop={insets.top}>
-      <AgentHomeHeader greetingName={greetingName} isRsr={isRsr} fullName={fullName} />
+      <AgentHomeHeader greetingName={greetingName} isRsr={isRsr} fullName={fullName} notificationCount={notificationBadgeCount} />
 
       <ScrollView contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 24 + insets.bottom }}>
         <XStack gap={10} marginTop={6}>
@@ -230,10 +264,10 @@ export default function AgentHomeScreen() {
             const tiles: ReactNode[] = [
               <BizQuickAction key="my-clients" icon={<Building2 size={20} color={BIZLINK_COLORS.ink} strokeWidth={1.75} />} label="My Clients" onPress={() => router.push(getDashboardActionHref('my-clients', role))} />,
               <BizQuickAction key="meeting-details" icon={<CalendarDays size={20} color={BIZLINK_COLORS.ink} strokeWidth={1.75} />} label="Meeting Details" onPress={() => router.push('/(tabs)/meetings')} />,
-              <BizQuickAction key="notifications" icon={<Bell size={20} color={BIZLINK_COLORS.ink} strokeWidth={1.75} />} label="Notifications" onPress={() => router.push('/(tabs)/more/notifications')} />,
+              <BizQuickAction key="notifications" icon={<Bell size={20} color={BIZLINK_COLORS.ink} strokeWidth={1.75} />} label="Notifications" badgeCount={notificationBadgeCount} onPress={() => router.push('/(tabs)/more/notifications')} />,
               <BizQuickAction key="clock-in-out" icon={<Clock size={20} color={BIZLINK_COLORS.ink} strokeWidth={1.75} />} label="Clock In/Out" onPress={() => router.push('/(tabs)/more/clock-in-out')} />,
-              <BizQuickAction key="tag-along" icon={<Users size={20} color={BIZLINK_COLORS.ink} strokeWidth={1.75} />} label="Tag-Along Status" onPress={() => router.push(getDashboardActionHref('tag-along', role))} />,
-              <BizQuickAction key="my-requests" icon={<ClipboardCheck size={20} color={BIZLINK_COLORS.ink} strokeWidth={1.75} />} label="My Requests" onPress={() => router.push('/(tabs)/more/my-requests')} />,
+              <BizQuickAction key="tag-along" icon={<Users size={20} color={BIZLINK_COLORS.ink} strokeWidth={1.75} />} label="Tag-Along Status" badgeCount={tagAlongBadgeCount} onPress={() => router.push(getDashboardActionHref('tag-along', role))} />,
+              <BizQuickAction key="my-requests" icon={<ClipboardCheck size={20} color={BIZLINK_COLORS.ink} strokeWidth={1.75} />} label="My Requests" badgeCount={myRequestsBadgeCount} onPress={() => router.push('/(tabs)/more/my-requests')} />,
               <BizQuickAction key="sync-history" icon={<History size={20} color={BIZLINK_COLORS.ink} strokeWidth={1.75} />} label="Sync History" onPress={() => router.push('/(tabs)/more/sync-history')} />,
               <BizQuickAction key="performance" icon={<BarChart3 size={20} color={BIZLINK_COLORS.ink} strokeWidth={1.75} />} label="Performance" onPress={() => router.push('/(tabs)/more/reports')} />,
               <BizQuickAction key="lost-opportunities" icon={<RotateCcw size={20} color={BIZLINK_COLORS.ink} strokeWidth={1.75} />} label="Lost opportunities" onPress={() => router.push('/(tabs)/more/lost-opportunities')} />,
@@ -256,6 +290,9 @@ export default function AgentHomeScreen() {
 
         {/* T-014 Phase 1 (ADR-024): shared, BizLink-styled — same worst-state-wins logic/copy as before. */}
         <SyncStatusChip key={syncChipKey} onPress={() => setSyncSheetOpen(true)} />
+
+        {/* Topmost — most time-sensitive item; see component's doc comment. */}
+        <ActiveMeetingDashboardAlert activeMeetingDrafts={activeMeetingDrafts} />
 
         {prospects.length > 0 ? (
           <BizDashboardAlert

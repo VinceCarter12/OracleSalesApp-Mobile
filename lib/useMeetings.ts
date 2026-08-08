@@ -3,6 +3,7 @@ import { useSQLiteContext } from 'expo-sqlite';
 import { useSession } from './session-store';
 import { rowToMeeting, type LocalMeetingRow } from './local-meeting-mapper';
 import { subscribeSyncComplete } from './sync/sync-events';
+import { perfEnd, perfStart } from './perf-trace';
 import type { Meeting } from '../types';
 
 // T-004: local SQLite is the primary read path (ADR-001), mirroring
@@ -30,6 +31,7 @@ export function useMeetings(clientId?: string) {
       setLoading(false);
       return;
     }
+    perfStart(clientId ? 'client.meetings.sqlite.read' : 'meetings.sqlite.read');
     setLoading(true);
     const rows = await db.getAllAsync<LocalMeetingRow>(
       clientId
@@ -45,6 +47,7 @@ export function useMeetings(clientId?: string) {
     );
     setMeetings(rows.map(rowToMeeting));
     setLoading(false);
+    perfEnd(clientId ? 'client.meetings.sqlite.read' : 'meetings.sqlite.read', { rows: rows.length, clientId });
   }, [db, profileId, clientId]);
 
   useEffect(() => {

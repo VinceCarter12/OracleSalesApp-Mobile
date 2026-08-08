@@ -18,7 +18,7 @@
     },
     "android": {
       "package": "com.oracle.salesapp",
-      "softwareKeyboardLayoutMode": "pan",
+      "softwareKeyboardLayoutMode": "resize",
       "adaptiveIcon": {
         "foregroundImage": "./assets/oracle-logo.png",
         "backgroundColor": "#003087"

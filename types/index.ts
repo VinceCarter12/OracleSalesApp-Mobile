@@ -49,10 +49,11 @@ export const PRESENTATION_AGENDA: (typeof MEETING_AGENDAS)[number] =
 // ADR-044/046: the display-label the PO-evidence card gates on (matches the
 // wireframe's own string checks, e.g. `aRecordAgendas.indexOf('Close deal')`
 // in Wireframe-Sales-BizLink.html) — not the stable `close_deal` agenda id
-// from `lib/policies/agenda-policy.ts`, since the Record Meeting UI still
-// selects agendas by label (that module's stage-aware picker is not yet
-// wired into record.tsx — separate, not-yet-scheduled track). B-083 fix:
-// `lib/meeting-service.ts::createMeeting()` now maps these labels to their
+// from `lib/policies/agenda-policy.ts`, since `record.tsx` still selects
+// agendas by label (`lib/meeting-agenda-stage-source.ts` now wires that
+// module's stage-aware filtering in to narrow which labels are OFFERED per
+// stage, but selection itself remains label-based). B-083 fix:
+// `lib/meeting-service.ts::createMeeting()` maps these labels to their
 // canonical `agenda_id`s before save, but the picker itself is unchanged.
 export const CLOSE_DEAL_AGENDA: (typeof MEETING_AGENDAS)[number] = 'Close deal';
 

@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react';
-import { Alert, Image, ScrollView } from 'react-native';
+import { Alert, Image, Pressable, ScrollView } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useLocalSearchParams } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
-import { Camera, Check, MapPin, User } from 'lucide-react-native';
+import { Camera, Check, ChevronRight, MapPin, Route, User } from 'lucide-react-native';
 import { Spinner, Text, XStack, YStack } from 'tamagui';
 import { rowToMeeting, type LocalMeetingRow } from '../../../lib/local-meeting-mapper';
 import {
@@ -15,19 +15,20 @@ import {
 import { getPoConfirmationForMeeting, type PoConfirmationRecord } from '../../../lib/po-confirmation-service';
 import { PO_CONFIRMATION_STATUS_LABELS, PO_CONFIRMATION_BADGE_TONES } from '../../../lib/policies/po-confirmation-status-policy';
 import { OUTCOME_BADGE_STYLES, useBizlinkColors, BIZLINK_ON_INK, BIZLINK_FONTS } from '../../../lib/theme';
+import { getClientById } from '../../../lib/client-service';
+import { getClientStatus, WAITING_MANAGER_PO_APPROVAL_BADGE } from '../../../lib/client-status';
+import { getClientJourneyProgress } from '../../../lib/client-progress';
+import { useMeetings } from '../../../lib/useMeetings';
+import { useClientFlowRoutes } from '../../../lib/use-role-routes';
 import { BizTopBar } from '../../../components/bizlink/BizTopBar';
 import { BizCard } from '../../../components/bizlink/BizCard';
 import { BizSectionHeader } from '../../../components/bizlink/BizSectionHeader';
 import { StatusBadge } from '../../../components/ui/StatusBadge';
 import { SyncBadge } from '../../../components/sync/SyncBadge';
+import { SelectedClientCard } from '../../../components/meetings/SelectedClientCard';
+import { formatMeetingLocation } from '../../../lib/format-meeting-location';
 import type { OutboxStatus } from '../../../lib/sync/outbox-status';
-import type { Meeting } from '../../../types';
-
-/** Meeting's `location_type`/`location_name` → the wireframe's human-readable Location line. */
-function formatMeetingLocation(meeting: Meeting): string | null {
-  if (!meeting.location_type) return null;
-  return meeting.location_type === 'Others' ? (meeting.location_name || 'Others') : 'Client Office';
-}
+import type { Client, Meeting } from '../../../types';
 
 /**
  * Local SQLite is the primary read path (ADR-001/T-004) — a meeting only
@@ -38,10 +39,16 @@ export default function MeetingDetailScreen() {
   const insets = useSafeAreaInsets();
   const db = useSQLiteContext();
   const { id } = useLocalSearchParams<{ id: string }>();
+  const routes = useClientFlowRoutes();
   const [meeting, setMeeting] = useState<Meeting | null>(null);
   const [companionRequests, setCompanionRequests] = useState<ClientCompanionRequest[]>([]);
   const [poConfirmation, setPoConfirmation] = useState<PoConfirmationRecord | null>(null);
+  const [client, setClient] = useState<Client | null>(null);
   const [loading, setLoading] = useState(true);
+  // Progress-card metric (lib/client-progress.ts::getClientJourneyProgress)
+  // needs the client's own full meeting history, not just this one meeting —
+  // `useMeetings` is undefined-safe (returns empty until `meeting` resolves).
+  const { meetings: clientMeetings } = useMeetings(meeting?.client_id ?? undefined);
 
   useEffect(() => {
     if (!id) return;
@@ -71,6 +78,16 @@ export default function MeetingDetailScreen() {
       .catch((err) => console.error('[MeetingDetail] PO confirmation load failed:', err instanceof Error ? err.message : String(err)));
   }, [db, id]);
 
+  useEffect(() => {
+    if (!meeting?.client_id) {
+      setClient(null);
+      return;
+    }
+    getClientById(meeting.client_id)
+      .then(setClient)
+      .catch((err) => console.error('[MeetingDetail] client load failed:', err instanceof Error ? err.message : String(err)));
+  }, [meeting?.client_id]);
+
   if (loading) {
     return (
       <YStack flex={1} justifyContent="center" alignItems="center" backgroundColor={BIZLINK_COLORS.canvas}>
@@ -90,31 +107,54 @@ export default function MeetingDetailScreen() {
   const isFastPath = Boolean(meeting.start_photo_url || meeting.end_photo_url);
   const outcomeStyle = meeting.outcome ? OUTCOME_BADGE_STYLES[meeting.outcome] : null;
   const humanLocation = formatMeetingLocation(meeting);
+  const clientStatus = client ? getClientStatus(client) : null;
+  const progress = client ? getClientJourneyProgress(client, clientMeetings) : null;
+  // Only present when the row has a real client_id (legacy rows missing one
+  // must never navigate into a broken journey route) AND this screen is
+  // mounted under (tabs) — `routes.clientJourney` has no (manager) route yet
+  // (see lib/use-role-routes.ts), and this exact screen is reused byte-for-
+  // byte under (manager) via app/(manager)/clients/meeting/[id].tsx, reached
+  // live today from Manager's own client-detail meeting history. Hide the
+  // card there rather than building a Href that 404s.
+  const journeyClientId = !routes.isManager ? meeting.client_id : null;
 
   return (
     <YStack flex={1} backgroundColor={BIZLINK_COLORS.canvas} paddingTop={insets.top}>
       <BizTopBar title="Meeting Detail" />
       <ScrollView contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 24 }}>
-        <BizCard>
-          <Text fontFamily={BIZLINK_FONTS.semibold} fontSize={17} color={BIZLINK_COLORS.text}>
-            {meeting.client_name ?? 'Unknown Client'}
-          </Text>
-          <XStack gap="$2" marginTop="$2" flexWrap="wrap" alignItems="center">
-            {outcomeStyle && meeting.outcome ? (
-              <StatusBadge label={meeting.outcome} {...outcomeStyle} />
-            ) : (
-              <StatusBadge label="Photo visit (fast path)" background={BIZLINK_COLORS.tintA} color={BIZLINK_COLORS.ink} />
-            )}
-            {meeting.meeting_mode ? (
-              <StatusBadge
-                label={meeting.meeting_mode === 'online' ? 'Online' : 'In-person'}
-                background={BIZLINK_COLORS.soft}
-                color={BIZLINK_COLORS.navy}
-              />
-            ) : null}
-            {meeting.sync_status ? <SyncBadge status={meeting.sync_status as OutboxStatus} /> : null}
-          </XStack>
-        </BizCard>
+        <SelectedClientCard
+          clientName={meeting.client_name ?? null}
+          status={clientStatus}
+          progress={progress ?? undefined}
+        />
+
+        <XStack gap="$2" marginBottom="$3" flexWrap="wrap" alignItems="center">
+          {outcomeStyle && meeting.outcome ? (
+            <StatusBadge label={meeting.outcome} {...outcomeStyle} />
+          ) : (
+            <StatusBadge label="Photo visit (fast path)" background={BIZLINK_COLORS.tintA} color={BIZLINK_COLORS.ink} />
+          )}
+          {meeting.meeting_mode ? (
+            <StatusBadge
+              label={meeting.meeting_mode === 'online' ? 'Online' : 'In-person'}
+              background={BIZLINK_COLORS.soft}
+              color={BIZLINK_COLORS.navy}
+            />
+          ) : null}
+          {meeting.sync_status ? <SyncBadge status={meeting.sync_status as OutboxStatus} /> : null}
+          {/* Vince 2026-08-04: overlay badge — this meeting's client is in_progress AND
+              its PO confirmation was submitted but not yet decided by a Manager. Uses
+              `poConfirmation` (already loaded above) rather than a fresh lookup — this
+              screen already has the exact per-meeting request, which is more precise
+              than the client-list screens' bulk per-client check. */}
+          {clientStatus === 'in_progress' && poConfirmation?.displayStatus === 'pending' ? (
+            <StatusBadge
+              label={WAITING_MANAGER_PO_APPROVAL_BADGE.label}
+              background={BIZLINK_COLORS[WAITING_MANAGER_PO_APPROVAL_BADGE.background]}
+              color={BIZLINK_COLORS[WAITING_MANAGER_PO_APPROVAL_BADGE.color]}
+            />
+          ) : null}
+        </XStack>
 
         {poConfirmation ? (
           <YStack backgroundColor={BIZLINK_COLORS[PO_CONFIRMATION_BADGE_TONES[poConfirmation.displayStatus].background]} borderRadius={20} padding={14} marginTop="$3">
@@ -264,6 +304,39 @@ export default function MeetingDetailScreen() {
               ))}
             </XStack>
           </>
+        ) : null}
+
+        {/* Wireframe-Sales-BizLink.html:2075 `journey-preview` — grouped
+            right beside the progress-summary bar at both its fast-path and
+            standard `aOpenMeeting()` call sites; this screen renders Agenda/
+            Remarks in one shared block rather than duplicating them per
+            branch, so the preview lives here where it's reachable from both.
+            Only rendered once the client resolves with a real `client_id` —
+            never routes to a broken journey screen for a legacy row. */}
+        {journeyClientId ? (
+          <Pressable onPress={() => router.push(routes.clientJourney(journeyClientId, String(routes.meetingDetail(meeting.id))))}>
+            <BizCard marginTop="$3" flexDirection="row" alignItems="center" gap="$3">
+              <YStack
+                width={42}
+                height={42}
+                borderRadius={14}
+                backgroundColor={BIZLINK_COLORS.tintA}
+                alignItems="center"
+                justifyContent="center"
+              >
+                <Route size={17} color={BIZLINK_COLORS.ink} strokeWidth={1.75} />
+              </YStack>
+              <YStack flex={1} gap="$0.5">
+                <Text fontFamily={BIZLINK_FONTS.semibold} fontSize={13.5} color={BIZLINK_COLORS.text}>
+                  Client journey & activities
+                </Text>
+                <Text fontSize={11.5} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted}>
+                  Tingnan ang meetings, outcomes, at stage movement.
+                </Text>
+              </YStack>
+              <ChevronRight size={18} color={BIZLINK_COLORS.muted} strokeWidth={1.75} />
+            </BizCard>
+          </Pressable>
         ) : null}
 
         {meeting.remarks ? (

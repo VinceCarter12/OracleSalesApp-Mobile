@@ -1,4 +1,4 @@
-import { TriangleAlert } from 'lucide-react-native';
+import { Info, TriangleAlert } from 'lucide-react-native';
 import { Spinner, Text, XStack, YStack } from 'tamagui';
 import { useBizlinkColors, BIZLINK_FONTS } from '../../lib/theme';
 import { BizCard } from '../bizlink/BizCard';
@@ -49,6 +49,18 @@ export function VisitInProgressPanel({
       <Text fontSize={12} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} marginTop={-6} marginBottom="$2" lineHeight={17}>
         Ang "Product / company presentation" tick dito ang buong basehan ng progress % ng client — hindi na Complete Info (B-001).
       </Text>
+      {/* Wireframe-Sales-BizLink.html:789 (`#a-recordvisit`'s in-progress
+          agenda helper) — service/relationship agendas here don't move the
+          client's lifecycle stage, and tag-along gating only affects
+          reporting/quota validity, never blocks offline recording. */}
+      <XStack alignItems="flex-start" gap="$1.5" marginTop={-6} marginBottom="$2">
+        <Info size={13} color={BIZLINK_COLORS.muted} strokeWidth={1.75} style={{ marginTop: 2 }} />
+        <Text fontSize={12} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} flex={1} lineHeight={17}>
+          Service at relationship agendas ito para sa New/Existing clients. Hindi nito binabago ang lifecycle
+          stage. Kung may pending manager tag-along, pending ang validity hanggang ma-clear ang gate; kung
+          teammate lang, walang blocking effect sa validity.
+        </Text>
+      </XStack>
       {selectedAgendas.length === 0 ? (
         <XStack alignItems="center" gap="$1.5" marginBottom="$2">
           <TriangleAlert size={14} color="#B4740A" strokeWidth={1.75} />

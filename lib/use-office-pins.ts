@@ -50,10 +50,15 @@ export function useOfficePins(): UseOfficePins {
       return;
     }
     setLoading(true);
+    // Batch 8 Maps extension (2026-08-04): `status` is `NOT NULL DEFAULT
+    // 'prospect'` on `clients` (lib/db.ts), so a plain `!= 'inactive'` is
+    // sufficient — no IS NULL branch needed. Without this, a client the
+    // agent already marked inactive kept showing a permanent office pin
+    // here and on the map forever.
     const rows = await db.getAllAsync<OfficePinRow>(
       `SELECT id, company_name, office_lat, office_lng, office_pin_updated_at, office_pin_source
          FROM clients
-        WHERE agent_id = ? AND office_lat IS NOT NULL AND office_lng IS NOT NULL
+        WHERE agent_id = ? AND office_lat IS NOT NULL AND office_lng IS NOT NULL AND status != 'inactive'
         ORDER BY company_name ASC`,
       [profileId]
     );

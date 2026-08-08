@@ -2,9 +2,9 @@ import { useEffect, useState } from 'react';
 import { Alert, ScrollView } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router, useLocalSearchParams } from 'expo-router';
-import { Spinner, Text, XStack, YStack } from 'tamagui';
+import { Spinner, Text, View, XStack, YStack } from 'tamagui';
 import { useSession } from '../../../lib/session-store';
-import { getClientById, checkCompanyNameDuplicate, DuplicateCompanyNameError } from '../../../lib/client-service';
+import { getClientById } from '../../../lib/client-service';
 import { getPendingEditRequestForClient, ClientNotFoundLocallyError, type ClientEditRequest } from '../../../lib/client-edit-request-service';
 import { submitCompleteInfo } from '../../../lib/complete-info-submit';
 import { AccountSuspendedError } from '../../../lib/app-lock/account-status';
@@ -18,8 +18,6 @@ import { BizSectionHeader } from '../../../components/bizlink/BizSectionHeader';
 import { BizButton } from '../../../components/bizlink/BizButton';
 import { BizPendingBanner } from '../../../components/bizlink/BizPendingBanner';
 import { SALES_CHANNELS, type Client, type SalesChannel } from '../../../types';
-
-type DupState = 'idle' | 'checking' | 'duplicate' | 'available';
 
 /**
  * Complete Info (Wireframe a-complete, F-001 Phase B / F-002): first-time
@@ -39,8 +37,6 @@ export default function CompleteInfoScreen() {
   const [client, setClient] = useState<Client | null>(null);
   const [pendingRequest, setPendingRequest] = useState<ClientEditRequest | null>(null);
   const [loading, setLoading] = useState(true);
-  const [companyName, setCompanyName] = useState('');
-  const [dupState, setDupState] = useState<DupState>('idle');
   const [contactPerson, setContactPerson] = useState('');
   const [position, setPosition] = useState('');
   const [contactNumber, setContactNumber] = useState('');
@@ -58,7 +54,6 @@ export default function CompleteInfoScreen() {
       } else {
         setClient(foundClient);
         setPendingRequest(pending);
-        setCompanyName(foundClient.company_name);
         setContactPerson(foundClient.contact_person ?? '');
         setPosition(foundClient.position ?? '');
         setContactNumber(foundClient.contact_number ?? '');
@@ -70,28 +65,6 @@ export default function CompleteInfoScreen() {
       setLoading(false);
     });
   }, [clientId]);
-
-  // Live duplicate-name hint — same debounced local-then-live pattern as
-  // app/(tabs)/clients/create.tsx, scoped to this client's own city and
-  // excluding itself (so an unchanged name never self-flags).
-  useEffect(() => {
-    if (!client) return;
-    const name = companyName.trim();
-    if (!name) {
-      setDupState('idle');
-      return;
-    }
-    setDupState('checking');
-    let cancelled = false;
-    const timer = setTimeout(async () => {
-      const result = await checkCompanyNameDuplicate(name, client.city ?? null, client.id);
-      if (!cancelled) setDupState(result === 'duplicate' ? 'duplicate' : 'available');
-    }, 400);
-    return () => {
-      cancelled = true;
-      clearTimeout(timer);
-    };
-  }, [companyName, client]);
 
   if (loading || !client) {
     return (
@@ -106,10 +79,6 @@ export default function CompleteInfoScreen() {
 
   async function handleSubmit(): Promise<void> {
     if (!profileId || !clientId || !client) return;
-    if (dupState === 'duplicate') {
-      Alert.alert('Duplicate', `A client named "${companyName.trim()}" already exists in this city.`);
-      return;
-    }
 
     setSaving(true);
     try {
@@ -120,7 +89,7 @@ export default function CompleteInfoScreen() {
         pendingRequest,
         firstTime,
         isManagerOwnClient,
-        form: { companyName, contactPerson, position, contactNumber, officeAddress, channel, existingOverride, minorNotes },
+        form: { contactPerson, position, contactNumber, officeAddress, channel, existingOverride, minorNotes },
       });
 
       if (branch === 'blocked_pending') return;
@@ -138,9 +107,6 @@ export default function CompleteInfoScreen() {
         // Batch 5 Slice 2 (ADR-051): route to AccountSuspendedScreen instead
         // of showing a generic save error — never swallow this silently.
         markSuspended();
-      } else if (err instanceof DuplicateCompanyNameError) {
-        setDupState('duplicate');
-        Alert.alert('Duplicate', err.message);
       } else if (err instanceof ClientNotFoundLocallyError) {
         Alert.alert('Error', 'Client not yet synced to this device — try again once online.');
       } else {
@@ -151,7 +117,7 @@ export default function CompleteInfoScreen() {
     }
   }
 
-  const canSubmit = !saving && dupState !== 'duplicate' && pendingRequest === null;
+  const canSubmit = !saving && pendingRequest === null;
 
   return (
     <YStack flex={1} backgroundColor={BIZLINK_COLORS.canvas} paddingTop={insets.top}>
@@ -179,23 +145,47 @@ export default function CompleteInfoScreen() {
           </YStack>
         ) : null}
 
-        <BizField
-          label="COMPANY NAME"
-          value={companyName}
-          onChangeText={setCompanyName}
-          placeholder="e.g. Oracle Petroleum"
-          hint={
-            dupState === 'duplicate' ? (
-              <Text fontSize={11.5} fontFamily={BIZLINK_FONTS.semibold} backgroundColor={BIZLINK_COLORS.tintB} color={BIZLINK_COLORS.red} borderRadius={14} paddingHorizontal={13} paddingVertical={9}>
-                May client nang ganitong pangalan sa city na ito — bawal ang duplicate.
+        {/* Company name + city are set once at Create Client (Phase A) and
+            are view-only here — not part of the wireframe's a-complete form,
+            and editing them isn't in scope for info completion. */}
+        <XStack gap="$2.5" marginBottom="$3.5">
+          <YStack flex={1} gap="$1.5">
+            <Text fontSize={11} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} letterSpacing={0.4}>
+              COMPANY NAME
+            </Text>
+            <View
+              height={52}
+              borderRadius={16}
+              paddingHorizontal={16}
+              justifyContent="center"
+              backgroundColor={BIZLINK_COLORS.canvas}
+              borderWidth={1}
+              borderColor={BIZLINK_COLORS.line}
+            >
+              <Text fontSize={14.5} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.text} numberOfLines={1}>
+                {client.company_name}
               </Text>
-            ) : dupState === 'available' && companyName.trim() !== client.company_name ? (
-              <Text fontSize={11.5} fontFamily={BIZLINK_FONTS.semibold} backgroundColor={BIZLINK_COLORS.tintA} color={BIZLINK_COLORS.ink} borderRadius={14} paddingHorizontal={13} paddingVertical={9}>
-                ✓ Available ang pangalang ito.
+            </View>
+          </YStack>
+          <YStack flex={1} gap="$1.5">
+            <Text fontSize={11} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} letterSpacing={0.4}>
+              CITY
+            </Text>
+            <View
+              height={52}
+              borderRadius={16}
+              paddingHorizontal={16}
+              justifyContent="center"
+              backgroundColor={BIZLINK_COLORS.canvas}
+              borderWidth={1}
+              borderColor={BIZLINK_COLORS.line}
+            >
+              <Text fontSize={14.5} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.text} numberOfLines={1}>
+                {client.city ?? '—'}
               </Text>
-            ) : null
-          }
-        />
+            </View>
+          </YStack>
+        </XStack>
         <BizField label="CONTACT PERSON" value={contactPerson} onChangeText={setContactPerson} placeholder="Full name" />
         <BizField
           label="POSITION (decision-maker lang: purchasing/CEO/owner)"

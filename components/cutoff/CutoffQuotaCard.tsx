@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useState } from 'react';
+import { useFocusEffect } from 'expo-router';
 import { CircleAlert, Clock, Target } from 'lucide-react-native';
 import { Text, View, XStack, YStack } from 'tamagui';
 import { useBizlinkColors, BIZLINK_FONTS } from '../../lib/theme';
@@ -29,28 +30,38 @@ export function CutoffQuotaCard({ agentId, role }: CutoffQuotaCardProps) {
   const [data, setData] = useState<CutoffQuotaCardData | null>(null);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    let cancelled = false;
-    async function load() {
-      if (!agentId) {
-        await Promise.resolve();
-        if (!cancelled) setLoading(false);
-        return;
+  // Same class of bug fixed for Home's own stat cards (app/(tabs)/index.tsx):
+  // a plain mount-only useEffect loads whatever the local snapshot holds at
+  // that instant, then never checks again. The background cutoff sync-down
+  // frequently finishes AFTER Home has already rendered and queried once, so
+  // without a focus-triggered refetch the card is stuck showing "No quota
+  // configured" for the rest of the session even after real data lands in
+  // SQLite. useFocusEffect re-runs every time this screen regains focus
+  // (tab switch, returning from another screen, post-login first render).
+  useFocusEffect(
+    useCallback(() => {
+      let cancelled = false;
+      async function load() {
+        if (!agentId) {
+          await Promise.resolve();
+          if (!cancelled) setLoading(false);
+          return;
+        }
+        try {
+          const result = await getCutoffQuotaCard(agentId, role);
+          if (!cancelled) setData(result);
+        } catch (err) {
+          console.error('[CutoffQuotaCard] load failed:', err);
+        } finally {
+          if (!cancelled) setLoading(false);
+        }
       }
-      try {
-        const result = await getCutoffQuotaCard(agentId, role);
-        if (!cancelled) setData(result);
-      } catch (err) {
-        console.error('[CutoffQuotaCard] load failed:', err);
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    }
-    load();
-    return () => {
-      cancelled = true;
-    };
-  }, [agentId, role]);
+      load();
+      return () => {
+        cancelled = true;
+      };
+    }, [agentId, role])
+  );
 
   if (loading) return null;
 

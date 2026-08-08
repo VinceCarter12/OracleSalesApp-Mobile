@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { Pressable, ScrollView } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router, useFocusEffect } from 'expo-router';
@@ -8,6 +8,7 @@ import { BIZLINK_COLORS, BIZLINK_FONTS, OUTCOME_BADGE_STYLES } from '../../lib/t
 import { useManagerDashboard } from '../../lib/useManagerDashboard';
 import { useTeamOverview } from '../../lib/use-team-overview';
 import { getIncomingCompanionRequests } from '../../lib/tag-along-invitee-service';
+import { useManagerApprovalFeed } from '../../lib/use-manager-approval-feed';
 import { useSession } from '../../lib/session-store';
 import { useManagerScope } from '../../lib/manager-scope-store';
 import { firstName, initialsFromName } from '../../lib/display-name';
@@ -93,6 +94,13 @@ export default function ManagerDashboardScreen() {
   // requests needing this manager's accept/reject (the one remaining
   // "needs my action" queue for a manager, B-053's real invitee-side data).
   const [pendingTagAlongCount, setPendingTagAlongCount] = useState(0);
+  
+  // Manager Approvals badge (2026-08-04 Full Badge Implementation)
+  const { rows: approvalRows } = useManagerApprovalFeed();
+  const pendingApprovalCount = useMemo(
+    () => approvalRows.filter((r) => r.status === 'pending').length,
+    [approvalRows]
+  );
 
   const loadPendingTagAlong = useCallback(() => {
     if (!profileId) return;
@@ -111,7 +119,7 @@ export default function ManagerDashboardScreen() {
     );
   }
 
-  const approvalBadge = pendingTagAlongCount;
+  const approvalBadge = pendingTagAlongCount + pendingApprovalCount;
   const initials = initialsFromName(fullName);
   const greetingName = firstName(fullName) || summary.managerName;
 
@@ -195,14 +203,13 @@ export default function ManagerDashboardScreen() {
           {/* Batch 6 PR B (ADR-052, F-205 reversal): Wireframe-Manager-BizLink.html
               line 487's "Approvals" Quick Action, restored — client-edit +
               PO-confirmation requests only (Wireframe line 687: tag-along
-              keeps its own separate flow below, unchanged). No live pending
-              count wired here yet (kept minimal for this PR's "safe, empty
-              inbox" phased-rollout step, ADR-052 section K.6) — the badge
-              this had in the wireframe (`qaApprovalDot`) can follow in a
-              later pass once the inbox has real request volume to count. */}
+              keeps its own separate flow below, unchanged). Badge count now
+              wired (2026-08-04 Full Badge Implementation) — shows pending
+              client-edit + PO-confirmation requests. */}
           <BizQuickAction
             icon={<PenLine size={20} color={BIZLINK_COLORS.ink} strokeWidth={1.75} />}
             label="Approvals"
+            badgeCount={pendingApprovalCount}
             onPress={() => router.push(getDashboardActionHref('manager-approvals', role))}
           />
           <BizQuickAction

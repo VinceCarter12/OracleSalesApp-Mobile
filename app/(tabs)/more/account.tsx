@@ -59,7 +59,7 @@ export default function AgentAccountScreen() {
 
   return (
     <YStack flex={1} backgroundColor={BIZLINK_COLORS.canvas} paddingTop={insets.top}>
-      <BizTopBar title="Account & Security" fallbackHref="/(tabs)/more" />
+      <BizTopBar title="Account & Security" fallbackHref="/(tabs)" />
       <ScrollView contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 24 }}>
         <BizCard flexDirection="row" alignItems="center" gap="$3.5">
           <View position="relative">

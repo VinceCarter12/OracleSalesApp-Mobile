@@ -6,6 +6,7 @@ import { Spinner, Text, XStack, YStack } from 'tamagui';
 import { useBizlinkColors, BIZLINK_FONTS } from '../../../lib/theme';
 import { useClients } from '../../../lib/useClients';
 import { SALES_CLIENT_STATUS_BADGES, getClientStatus, isFastPathEligible } from '../../../lib/client-status';
+import { useClientFlowRoutes, type ClientFlowRoutes } from '../../../lib/use-role-routes';
 import { BizTopBar } from '../../../components/bizlink/BizTopBar';
 import { StatusBadge } from '../../../components/ui/StatusBadge';
 import { BizChip } from '../../../components/bizlink/BizChip';
@@ -74,21 +75,22 @@ function recordPickerHint(status: ClientStatus): string {
  * (lib/client-status.ts) already encodes that same new/existing whitelist —
  * reused here instead of re-deriving the condition.
  */
-function openRecordFlow(client: Client): void {
+function openRecordFlow(client: Client, routes: ClientFlowRoutes): void {
   if (isFastPathEligible(client)) {
-    router.push(`/(tabs)/meetings/record-visit?clientId=${client.id}`);
+    router.push(routes.recordVisit(client.id));
   } else {
-    router.push(`/(tabs)/meetings/record?clientId=${client.id}`);
+    router.push(routes.recordMeeting(client.id));
   }
 }
 
 function ClientRow({ client }: { client: Client }) {
   const BIZLINK_COLORS = useBizlinkColors();
+  const routes = useClientFlowRoutes();
   const status = getClientStatus(client);
   const badge = SALES_CLIENT_STATUS_BADGES[status];
   const hint = recordPickerHint(status);
   return (
-    <Pressable onPress={() => openRecordFlow(client)}>
+    <Pressable onPress={() => openRecordFlow(client, routes)}>
       <XStack
         alignItems="center"
         justifyContent="space-between"

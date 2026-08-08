@@ -9,8 +9,10 @@ interface BizTopBarProps {
   title: string;
   right?: React.ReactNode;
   /**
-   * The screen's fixed logical parent (e.g. `/(tabs)/more` for every More
-   * sub-screen) — set this for any screen that can be reached by jumping
+   * The screen's fixed logical parent (e.g. `/(tabs)` for every former "More"
+   * destination — Notifications, Account & Security, Sync History, etc. —
+   * now that they hang directly off Home instead of behind a separate More
+   * hub screen) — set this for any screen that can be reached by jumping
    * straight into a nested tab route from a DIFFERENT tab (e.g. Home's
    * avatar/bell pushing directly into `/more/account` or
    * `/more/notifications`). When set, back ALWAYS navigates here rather than

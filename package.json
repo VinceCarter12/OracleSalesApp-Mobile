@@ -32,6 +32,7 @@
     "react-native-safe-area-context": "~5.7.0",
     "react-native-screens": "~4.26.0",
     "react-native-svg": "15.15.4",
+    "react-native-webview": "13.16.1",
     "tamagui": "^2.4.0",
     "zod": "^3.25.76"
   },

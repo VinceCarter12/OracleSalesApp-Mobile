@@ -8,12 +8,14 @@ import { isLikelyOnline } from './sync/connectivity';
 import { insertMeetingCompanionRequests, type CompanionSelection } from './tag-along-service';
 import { insertAcceptedMeetingCompanions } from './tag-along-manager-service';
 import { computeMeetingValidityStatusOnCreate } from './policies/tag-along-validity-policy';
-import { captureAndSubmitPoEvidence } from './po-confirmation-service';
 import { writeOfficePinLocal } from './office-pin-service';
 import { getCurrentAgendaCatalog } from './meeting-agenda-catalog-source';
 import { mapAgendaLabelsToIds } from './policies/agenda-label-mapping';
 import { buildRemoteMeetingPayload } from './remote-meeting-payload';
 import { verifyAccountActive, AccountSuspendedError } from './app-lock/account-status';
+import { applyLocalLifecyclePrediction } from './local-lifecycle-prediction-service';
+import { notifySyncComplete } from './sync/sync-events';
+import { submitMeetingPoEvidenceIfPresent } from './meeting-po-evidence-submission';
 import type { MeetingMode, MeetingOutcome } from '../types';
 
 // Batch 5 Slice 2 (ADR-051): short budget so a suspension check never
@@ -22,28 +24,15 @@ const SENSITIVE_WRITE_CHECK_TIMEOUT_MS = 2500;
 
 export { buildMeetingPhotoStoragePath, uploadMeetingPhoto, enqueueMeetingPhotoUrlUpdate, MEETING_PHOTO_BUCKET, PHOTO_UPLOAD_TIMEOUT_MS } from './meeting-photo-service';
 
-// Remote CHECK constraints confirmed 2026-07-16 via `pg_constraint` (see
-// Bugs.md B-012) — mobile's own labels never matched these, same class of
-// gap as B-011's column-name mismatch, just at the value level instead.
-// `meetings_meeting_type_check`: ('f2f', 'online')
-// `meetings_location_type_check`: ('client_office', 'other')
-// `meetings_outcome_check`: ('successful', 'follow_up', 'no_decision', 'lost_opportunity')
-// `meetings_online_platform_check`: ('zoom', 'googlemeet') — not sent yet, no mobile UI collects it
+// Remote CHECK constraints (`meetings_meeting_type_check` /
+// `meetings_location_type_check` / `meetings_outcome_check` /
+// `meetings_online_platform_check`) are documented + mapped in
+// lib/remote-meeting-mapping.ts — not duplicated here.
 //
-// B-028: `contact_person`, `location_type`, and `outcome` are all `NOT NULL`
-// on the live table (confirmed via `supabase/migrations/001_initial.sql` +
-// a real device error pulled straight off the local outbox: `null value in
-// column "contact_person" ... violates not-null constraint`) — but the
-// existing-client fast path (`record-visit.tsx`, ADR-015) deliberately never
-// asks for outcome or location (that's the whole point of the fast path),
-// and `contact_person` can be left blank in the full form too. Every fast-
-// path meeting was silently dead-lettering on every single attempt.
-// Defaults below are a judgment call, not a re-derived spec: a completed
-// fast-path visit is treated as `successful` (matches ADR-015's own framing
-// — there's no "outcome" UI because a routine visit to an existing client
-// is assumed fine) and `client_office` (fast-path visits are, by
-// definition, a visit to that client). Flag to Vince if either assumption
-// is wrong — these are inferred, not confirmed business rules.
+// B-028: `contact_person`/`location_type`/`outcome` are `NOT NULL` remotely,
+// but the fast path (record-visit.tsx, ADR-015) never collects outcome or
+// location. Fallback defaults (`successful` / `client_office`, a judgment
+// call, not confirmed spec) live in lib/remote-meeting-mapping.ts.
 
 export interface NewMeetingRecord {
   client_id: string | null;
@@ -254,26 +243,44 @@ export async function createMeeting(record: NewMeetingRecord): Promise<string> {
     }
   }
 
-  // ADR-044 decision 5: PO capture is offline-safe, submission is a
-  // best-effort ONLINE-ONLY attempt, same pattern as photo-queue/runSync
-  // above. Never throws — see po-confirmation-service.ts.
+  // ADR-044 decision 5 / B-088 / B-091: see lib/meeting-po-evidence-submission.ts.
   if (record.poEvidence && record.client_id) {
-    await captureAndSubmitPoEvidence(db, {
-      clientId: record.client_id,
+    await submitMeetingPoEvidenceIfPresent(db, {
       meetingId: id,
-      requesterId: record.agent_id,
-      cycleId: record.poEvidence.cycleId,
-      localPhotoUri: record.poEvidence.localPhotoUri,
-      userId: record.poEvidence.userId,
+      clientId: record.client_id,
+      agentId: record.agent_id,
+      poEvidence: record.poEvidence,
     });
   }
 
-  // Prospect→new auto-promotion (ADR-027) is deliberately NOT checked here —
-  // it's a server-side Postgres trigger now (ADR-006 requires lifecycle
-  // automations to run server-side; see Migration-017-Report.md), fired by
-  // this meeting's `outcome` reaching Supabase, not by anything on-device.
-  // The resulting `status='new'` arrives back through the normal sync-down
-  // pull once the trigger fires remotely.
+  // Prospect→new auto-promotion (ADR-027) stays a server-side trigger
+  // (ADR-006) — NOT checked on-device; arrives via next sync-down. ADR-006
+  // still governs; this is the AUTHORITATIVE promotion path.
+  //
+  // 2026-08-04 (Vince-approved, scoped ADR-006 exception): a PROVISIONAL
+  // local mirror of ONLY prospect->in_progress runs next, for immediate
+  // offline display only — never pushed to Supabase, always overwritten by
+  // the next sync-down. See lib/policies/local-lifecycle-prediction.ts +
+  // lib/local-lifecycle-prediction-service.ts.
+  try {
+    await applyLocalLifecyclePrediction(db, {
+      clientId: record.client_id,
+      requesterId: record.agent_id,
+      outcome: record.outcome,
+      agendaIds,
+      agendaCatalog,
+      meetingValidityStatus: validityStatus,
+    });
+  } catch (err) {
+    // Best-effort only — a failure here must never affect the already-saved
+    // meeting; the real status still arrives via the next sync-down.
+    console.error('[meeting-service] local lifecycle prediction failed:', err instanceof Error ? err.message : String(err));
+  }
+
+  // Every meeting outcome (not just the promotion above) should be visible
+  // immediately on already-mounted screens — reuses the same pub/sub
+  // use-sync.ts relies on for this exact purpose.
+  notifySyncComplete();
 
   // Best-effort immediate push; if offline (or the client hasn't synced yet)
   // this silently no-ops/defers and the outbox row waits for use-sync.ts's

@@ -5,6 +5,7 @@ import { supabase } from './supabase';
 import { isLikelyOnline } from './sync/connectivity';
 import { withTimeout } from './with-timeout';
 import { MEETING_PHOTO_BUCKET, PHOTO_UPLOAD_TIMEOUT_MS } from './meeting-photo-service';
+import { RLS_PERMISSION_DENIED_CODE, UNIQUE_VIOLATION_CODE } from './sync/outbox-status';
 import {
   canAttemptSubmission,
   derivePoConfirmationDisplayStatus,
@@ -136,8 +137,15 @@ function buildPoEvidenceStoragePath(userId: string, requestId: string): string {
 
 async function uploadPoEvidencePhoto(localUri: string, storagePath: string): Promise<string> {
   const bytes = await new File(localUri).bytes();
+  // `upsert: true` (same fix as lib/profile-avatar.ts): storagePath is
+  // deterministic per requestId (buildPoEvidenceStoragePath), so a retried
+  // submission for the same 'draft' row (retryDraftPoConfirmations, or a
+  // second captureAndSubmitPoEvidence attempt) re-uploads the identical
+  // path. Without upsert, Storage rejects the retry with "The resource
+  // already exists" even though the object is already correct — turning a
+  // recoverable retry into a permanent-looking failure.
   const { error } = await withTimeout(
-    supabase.storage.from(MEETING_PHOTO_BUCKET).upload(storagePath, bytes, { contentType: 'image/jpeg' }),
+    supabase.storage.from(MEETING_PHOTO_BUCKET).upload(storagePath, bytes, { contentType: 'image/jpeg', upsert: true }),
     PHOTO_UPLOAD_TIMEOUT_MS,
     `PO evidence upload (${storagePath})`
   );
@@ -146,7 +154,37 @@ async function uploadPoEvidencePhoto(localUri: string, storagePath: string): Pro
   return data.publicUrl;
 }
 
-export type SubmitPoConfirmationResult = 'submitted' | 'skipped_not_draft' | 'offline' | 'failed';
+export type SubmitPoConfirmationResult = 'submitted' | 'skipped_not_draft' | 'offline' | 'failed' | 'superseded';
+
+/** B-088: the meeting a request references may still be mid-push (`meetings.sync_status` set by push-batch.ts's `recordSynced()`) — same check the entity registry's `isBlockedByDependency` does for outbox rows, applied here since `po_confirmation_requests` isn't itself outbox-queued (ADR-044 decision 5). */
+async function isMeetingSynced(db: SQLiteDatabase, meetingId: string): Promise<boolean> {
+  const meeting = await db.getFirstAsync<{ sync_status: string }>(
+    'SELECT sync_status FROM meetings WHERE id = ?',
+    [meetingId]
+  );
+  return meeting?.sync_status === 'synced';
+}
+
+/**
+ * Same class of race as `isMeetingSynced()`, for the OTHER foreign
+ * reference the "Agents create own PO confirmation" INSERT policy checks
+ * (Migration-039-Report.md): `with check (... and exists (select 1 from
+ * clients c where c.id = client_id and c.assigned_agent_id =
+ * current_profile_id()))`. A client that hasn't pushed to Supabase yet
+ * (e.g. created and closed in the same session, still `sync_status =
+ * 'pending'` in the local outbox) makes that `exists(...)` false — Postgres
+ * reports this identically to a real ownership mismatch: "new row violates
+ * row-level security policy", no distinguishing detail. Deferring here
+ * (same as B-088) turns a false-permanent failure into a retry once the
+ * client itself has landed.
+ */
+async function isClientSynced(db: SQLiteDatabase, clientId: string): Promise<boolean> {
+  const client = await db.getFirstAsync<{ sync_status: string }>(
+    'SELECT sync_status FROM clients WHERE id = ?',
+    [clientId]
+  );
+  return client?.sync_status === 'synced';
+}
 
 /**
  * Step 2 (online-only, ADR-044 decision 5): uploads the captured photo, then
@@ -172,6 +210,13 @@ export async function submitPoConfirmation(
     return row.status !== 'draft' ? 'skipped_not_draft' : 'offline';
   }
 
+  // B-088: attempting the insert before the meeting itself lands in
+  // Supabase violates po_confirmation_requests_meeting_id_fkey — defer
+  // instead of crashing; the row stays 'draft' for a later retry.
+  if (!(await isMeetingSynced(db, row.meeting_id)) || !(await isClientSynced(db, row.client_id))) {
+    return 'offline';
+  }
+
   try {
     const storagePath = buildPoEvidenceStoragePath(userId, requestId);
     const publicUrl = await uploadPoEvidencePhoto(row.po_photo_path, storagePath);
@@ -185,7 +230,39 @@ export async function submitPoConfirmation(
       po_photo_path: publicUrl,
     };
     const { error } = await supabase.from('po_confirmation_requests').insert(remotePayload);
-    if (error) throw error;
+    // 23505 on this specific row's id means a PRIOR submitPoConfirmation
+    // attempt already got the INSERT through, but this row's local status
+    // update below never completed (e.g. app killed mid-retry) — so the
+    // local row was stuck 'draft' even though the server already has it.
+    // The duplicate IS the already-submitted state, not a new failure:
+    // without this check, every future retry (retryDraftPoConfirmations
+    // runs on every Notifications load) would re-attempt the same insert
+    // and fail the same way forever. Plain `.insert()` kept deliberately
+    // (not `.upsert()`) — matches lib/sync/remote-upsert.ts's documented
+    // finding that `.upsert(..., {ignoreDuplicates})` hits a PostgREST/RLS
+    // 42501 quirk on this project's Supabase project for insert-only RLS
+    // policies like this table's.
+    //
+    // 42501 (RLS_PERMISSION_DENIED_CODE) means the "Agents create own PO
+    // confirmation" policy's `with check` failed — either requester_id
+    // doesn't match the live session, or (far more likely given the
+    // ownership join in that policy) `row.client_id` is no longer assigned
+    // to this requester server-side (reassigned, deleted, stale test data).
+    // This is NEVER transient like the isMeetingSynced/isClientSynced
+    // guards above — retrying an unchanged payload against an unchanged
+    // policy produces the same rejection forever. Mark the row terminal
+    // (2026-08-04, SQLite v24 `'superseded'`) so retryDraftPoConfirmations()
+    // stops resubmitting it on every Notifications-screen visit.
+    if (error && error.code === RLS_PERMISSION_DENIED_CODE) {
+      const now = new Date().toISOString();
+      await db.runAsync(
+        `UPDATE po_confirmation_requests SET status = 'superseded', updated_at = ? WHERE id = ?`,
+        [now, requestId]
+      );
+      console.error('[po-confirmation-service] submission permanently rejected (RLS) — marked superseded:', error.message);
+      return 'superseded';
+    }
+    if (error && error.code !== UNIQUE_VIOLATION_CODE) throw error;
 
     const now = new Date().toISOString();
     await db.runAsync(
@@ -211,6 +288,38 @@ export async function submitPoConfirmation(
   }
 }
 
+interface PendingPoConfirmationClientRow {
+  client_id: string;
+}
+
+/**
+ * Vince 2026-08-04 direction: batch-loads which of the requester's own
+ * `in_progress` clients currently have a `'pending'` (submitted, not yet
+ * decided by a Manager) PO confirmation request — the mobile-side "Waiting
+ * for Manager's Approval" overlay badge on My Clients / Client Detail.
+ * `'draft'` (captured but never submitted, ADR-044 decision 5) is
+ * deliberately excluded — a draft hasn't reached a Manager yet, so it isn't
+ * "waiting" on one. Joins against `clients.status` here (rather than
+ * trusting the caller to re-check it) so a client that already left
+ * `in_progress` never shows the badge even if a stale `pending` row still
+ * exists locally. Batched (one query for the whole list), mirroring
+ * `lib/tag-along-service.ts#getClientIdsWithPendingManagerTagAlong`'s same
+ * N+1-avoidance pattern.
+ */
+export async function getClientIdsWithPendingPoConfirmation(requesterId: string): Promise<Set<string>> {
+  const db = await getDb();
+  const rows = await db.getAllAsync<PendingPoConfirmationClientRow>(
+    `SELECT DISTINCT p.client_id as client_id
+       FROM po_confirmation_requests p
+       JOIN clients c ON c.id = p.client_id
+      WHERE p.requester_id = ?
+        AND p.status = 'pending'
+        AND c.status = 'in_progress'`,
+    [requesterId]
+  );
+  return new Set(rows.map((row) => row.client_id));
+}
+
 /** Meeting Detail's PO status card — the (at most one, per the live unique-pending-per-cycle index) request attached to this meeting. */
 export async function getPoConfirmationForMeeting(meetingId: string): Promise<PoConfirmationRecord | null> {
   const db = await getDb();
@@ -232,6 +341,32 @@ interface RemoteMyRequestRow {
 }
 
 /**
+ * B-091: submitPoConfirmation()'s isMeetingSynced() guard can leave a row
+ * stuck 'draft' forever if the meeting hadn't reached Supabase yet at
+ * capture time — this is the "later via a retry affordance once online"
+ * call site capturePoEvidenceLocally()'s own docstring already promises.
+ * Resolves the real Auth uid fresh (not `requesterId`, which is the
+ * profileId) since Storage RLS keys off `auth.uid()`, same split as
+ * meeting-record-assembler.ts's `authUserId` vs `agent_id`. Never throws —
+ * a failed retry just leaves the row 'draft' for the next call.
+ */
+async function retryDraftPoConfirmations(db: SQLiteDatabase, requesterId: string): Promise<void> {
+  const drafts = await db.getAllAsync<{ id: string }>(
+    "SELECT id FROM po_confirmation_requests WHERE requester_id = ? AND status = 'draft'",
+    [requesterId]
+  );
+  if (drafts.length === 0) return;
+
+  const { data } = await supabase.auth.getSession();
+  const authUid = data.session?.user.id;
+  if (!authUid) return;
+
+  for (const { id } of drafts) {
+    await submitPoConfirmation(db, id, authUid);
+  }
+}
+
+/**
  * Notifications' PO section: local drafts (never submitted) plus a
  * best-effort reconciliation against `get_my_request_statuses()` for
  * anything already submitted — a submitted row's local status is
@@ -242,6 +377,13 @@ interface RemoteMyRequestRow {
  */
 export async function getMyPoConfirmationStatuses(requesterId: string): Promise<PoConfirmationRecord[]> {
   const db = await getDb();
+
+  try {
+    await retryDraftPoConfirmations(db, requesterId);
+  } catch (err) {
+    console.error('[po-confirmation-service] draft retry failed:', err instanceof Error ? err.message : String(err));
+  }
+
   const localRows = await db.getAllAsync<LocalPoConfirmationRow>(
     'SELECT * FROM po_confirmation_requests WHERE requester_id = ? ORDER BY created_at DESC',
     [requesterId]

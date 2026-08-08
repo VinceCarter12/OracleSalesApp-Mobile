@@ -1,5 +1,6 @@
 import { supabase } from '../supabase';
 import { withTimeout } from '../with-timeout';
+import { withTransactionRetry } from './with-transaction-retry';
 import type { SQLiteDatabase } from 'expo-sqlite';
 
 // ADR-045 (Batch 3, SQLite v14): read-only sync-down for the four new
@@ -31,7 +32,7 @@ export async function pullAgendaPolicyVersions(db: SQLiteDatabase, now: string):
     );
     if (error) throw new Error(error.message);
 
-    await db.withTransactionAsync(async () => {
+    await withTransactionRetry(db, async () => {
       await db.runAsync('DELETE FROM agenda_policy_versions_snapshot');
       for (const row of data ?? []) {
         await db.runAsync(
@@ -57,7 +58,7 @@ export async function pullAgendaCatalog(db: SQLiteDatabase, now: string): Promis
     );
     if (error) throw new Error(error.message);
 
-    await db.withTransactionAsync(async () => {
+    await withTransactionRetry(db, async () => {
       await db.runAsync('DELETE FROM agenda_catalog_snapshot');
       for (const row of data ?? []) {
         await db.runAsync(
@@ -92,7 +93,7 @@ export async function pullAgendaStageRules(db: SQLiteDatabase, now: string): Pro
     );
     if (error) throw new Error(error.message);
 
-    await db.withTransactionAsync(async () => {
+    await withTransactionRetry(db, async () => {
       await db.runAsync('DELETE FROM agenda_stage_rules_snapshot');
       for (const row of data ?? []) {
         await db.runAsync(
@@ -144,7 +145,7 @@ export async function pullClientCycles(db: SQLiteDatabase, agentId: string, now:
     // empty table would. Only reached after a successful fetch — a thrown
     // error above (real failure, e.g. offline) is caught below and leaves
     // whatever was already synced untouched.
-    await db.withTransactionAsync(async () => {
+    await withTransactionRetry(db, async () => {
       await db.runAsync('DELETE FROM client_cycles_snapshot WHERE owner_id = ?', [agentId]);
       for (const row of data ?? []) {
         await db.runAsync(

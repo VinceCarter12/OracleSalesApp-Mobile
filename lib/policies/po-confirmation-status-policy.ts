@@ -13,18 +13,24 @@ import { CLOSE_DEAL_AGENDA, type ClientStatus, type MeetingOutcome } from '../..
 // captured offline has no server counterpart yet. It is NEVER a valid
 // value on the wire (`RemotePoConfirmationStatus`, types/database.ts) —
 // only a local bookkeeping state.
-export type LocalPoConfirmationStatus = 'draft' | 'pending' | 'approved' | 'rejected' | 'cancelled';
+export type LocalPoConfirmationStatus = 'draft' | 'pending' | 'approved' | 'rejected' | 'cancelled' | 'superseded';
 
 // ADR-046 point 7's exact display vocabulary: "submission_required /
 // pending / approved / rejected" — 'cancelled' is added for completeness
 // (Migration 039 line 39's CHECK constraint includes it, e.g. a requester
 // cancelling their own pending request) even though ADR-046 doesn't name it.
+// 'superseded' (2026-08-04, SQLite v24) mirrors `client_edit_requests`'
+// existing local-only terminal state: a submission the server permanently
+// rejected (RLS ownership check failed — e.g. the client was reassigned or
+// removed since the draft was captured), never a value that reaches the
+// wire.
 export type PoConfirmationDisplayStatus =
   | 'submission_required'
   | 'pending'
   | 'approved'
   | 'rejected'
-  | 'cancelled';
+  | 'cancelled'
+  | 'superseded';
 
 /**
  * Maps a local row's status to the display vocabulary ADR-046 point 7
@@ -37,6 +43,11 @@ export function derivePoConfirmationDisplayStatus(
   status: LocalPoConfirmationStatus
 ): PoConfirmationDisplayStatus {
   return status === 'draft' ? 'submission_required' : status;
+}
+
+/** A permanently-rejected submission can never be retried — distinct from 'draft', which always can. */
+export function isTerminalPoConfirmationFailure(status: LocalPoConfirmationStatus): boolean {
+  return status === 'superseded';
 }
 
 /** A draft (never-submitted) row is the only one eligible for `submitPoConfirmation()` — every other status already went through (or past) the server. */
@@ -60,6 +71,7 @@ export const PO_CONFIRMATION_STATUS_LABELS: Record<PoConfirmationDisplayStatus, 
   approved: 'Na-approve ang PO evidence',
   rejected: 'Na-reject ang PO evidence',
   cancelled: 'Kinansela ang PO request',
+  superseded: 'Hindi na maisusumite — kontakin ang admin/IT',
 };
 
 /** Badge tone tokens (BIZLINK_COLORS keys, matching COMPANION_REQUEST_BADGE_TONES's convention in lib/tag-along-service.ts). */
@@ -72,6 +84,7 @@ export const PO_CONFIRMATION_BADGE_TONES: Record<
   approved: { background: 'tintA', color: 'brand' },
   rejected: { background: 'soft', color: 'red' },
   cancelled: { background: 'soft', color: 'muted' },
+  superseded: { background: 'soft', color: 'red' },
 };
 
 // ADR-046 correction addendum point 3: the live discriminator literal —

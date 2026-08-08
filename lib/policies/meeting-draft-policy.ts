@@ -11,6 +11,16 @@ export interface MeetingDraftPayload {
   gpsLng: number;
   capturedAt: string;
   companions?: MeetingDraftCompanion[];
+  /**
+   * 2026-08-04 (Vince direction): agenda ticks are now part of the draft too
+   * — previously only mode/GPS/time/companions persisted, so exiting the
+   * in-progress screen silently reset the agenda checklist back to zero on
+   * return, even though the meeting itself was still "running". Both flows
+   * write this on every toggle (lib/use-meeting-recording-controller.ts's
+   * `updateDraftAgendas`); outcome/remarks (full form only) still aren't
+   * persisted — see lib/policies/meeting-draft-resume-policy.ts.
+   */
+  agendas?: string[];
 }
 
 function isMeetingMode(value: unknown): value is MeetingMode {
@@ -37,7 +47,17 @@ export function normalizeMeetingDraftPayload(value: unknown): MeetingDraftPayloa
           : [];
       })
     : undefined;
-  return { mode: record.mode, gpsLat: record.gpsLat, gpsLng: record.gpsLng, capturedAt: record.capturedAt, ...(companions ? { companions } : {}) };
+  const agendas = Array.isArray(record.agendas)
+    ? record.agendas.filter((item): item is string => typeof item === 'string')
+    : undefined;
+  return {
+    mode: record.mode,
+    gpsLat: record.gpsLat,
+    gpsLng: record.gpsLng,
+    capturedAt: record.capturedAt,
+    ...(companions ? { companions } : {}),
+    ...(agendas ? { agendas } : {}),
+  };
 }
 
 export function companionsForDraft(entries: TeamRosterEntry[]): MeetingDraftCompanion[] {
