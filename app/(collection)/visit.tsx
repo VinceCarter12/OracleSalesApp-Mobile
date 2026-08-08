@@ -26,7 +26,7 @@ import { BizSectionHeader } from '../../components/bizlink/BizSectionHeader';
 import { BizButton } from '../../components/bizlink/BizButton';
 import { PhotoSlot } from '../../components/collection-delivery/PhotoSlot';
 import { SignaturePad, type SignaturePadHandle } from '../../components/collection-delivery/SignaturePad';
-import { formatPeso, type PaymentMethod } from '../../lib/collection-delivery-data';
+import { formatPeso, isOpenForCollection, remainingBalance, type PaymentMethod } from '../../lib/collection-delivery-data';
 import { claimStop, collectPayment, markAdditionalSeen, releaseStop, rescheduleVisit } from '../../lib/collection-delivery-write';
 import { useCollectionStore } from '../../lib/use-collection-delivery';
 
@@ -174,10 +174,15 @@ export default function CollectPaymentScreen() {
   const showPayPhotoError = attempted && !payPhotoUri;
   const showReceiptError = attempted && showReceiptPhoto && !receiptPhotoUri;
   const showSignError = attempted && !signed;
-  // Soft over-payment check: a valid amount above the recorded due is still
-  // ALLOWED (real overpayments happen) — just flagged so a typo like 98000 for
-  // 9800 gets a second look. Only when a real due exists (>0).
-  const overDue = showAmount && amountValid && store !== null && store.due > 0 && amountValue > store.due;
+  // Remaining balance still owed on this store (web 070): original due minus
+  // what's already been paid across prior partial payments. This is what a new
+  // payment draws down, and what the over-payment check compares against.
+  const remaining = store ? remainingBalance(store) : 0;
+  const isPartial = store?.status === 'partial';
+  // Soft over-payment check: a valid amount above the remaining BALANCE is still
+  // ALLOWED (real overpayments happen) — just flagged so a typo gets a second
+  // look. Only when a real balance exists (>0).
+  const overDue = showAmount && amountValid && remaining > 0 && amountValue > remaining;
 
   function iconColor(mode: PayMode) {
     return payMode === mode ? BIZLINK_ON_INK.solid : BIZLINK_COLORS.muted;
@@ -224,18 +229,30 @@ export default function CollectPaymentScreen() {
       }
     }
     // Render the customer signature to a JPEG so it's ready to upload once the
-    // collection_visits signature column exists (see collectPayment).
+    // collection_payments signature column exists (see collectPayment).
     const signatureUri = (await sigRef.current?.captureToFile()) ?? undefined;
+    // cash/check/gcash = the typed amount (may be partial). counter/delivery-
+    // receipt aren't cash to the collector — they settle the whole remaining
+    // balance in one go (and the payments table's CHECK requires amount > 0, so
+    // 0 is never valid). `remaining` falls back to the due for a fresh store.
+    const paidAmount = showAmount ? amountValue : Math.max(remaining, 0);
+    // Fully settles the balance? → celebrate. A partial payment goes back to the
+    // list, which now shows the store as Partial with its reduced balance.
+    const settlesFull = paidAmount >= remaining;
     await collectPayment(db, storeId, profileId, {
       method: payMode,
-      amount: showAmount ? amountValue : 0,
+      amount: paidAmount,
       gps: fix ?? undefined,
       remarks,
       paymentPhotoUri: payPhotoUri ?? undefined,
       receiptPhotoUri: showReceiptPhoto ? receiptPhotoUri ?? undefined : undefined,
       signatureUri,
     });
-    router.replace('/(collection)/celebrate');
+    if (settlesFull) {
+      router.replace('/(collection)/celebrate');
+    } else {
+      router.back();
+    }
   }
 
   function reschedule(): void {
@@ -290,8 +307,9 @@ export default function CollectPaymentScreen() {
           </YStack>
         </XStack>
 
-        {/* Claim / "On the way" — hard lock (web 046) */}
-        {store.status === 'pending' ? (
+        {/* Claim / "On the way" — hard lock (web 046). Also shown for a partial
+            store, which is still open for a follow-up collection. */}
+        {isOpenForCollection(store.status) ? (
           claimedByOther ? (
             <XStack alignItems="center" gap="$2.5" backgroundColor={BIZLINK_COLORS.tintB} borderRadius={16} paddingHorizontal={14} paddingVertical={12} marginTop={10}>
               <Lock size={16} color={COLORS.ledgeRed} strokeWidth={1.75} />
@@ -364,18 +382,19 @@ export default function CollectPaymentScreen() {
             {/* Due surfaced right by the input (2026-08-08, per request) so the
                 collector can compare what's owed to what they're entering,
                 without going back to the dashboard. */}
-            <XStack
-              alignItems="center"
-              justifyContent="space-between"
-              backgroundColor={BIZLINK_COLORS.tintA}
-              borderRadius={14}
-              paddingHorizontal={14}
-              paddingVertical={10}
-              marginBottom={8}
-            >
-              <Text fontSize={12.5} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted}>Amount due</Text>
-              <Text fontSize={15} fontFamily={BIZLINK_FONTS.semibold} color={BIZLINK_COLORS.ink}>{formatPeso(store.due)}</Text>
-            </XStack>
+            <YStack backgroundColor={BIZLINK_COLORS.tintA} borderRadius={14} paddingHorizontal={14} paddingVertical={10} marginBottom={8}>
+              <XStack alignItems="center" justifyContent="space-between">
+                <Text fontSize={12.5} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted}>
+                  {isPartial ? 'Balance still due' : 'Amount due'}
+                </Text>
+                <Text fontSize={15} fontFamily={BIZLINK_FONTS.semibold} color={BIZLINK_COLORS.ink}>{formatPeso(remaining)}</Text>
+              </XStack>
+              {isPartial ? (
+                <Text fontSize={10.5} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} marginTop={3}>
+                  Already paid {formatPeso(store.amountCollected ?? 0)} of {formatPeso(store.due)}
+                </Text>
+              ) : null}
+            </YStack>
             <TextInput
               value={amount}
               onChangeText={(t) => setAmount(formatAmountInput(t))}
@@ -405,7 +424,7 @@ export default function CollectPaymentScreen() {
             ) : overDue ? (
               <XStack backgroundColor={COLORS.amberSoft} borderRadius={14} paddingHorizontal={13} paddingVertical={9} marginTop={8}>
                 <Text fontSize={11.5} fontFamily={BIZLINK_FONTS.medium} color={COLORS.orange}>
-                  This is more than the {formatPeso(store.due)} due — double-check the amount. You can still proceed.
+                  This is more than the {formatPeso(remaining)} balance — double-check the amount. You can still proceed.
                 </Text>
               </XStack>
             ) : amountValid ? (
@@ -499,7 +518,7 @@ export default function CollectPaymentScreen() {
             style={{ flex: 1 }}
           />
           <BizButton
-            label="Collected"
+            label="Record payment"
             variant="brand"
             onPress={confirmCollect}
             // Tappable when incomplete so confirmCollect can flag the missing

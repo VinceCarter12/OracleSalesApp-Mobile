@@ -14,7 +14,9 @@ import {
   formatPeso,
   formatShortDateTime,
   getCollectionSummary,
+  isOpenForCollection,
   isScheduledForToday,
+  remainingBalance,
   sortAdditionalFirst,
   type CollectionStore,
 } from '../../lib/collection-delivery-data';
@@ -59,7 +61,9 @@ function StoreRow({ store, onPress }: { store: CollectionStore; onPress?: () => 
         </XStack>
         <XStack gap="$2.5">
           <Text fontSize={10.5} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted}>{store.area}</Text>
-          <Text fontSize={10.5} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted}>Due {formatPeso(store.due)}</Text>
+          <Text fontSize={10.5} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted}>
+            {store.status === 'partial' ? `Balance ${formatPeso(remainingBalance(store))}` : `Due ${formatPeso(store.due)}`}
+          </Text>
           {store.visitedAt ? (
             <Text fontSize={10.5} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted}>{formatClockTime(store.visitedAt)}</Text>
           ) : null}
@@ -82,6 +86,8 @@ function StoreRow({ store, onPress }: { store: CollectionStore; onPress?: () => 
         <StatusBadge label="Collected" background={COLORS.greenSoft} color={COLORS.ledgeGreen} />
       ) : store.status === 'rescheduled' ? (
         <StatusBadge label={`Moved to ${store.reschedTo}`} background={COLORS.amberSoft} color={COLORS.orange} />
+      ) : store.status === 'partial' ? (
+        <StatusBadge label="Partial" background={COLORS.purpleSoft} color={COLORS.purple} />
       ) : store.onTheWay ? (
         <StatusBadge label="On the way" background={COLORS.amberSoft} color={COLORS.orange} />
       ) : (
@@ -114,7 +120,7 @@ export default function CollectionTodayScreen() {
       key={store.id}
       store={store}
       onPress={
-        store.status === 'pending'
+        isOpenForCollection(store.status)
           ? () => router.push({ pathname: '/(collection)/visit', params: { id: String(store.id) } })
           : undefined
       }

@@ -20,7 +20,9 @@ import {
   formatPesoCompact,
   formatShortDateTime,
   getCollectionSummary,
+  isOpenForCollection,
   isScheduledForToday,
+  remainingBalance,
   sortAdditionalFirst,
   type CollectionStore,
 } from '../../lib/collection-delivery-data';
@@ -79,6 +81,9 @@ function StoreBadge({ store }: { store: CollectionStore }) {
   if (store.status === 'rescheduled') {
     return <StatusBadge label={`Moved to ${store.reschedTo}`} background={COLORS.amberSoft} color={COLORS.orange} />;
   }
+  if (store.status === 'partial') {
+    return <StatusBadge label="Partial" background={COLORS.purpleSoft} color={COLORS.purple} />;
+  }
   if (store.onTheWay) {
     return <StatusBadge label="On the way" background={COLORS.amberSoft} color={COLORS.orange} />;
   }
@@ -106,7 +111,7 @@ function RoutePreviewRow({ store, onPress }: { store: CollectionStore; onPress: 
             ) : null}
           </XStack>
           <Text fontSize={11.5} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted}>
-            {store.area} · Due {formatPeso(store.due)}
+            {store.area} · {store.status === 'partial' ? `Balance ${formatPeso(remainingBalance(store))}` : `Due ${formatPeso(store.due)}`}
           </Text>
           {store.syncedAt ? (
             <Text fontSize={10.5} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted}>
@@ -141,7 +146,7 @@ export default function CollectionDashboardScreen() {
   const summary = getCollectionSummary(todayStores);
   // Additional (admin added mid-day) stores float to the front so the 3-row
   // route preview surfaces an urgent late addition instead of burying it.
-  const pendingStores = sortAdditionalFirst(todayStores.filter((s) => s.status === 'pending'));
+  const pendingStores = sortAdditionalFirst(todayStores.filter((s) => isOpenForCollection(s.status)));
   const routePreview = pendingStores.slice(0, 3);
   const greetingName = firstName(fullName) || 'Collector';
 

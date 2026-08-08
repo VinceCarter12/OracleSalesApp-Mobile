@@ -71,7 +71,9 @@ export type RemoteApprovalRequestKind = 'po_confirmation' | 'tag_along' | 'clien
 // F-007 Collection & Delivery (web migrations 043/044/045/046, deployed
 // 2026-07-28). Lowercase remote value sets — mobile's display casing
 // ('Cash'/etc.) is applied at render time (lib/collection-delivery-data.ts).
-export type RemoteCollectionStatus = 'collected' | 'rescheduled' | 'pending';
+// 'partial' (web 070): a collection with at least one payment but the running
+// total still below `amount_due` — stays open and re-lists until fully paid.
+export type RemoteCollectionStatus = 'collected' | 'rescheduled' | 'pending' | 'partial';
 // NOTE (F-007): 'delivery_receipt' requires the web DB `payment_method` CHECK
 // constraint to be widened to accept it — otherwise the outbox push is rejected.
 export type RemotePaymentMethod = 'cash' | 'check' | 'gcash' | 'counter' | 'delivery_receipt';
@@ -484,6 +486,29 @@ export type Database = {
         };
         Insert: Partial<Database['public']['Tables']['collection_visits']['Row']>;
         Update: Partial<Database['public']['Tables']['collection_visits']['Row']>;
+        Relationships: [];
+      };
+      // F-007 Partial payment (web migration 070): one row per cash handover
+      // against a visit. Collector RLS is INSERT + SELECT own only (no UPDATE),
+      // so proof URLs go IN the insert; a roll-up trigger sums these onto the
+      // parent visit's amount_collected/status.
+      collection_payments: {
+        Row: {
+          id: string;
+          visit_id: string;
+          collector_id: string;
+          amount: number;
+          payment_method: RemotePaymentMethod;
+          payment_photo_url: string | null;
+          delivery_receipt_photo_url: string | null;
+          gps_lat: number | null;
+          gps_lng: number | null;
+          remarks: string | null;
+          paid_at: string;
+          created_at: string;
+        };
+        Insert: Partial<Database['public']['Tables']['collection_payments']['Row']>;
+        Update: Partial<Database['public']['Tables']['collection_payments']['Row']>;
         Relationships: [];
       };
       // F-007 Delivery module — migrations 044 (base) + 045 (client_name) + 046
