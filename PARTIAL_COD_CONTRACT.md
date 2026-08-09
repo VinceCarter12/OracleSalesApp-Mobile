@@ -102,32 +102,37 @@ expose `cod_amount` so the phone can show the balance.
 
 ---
 
-## What MOBILE shipped now (2026-08-09, interim — no schema needed)
+## ✅ What MOBILE built (2026-08-09, web 073 deployed)
 
-Delivery COD payment step reached **parity with the Collection screen's amount UX**:
+**Phase A — display:**
+- `'partial'` added to `DeliveryPoStatus` (+ `RemotePurchaseOrderStatus`);
+  `remainingCod()` / `isOpenForDelivery()` helpers; `getDeliverySummary` counts
+  partial as still-to-do and folds partial COD into on-hand.
+- **"Partial"** badge (purple) + **remaining COD balance** on the delivery
+  dashboard preview, the PO list, and the Deliver screen. A partial PO stays on
+  the list and is openable for the next COD installment.
 
-- **Amount due (COD)** surfaced in a card right above the "Amount collected" input.
-- Red **required-field validation** across the deliver form (truck plate, proof
-  photo, COD payment photo, COD amount) — fields light up red on blur / on a
-  submit attempt, matching Collection.
-- Soft **over-payment warning** (amount above `cod_due` is allowed, just flagged);
-  green "recorded" confirmation otherwise.
-
-**Interim gap (until web ships §1–§5):** a COD amount *below* `cod_due` currently
-completes the PO as `delivered` recording that partial `cod_amount` — the shortfall
-is **not** yet tracked as an open balance. True "stays open with carried balance"
-is the web-first build below.
-
-## What MOBILE will build after web ships (mirror of collection Phase A + B)
-
-- **Phase A — display:** `'partial'` in `DeliveryPoStatus`; a "Partial" badge +
-  remaining COD balance on the dashboard/PO list/Deliver screen; partial POs stay
-  on the list and are openable for the next COD installment.
-- **Phase B — write:** the COD step INSERTs a `cod_payments` row (full or partial)
-  instead of writing `cod_amount` directly — through a dedicated offline
-  queue + processor (upload photo → insert with URL), idempotent on the client
-  UUID, exactly like `lib/sync/collection-payments.ts`. Optimistic local roll-up
-  mirrors the server trigger.
+**Phase B — write:**
+- The COD step now **INSERTs a `cod_payments` row** (full or partial) instead of
+  writing `cod_amount` directly. Driver RLS is INSERT-only, so it goes through a
+  dedicated **offline queue + processor** (`lib/sync/cod-payments.ts`, twin of
+  `collection-payments.ts`): **upload the proof photo first, then insert** with its
+  URL. Idempotent on the client UUID; own retry/backoff. Local `cod_payments` queue
+  table = SQLite **v28**.
+- **Ordering guard honored:** the handover (`driver_id`/`time_out` + plate/proof/
+  receiver/gps) rides the normal `purchase_orders` outbox UPDATE carrying **only**
+  the handover — NOT `status`/`cod_amount`/`cod_method` (those are the trigger's).
+  The COD processor gates each insert on the parent PO being locally `synced`, and
+  `processOutbox` runs before `processCodPayments` in a pass, so a first-delivery +
+  payment settle in one online pass without the payment ever landing on an
+  un-handed-over row.
+- **Reopened-`partial` top-up** (`collectCodTopUp`): the Deliver screen detects a
+  `partial` PO and shows a COD-only step (no re-delivery) — writes **no** handover
+  fields, just another `cod_payments` row.
+- Optimistic local roll-up mirrors the server trigger (Partial/Delivered + reduced
+  balance shown immediately, offline too); sync-down refreshes with authoritative
+  totals. A partial COD returns to the list; a full one flips to `delivered` and
+  shows the celebration screen.
 
 ## Open questions for the owner
 

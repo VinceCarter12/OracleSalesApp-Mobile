@@ -8,7 +8,7 @@ import { useBizlinkColors, BIZLINK_FONTS, COLORS } from '../../lib/theme';
 import { StatusBadge } from '../../components/ui/StatusBadge';
 import { BizTopBar } from '../../components/bizlink/BizTopBar';
 import { BizSectionHeader } from '../../components/bizlink/BizSectionHeader';
-import { formatClockTime, formatPeso, formatShortDateTime, isScheduledForToday, type DeliveryPo } from '../../lib/collection-delivery-data';
+import { formatClockTime, formatPeso, formatShortDateTime, isOpenForDelivery, isScheduledForToday, remainingCod, type DeliveryPo } from '../../lib/collection-delivery-data';
 import { useDeliveryPos } from '../../lib/use-collection-delivery';
 import { useSyncRefresh } from '../../lib/use-sync-refresh';
 
@@ -24,6 +24,9 @@ function PoBadge({ po }: { po: DeliveryPo }) {
   }
   if (po.status === 'failed') {
     return <StatusBadge label="Backload" background={COLORS.redSoft} color={COLORS.ledgeRed} />;
+  }
+  if (po.status === 'partial') {
+    return <StatusBadge label="Partial" background={COLORS.purpleSoft} color={COLORS.purple} />;
   }
   if (po.onTheWay) {
     return <StatusBadge label="On the way" background={COLORS.amberSoft} color={COLORS.orange} />;
@@ -56,7 +59,11 @@ function PoRow({ po, onPress }: { po: DeliveryPo; onPress?: () => void }) {
           {po.area}
         </Text>
         <XStack gap="$2.5">
-          {po.cod && po.codDue ? (
+          {po.cod && po.status === 'partial' ? (
+            <Text fontSize={10.5} fontFamily={BIZLINK_FONTS.semibold} color={COLORS.purple}>
+              COD balance · {formatPeso(remainingCod(po))}
+            </Text>
+          ) : po.cod && po.codDue ? (
             <Text fontSize={10.5} fontFamily={BIZLINK_FONTS.semibold} color={BIZLINK_COLORS.navy}>
               COD · {formatPeso(po.codDue)}
             </Text>
@@ -106,7 +113,7 @@ export default function DeliveryPosScreen() {
       key={po.id}
       po={po}
       onPress={
-        po.status === 'pending'
+        isOpenForDelivery(po.status)
           ? () => router.push({ pathname: '/(delivery)/deliver', params: { id: po.id } })
           : undefined
       }

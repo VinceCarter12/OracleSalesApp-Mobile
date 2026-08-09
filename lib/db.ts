@@ -12,7 +12,7 @@ export const DATABASE_NAME = 'oracle-sales-app.db';
 
 // Bump this and add a new `case` below whenever the schema changes — never
 // edit an already-shipped case, since devices may have already run it.
-const LATEST_SCHEMA_VERSION = 30;
+const LATEST_SCHEMA_VERSION = 31;
 
 const SELFIE_PROOF_COLUMNS: readonly (readonly [string, string])[] = [
   ['selfie_captured_at', 'TEXT'],
@@ -1213,14 +1213,51 @@ export async function migrateDbIfNeeded(db: SQLiteDatabase): Promise<void> {
     currentVersion = 29;
   }
 
+  // F-007 Delivery partial COD (web migration 073, 2026-08-09): the delivery twin
+  // of the collection_payments queue above. The driver's RLS on the remote
+  // `cod_payments` is INSERT-only (no UPDATE), so the proof photo URL rides IN the
+  // insert — uploaded (photo first) THEN inserted by its own processor
+  // (lib/sync/cod-payments.ts). ONE difference from collection: a payment may only
+  // land AFTER the PO's handover (driver_id + time_out) has synced — else the web
+  // trigger records the money but leaves status 'pending' (web 073 ordering guard),
+  // so the processor gates each insert on the parent PO being locally 'synced'.
+  // The remote `purchase_orders.status='partial'` roll-up (server trigger) is what
+  // the UI reads back on the next sync-down — no local partial mirror needed.
   if (currentVersion === 29) {
-    await ensureSelfieProofColumns(db);
+    await db.execAsync(`
+      CREATE TABLE IF NOT EXISTS cod_payments (
+        id TEXT PRIMARY KEY NOT NULL,
+        po_id TEXT NOT NULL,
+        driver_id TEXT NOT NULL,
+        amount REAL NOT NULL,
+        payment_method TEXT NOT NULL,
+        payment_photo_uri TEXT,
+        payment_photo_url TEXT,
+        gps_lat REAL,
+        gps_lng REAL,
+        remarks TEXT,
+        paid_at TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'pending',
+        retry_count INTEGER NOT NULL DEFAULT 0,
+        next_attempt_at TEXT,
+        last_error TEXT,
+        created_at TEXT NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_cod_payments_status ON cod_payments (status);
+      CREATE INDEX IF NOT EXISTS idx_cod_payments_po ON cod_payments (po_id);
+    `);
     currentVersion = 30;
   }
 
+  if (currentVersion === 30) {
+    await ensureSelfieProofColumns(db);
+    currentVersion = 31;
+  }
+
   // Keep this unconditional as a final defensive check for databases that
-  // traversed an older path with a partially-applied v29 block.
+  // traversed an older path with a partially-applied v30 block.
   await ensureSelfieProofColumns(db);
+
 
   await db.execAsync(`PRAGMA user_version = ${currentVersion}`);
 }

@@ -11,6 +11,7 @@ import { AUDIT_OUTBOX_TABLE_NAME } from './sync/audit-log';
 import { processPendingUploads, recoverStuckPendingUploads } from './sync/photo-uploads';
 import { reconcileAdditionalAcks } from './sync/additional-acks';
 import { processCollectionPayments } from './sync/collection-payments';
+import { processCodPayments } from './sync/cod-payments';
 import { uploadPendingAvatar } from './profile-avatar';
 import { retryFailedPendingUpload, type PendingUploadStatus } from './sync/pending-upload-status';
 import { createCoalescingRunner } from './sync/coalescing-runner';
@@ -211,7 +212,24 @@ async function runSyncOnce(agentId: string, teamId?: string | null): Promise<Syn
   // then INSERT it (collector RLS is insert-only, so URLs ride in the insert).
   // Runs BEFORE syncDown so the server trigger's roll-up onto the visit
   // (amount_collected + partial/collected status) is pulled back this same pass.
-  const paymentResult = await processCollectionPayments(db, agentId);
+  // Best-effort, like reconcileAdditionalAcks below: a failure in a payment lane
+  // (e.g. a missing migration, a bad row) must NEVER abort the pass and starve
+  // processOutbox's already-pushed rows or the syncDown that reads the server's
+  // roll-up back. Each lane manages its own per-row retry; a thrown error here is
+  // swallowed so the pass still completes.
+  const paymentResult = await processCollectionPayments(db, agentId).catch((err: unknown) => {
+    console.error('processCollectionPayments failed', err);
+    return { synced: 0, failed: 0 };
+  });
+  // F-007 Delivery partial COD (web 073): same lane as collection payments —
+  // upload each queued COD proof then INSERT it (driver RLS is insert-only). Runs
+  // AFTER processOutbox (so a first-delivery's handover UPDATE has synced, which
+  // its own `sync_status='synced'` guard requires) and BEFORE syncDown (so the
+  // server trigger's cod_amount/partial roll-up is pulled back this same pass).
+  const codPaymentResult = await processCodPayments(db, agentId).catch((err: unknown) => {
+    console.error('processCodPayments failed', err);
+    return { synced: 0, failed: 0 };
+  });
   await syncDown(agentId, teamId);
   // F-007 Additional Collection (web 068/069): acknowledge additional stores
   // back to the server via the collector-only RPCs — received (just pulled) and
@@ -229,14 +247,15 @@ async function runSyncOnce(agentId: string, teamId?: string | null): Promise<Syn
     console.error('setLastSyncAt failed', err);
   });
   return {
-    synced: outboxResult.synced + photoPatchResult.synced + paymentResult.synced,
+    synced: outboxResult.synced + photoPatchResult.synced + paymentResult.synced + codPaymentResult.synced,
     failed:
       outboxResult.failed +
       outboxResult.conflicted +
       uploadResult.failed +
       photoPatchResult.failed +
       photoPatchResult.conflicted +
-      paymentResult.failed,
+      paymentResult.failed +
+      codPaymentResult.failed,
     connectivity,
   };
 }
