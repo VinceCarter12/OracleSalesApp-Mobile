@@ -2,7 +2,7 @@ import { useCallback, useState } from 'react';
 import { Pressable, RefreshControl, ScrollView } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router, useFocusEffect } from 'expo-router';
-import { Bell, ClipboardList, History, Hourglass, User, Vault } from 'lucide-react-native';
+import { Bell, ClipboardList, Footprints, History, Hourglass, User, Vault } from 'lucide-react-native';
 import { Text, View, XStack, YStack } from 'tamagui';
 import { useBizlinkColors, BIZLINK_FONTS, BIZLINK_ON_INK, COLORS } from '../../lib/theme';
 import { useSession } from '../../lib/session-store';
@@ -113,6 +113,14 @@ function RoutePreviewRow({ store, onPress }: { store: CollectionStore; onPress: 
           <Text fontSize={11.5} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted}>
             {store.area} · {store.status === 'partial' ? `Balance ${formatPeso(remainingBalance(store))}` : `Due ${formatPeso(store.due)}`}
           </Text>
+          {store.onTheWay && store.claimedBy ? (
+            <XStack alignItems="center" gap="$1.5">
+              <Footprints size={12} color={COLORS.orange} strokeWidth={1.75} />
+              <Text fontSize={10.5} fontFamily={BIZLINK_FONTS.semibold} color={COLORS.orange}>
+                {store.claimedBy} is collecting it
+              </Text>
+            </XStack>
+          ) : null}
           {store.syncedAt ? (
             <Text fontSize={10.5} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted}>
               Received {formatShortDateTime(store.syncedAt)}

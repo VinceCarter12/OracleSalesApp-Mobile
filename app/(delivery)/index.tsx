@@ -2,7 +2,7 @@ import { useCallback, useState } from 'react';
 import { Pressable, RefreshControl, ScrollView } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router, useFocusEffect } from 'expo-router';
-import { Bell, History, Package, PackageX, User, Vault } from 'lucide-react-native';
+import { Bell, History, Package, PackageX, Truck, User, Vault } from 'lucide-react-native';
 import { Text, XStack, YStack } from 'tamagui';
 import { useBizlinkColors, BIZLINK_FONTS, COLORS } from '../../lib/theme';
 import { useSession } from '../../lib/session-store';
@@ -71,6 +71,14 @@ function PoPreviewRow({ po, onPress }: { po: DeliveryPo; onPress: () => void }) 
           <Text fontSize={11.5} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} numberOfLines={1}>
             {po.area}{po.cod && po.codDue ? ` · COD ${formatPeso(po.codDue)}` : ''}
           </Text>
+          {po.onTheWay && po.claimedBy ? (
+            <XStack alignItems="center" gap="$1.5">
+              <Truck size={12} color={COLORS.orange} strokeWidth={1.75} />
+              <Text fontSize={10.5} fontFamily={BIZLINK_FONTS.semibold} color={COLORS.orange}>
+                {po.claimedBy} is bringing it
+              </Text>
+            </XStack>
+          ) : null}
           {po.syncedAt ? (
             <Text fontSize={10.5} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted}>
               Received {formatShortDateTime(po.syncedAt)}
