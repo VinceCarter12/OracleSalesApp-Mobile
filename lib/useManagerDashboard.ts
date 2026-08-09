@@ -24,6 +24,7 @@ export function useManagerDashboard(scope: ManagerScope = DEFAULT_MANAGER_SCOPE)
   const { teamId, profileId } = useSession();
   const [summary, setSummary] = useState<ManagerDashboardSummary | null>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     if (!teamId || !profileId) {
@@ -32,9 +33,13 @@ export function useManagerDashboard(scope: ManagerScope = DEFAULT_MANAGER_SCOPE)
       return;
     }
     setLoading(true);
+    setError(null);
     try {
       const data = await fetchManagerDashboard(teamId, managerProfile().firstName, profileId, scope);
       setSummary(data);
+    } catch (err) {
+      console.error('[useManagerDashboard] load failed:', err instanceof Error ? err.message : String(err));
+      setError('Hindi na-load ang dashboard. Subukan ulit.');
     } finally {
       setLoading(false);
     }
@@ -48,5 +53,5 @@ export function useManagerDashboard(scope: ManagerScope = DEFAULT_MANAGER_SCOPE)
   // client (ADR-020) so the new count shows up without a restart.
   useFocusEffect(useCallback(() => { load(); }, [load]));
 
-  return { summary, loading };
+  return { summary, loading, error, refresh: load };
 }

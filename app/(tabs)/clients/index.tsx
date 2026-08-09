@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { FlatList, Pressable, RefreshControl, ScrollView, TextInput } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router, useFocusEffect } from 'expo-router';
-import { Building2, ChevronLeft, ChevronRight, Plus, SlidersHorizontal, X } from 'lucide-react-native';
+import { Building2, Plus, SlidersHorizontal } from 'lucide-react-native';
 import { Spinner, Text, XStack, YStack } from 'tamagui';
 import { useBizlinkColors, BIZLINK_FONTS, BIZLINK_ON_INK } from '../../../lib/theme';
 import { useClients } from '../../../lib/useClients';
@@ -19,6 +19,10 @@ import { StatusBadge } from '../../../components/ui/StatusBadge';
 import { SyncBadge } from '../../../components/sync/SyncBadge';
 import { BizCard } from '../../../components/bizlink/BizCard';
 import { BizChip } from '../../../components/bizlink/BizChip';
+import { BizFilterSheet } from '../../../components/bizlink/BizFilterSheet';
+import { BizFilterSheetRow } from '../../../components/bizlink/BizFilterSheetRow';
+import { DateRangeFilterRow } from '../../../components/bizlink/DateRangeFilterRow';
+import type { DateRange } from '../../../components/bizlink/DateRangePickerModal';
 import { BizFloatingPager } from '../../../components/bizlink/BizFloatingPager';
 import { BizTopBar } from '../../../components/bizlink/BizTopBar';
 import { PAGINATION_PAGE_SIZE, usePagination } from '../../../lib/use-pagination';
@@ -49,20 +53,13 @@ const SORT_OPTIONS: Array<{ value: SortOption; label: string }> = [
   { value: 'company_az', label: 'Company A–Z' },
 ];
 
-/** `YYYY-MM` key for a Date, used by the filter panel's month stepper. */
-function monthKey(date: Date): string {
-  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
-}
-
-function shiftMonthKey(key: string, delta: number): string {
-  const [year, month] = key.split('-').map(Number);
-  const shifted = new Date(year, month - 1 + delta, 1);
-  return monthKey(shifted);
-}
-
-function formatMonthKey(key: string): string {
-  const [year, month] = key.split('-').map(Number);
-  return new Date(year, month - 1, 1).toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
+/** Inclusive day-level bounds check against a `DateRangeFilterRow` selection. */
+function isWithinDateRange(date: Date, range: DateRange | null): boolean {
+  if (!range) return true;
+  const t = date.getTime();
+  const start = new Date(range.start.getFullYear(), range.start.getMonth(), range.start.getDate()).getTime();
+  const end = new Date(range.end.getFullYear(), range.end.getMonth(), range.end.getDate(), 23, 59, 59, 999).getTime();
+  return t >= start && t <= end;
 }
 
 function sortClients(list: Client[], sort: SortOption): Client[] {
@@ -224,7 +221,7 @@ export default function ClientsScreen() {
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState<StatusFilter>('all');
   const [filterOpen, setFilterOpen] = useState(false);
-  const [monthFilter, setMonthFilter] = useState<string | null>(null);
+  const [dateRange, setDateRange] = useState<DateRange | null>(null);
   const [cityFilter, setCityFilter] = useState<string>(ALL_CITIES);
   const [sort, setSort] = useState<SortOption>('newest');
   // F-204: batch-loaded once per focus, not per-row (same N+1 avoidance as
@@ -262,7 +259,7 @@ export default function ClientsScreen() {
     const matched = clients.filter((c) => {
       if (filter !== 'all' && getClientStatus(c) !== filter) return false;
       if (cityFilter !== ALL_CITIES && c.city !== cityFilter) return false;
-      if (monthFilter && monthKey(new Date(c.created_at)) !== monthFilter) return false;
+      if (!isWithinDateRange(new Date(c.created_at), dateRange)) return false;
       if (query) {
         const matchesName = c.company_name.toLowerCase().includes(query);
         const matchesCity = (c.city ?? '').toLowerCase().includes(query);
@@ -271,13 +268,13 @@ export default function ClientsScreen() {
       return true;
     });
     return sortClients(matched, sort);
-  }, [clients, search, filter, cityFilter, monthFilter, sort]);
+  }, [clients, search, filter, cityFilter, dateRange, sort]);
 
   // Wireframe #a-clients' `aRenderPager` (page size 10) applied AFTER the
   // filter/search pass above — same order as `aRenderClientsFiltered`,
   // which paginates the already-filtered `shown` array. Resets to page 1
   // whenever any filter/sort/search input changes.
-  const resetKey = `${filter}:${search.trim().toLowerCase()}:${cityFilter}:${monthFilter ?? 'all'}:${sort}`;
+  const resetKey = `${filter}:${search.trim().toLowerCase()}:${cityFilter}:${dateRange ? `${dateRange.start.getTime()}-${dateRange.end.getTime()}` : 'all'}:${sort}`;
   const { page, totalPages, pageItems, setPage } = usePagination(filtered, resetKey);
 
   useEffect(() => {
@@ -286,8 +283,9 @@ export default function ClientsScreen() {
     }
   }, [clients.length, loading, pageItems.length]);
 
-  const filtersActive = cityFilter !== ALL_CITIES || monthFilter !== null || sort !== 'needs_action';
-  const currentMonthKeyValue = monthKey(new Date());
+  const filtersActive = cityFilter !== ALL_CITIES || dateRange !== null || sort !== 'newest';
+
+  const resetFilters = (): void => { setCityFilter(ALL_CITIES); setDateRange(null); setSort('newest'); };
 
   return (
     <YStack flex={1} backgroundColor={BIZLINK_COLORS.canvas} paddingTop={insets.top}>
@@ -314,110 +312,55 @@ export default function ClientsScreen() {
         }
       />
 
-      <XStack paddingHorizontal="$4" justifyContent="flex-start">
-        <Pressable
-          onPress={() => setFilterOpen((open) => !open)}
-          style={{
-            flexDirection: 'row',
-            alignItems: 'center',
-            gap: 6,
-            backgroundColor: filterOpen || filtersActive ? BIZLINK_COLORS.ink : BIZLINK_COLORS.card,
-            borderRadius: 999,
-            paddingHorizontal: 13,
-            paddingVertical: 7,
-            minHeight: 44,
-          }}
-        >
-          <SlidersHorizontal
-            size={12}
-            color={filterOpen || filtersActive ? BIZLINK_ON_INK.solid : BIZLINK_COLORS.muted}
-            strokeWidth={1.75}
-          />
-          <Text
-            fontSize={11.5}
-            fontFamily={BIZLINK_FONTS.medium}
-            color={filterOpen || filtersActive ? BIZLINK_ON_INK.solid : BIZLINK_COLORS.muted}
-          >
-            Filters
-          </Text>
-        </Pressable>
-      </XStack>
-
       <YStack paddingHorizontal="$4" gap="$2.5" marginTop="$2">
-        <TextInput
-          value={search}
-          onChangeText={setSearch}
-          placeholder="Search company or city…"
-          placeholderTextColor={BIZLINK_COLORS.muted}
-          style={{
-            height: 52,
-            borderRadius: 16,
-            paddingHorizontal: 16,
-            fontFamily: BIZLINK_FONTS.medium,
-            fontSize: 14.5,
-            color: BIZLINK_COLORS.text,
-            backgroundColor: BIZLINK_COLORS.card,
-            borderWidth: 1,
-            borderColor: BIZLINK_COLORS.line,
-          }}
-        />
-
-        {filterOpen ? (
-          <YStack backgroundColor={BIZLINK_COLORS.card} borderRadius={20} padding={14} gap="$3">
-            <YStack gap="$1.5">
-              <Text fontSize={11} fontFamily={BIZLINK_FONTS.semibold} color={BIZLINK_COLORS.muted}>DATE / MONTH</Text>
-              <XStack alignItems="center" gap="$2">
-                <Pressable
-                  onPress={() => setMonthFilter(shiftMonthKey(monthFilter ?? currentMonthKeyValue, -1))}
-                  style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: BIZLINK_COLORS.soft, alignItems: 'center', justifyContent: 'center' }}
-                >
-                  <ChevronLeft size={14} color={BIZLINK_COLORS.text} strokeWidth={1.75} />
-                </Pressable>
-                <Text flex={1} textAlign="center" fontSize={13} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.text}>
-                  {monthFilter ? formatMonthKey(monthFilter) : 'All time'}
-                </Text>
-                {monthFilter ? (
-                  <Pressable
-                    onPress={() => setMonthFilter(null)}
-                    style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: BIZLINK_COLORS.soft, alignItems: 'center', justifyContent: 'center' }}
-                  >
-                    <X size={14} color={BIZLINK_COLORS.text} strokeWidth={1.75} />
-                  </Pressable>
-                ) : (
-                  <Pressable
-                    onPress={() => setMonthFilter(currentMonthKeyValue)}
-                    style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: BIZLINK_COLORS.soft, alignItems: 'center', justifyContent: 'center' }}
-                  >
-                    <ChevronRight size={14} color={BIZLINK_COLORS.text} strokeWidth={1.75} />
-                  </Pressable>
-                )}
-              </XStack>
-            </YStack>
-
-            <YStack gap="$1.5">
-              <Text fontSize={11} fontFamily={BIZLINK_FONTS.semibold} color={BIZLINK_COLORS.muted}>CITY</Text>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-                <XStack gap="$2">
-                  <BizChip label="All cities" selected={cityFilter === ALL_CITIES} onPress={() => setCityFilter(ALL_CITIES)} />
-                  {cityOptions.map((city) => (
-                    <BizChip key={city} label={city} selected={cityFilter === city} onPress={() => setCityFilter(city)} />
-                  ))}
-                </XStack>
-              </ScrollView>
-            </YStack>
-
-            <YStack gap="$1.5">
-              <Text fontSize={11} fontFamily={BIZLINK_FONTS.semibold} color={BIZLINK_COLORS.muted}>SORT</Text>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-                <XStack gap="$2">
-                  {SORT_OPTIONS.map((option) => (
-                    <BizChip key={option.value} label={option.label} selected={sort === option.value} onPress={() => setSort(option.value)} />
-                  ))}
-                </XStack>
-              </ScrollView>
-            </YStack>
-          </YStack>
-        ) : null}
+        <XStack gap="$2" alignItems="center">
+          <TextInput
+            value={search}
+            onChangeText={setSearch}
+            placeholder="Search company or city…"
+            placeholderTextColor={BIZLINK_COLORS.muted}
+            style={{
+              flex: 1,
+              height: 52,
+              borderRadius: 16,
+              paddingHorizontal: 16,
+              fontFamily: BIZLINK_FONTS.medium,
+              fontSize: 14.5,
+              color: BIZLINK_COLORS.text,
+              backgroundColor: BIZLINK_COLORS.card,
+              borderWidth: 1,
+              borderColor: BIZLINK_COLORS.line,
+            }}
+          />
+          <Pressable
+            accessibilityLabel="Toggle filters"
+            onPress={() => setFilterOpen((open) => !open)}
+            style={{
+              flexDirection: 'row',
+              alignItems: 'center',
+              gap: 6,
+              backgroundColor: filterOpen || filtersActive ? BIZLINK_COLORS.ink : BIZLINK_COLORS.card,
+              borderRadius: 16,
+              paddingHorizontal: 14,
+              height: 52,
+              borderWidth: 1,
+              borderColor: filterOpen || filtersActive ? BIZLINK_COLORS.ink : BIZLINK_COLORS.line,
+            }}
+          >
+            <SlidersHorizontal
+              size={16}
+              color={filterOpen || filtersActive ? BIZLINK_ON_INK.solid : BIZLINK_COLORS.muted}
+              strokeWidth={1.75}
+            />
+            <Text
+              fontSize={11.5}
+              fontFamily={BIZLINK_FONTS.medium}
+              color={filterOpen || filtersActive ? BIZLINK_ON_INK.solid : BIZLINK_COLORS.muted}
+            >
+              Filters
+            </Text>
+          </Pressable>
+        </XStack>
 
         <ScrollView horizontal showsHorizontalScrollIndicator={false}>
           <XStack gap="$2">
@@ -432,6 +375,27 @@ export default function ClientsScreen() {
           </XStack>
         </ScrollView>
       </YStack>
+
+      <BizFilterSheet visible={filterOpen} onClose={() => setFilterOpen(false)} filtersActive={filtersActive} onReset={resetFilters}>
+        <DateRangeFilterRow range={dateRange} onApply={setDateRange} />
+
+        <BizFilterSheetRow label="City" value={cityFilter === ALL_CITIES ? 'All cities' : cityFilter}>
+          <XStack gap="$2" flexWrap="wrap">
+            <BizChip label="All cities" selected={cityFilter === ALL_CITIES} onPress={() => setCityFilter(ALL_CITIES)} />
+            {cityOptions.map((city) => (
+              <BizChip key={city} label={city} selected={cityFilter === city} onPress={() => setCityFilter(city)} />
+            ))}
+          </XStack>
+        </BizFilterSheetRow>
+
+        <BizFilterSheetRow label="Sort" value={SORT_OPTIONS.find((option) => option.value === sort)?.label ?? sort}>
+          <XStack gap="$2" flexWrap="wrap">
+            {SORT_OPTIONS.map((option) => (
+              <BizChip key={option.value} label={option.label} selected={sort === option.value} onPress={() => setSort(option.value)} />
+            ))}
+          </XStack>
+        </BizFilterSheetRow>
+      </BizFilterSheet>
 
       {loading && !clients.length ? (
         <YStack flex={1} justifyContent="center" alignItems="center">

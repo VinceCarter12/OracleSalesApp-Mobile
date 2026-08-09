@@ -18,6 +18,21 @@ import {
   type TeamMeeting,
 } from '../types';
 
+const CLIENT_STATUS_VALUES = new Set<ClientStatus>(['prospect', 'in_progress', 'new', 'existing', 'inactive']);
+
+/**
+ * B-095 fix (2026-08-08): `meetings.client_status_at_meeting` is a plain
+ * nullable text column (Migration v26 / web-repo companion migration) that
+ * mobile writes with a `ClientStatus` value — narrows the loosely-typed
+ * Supabase row field to that union, or null for legacy rows / anything
+ * unexpected, rather than trusting the column blindly.
+ */
+function toClientStatusAtMeeting(value: unknown): ClientStatus | null {
+  return typeof value === 'string' && CLIENT_STATUS_VALUES.has(value as ClientStatus)
+    ? (value as ClientStatus)
+    : null;
+}
+
 // B-054 Phase 1: pure Supabase-row-to-UI-shape mappers, shared by both the
 // Manager and (future) Executive real-data read paths. No network/DB imports
 // here — mirrors lib/remote-meeting-mapping.ts/lib/remote-client-mapping.ts's
@@ -63,6 +78,11 @@ export interface MeetingRow {
   start_captured_at: string | null;
   end_captured_at: string | null;
   created_at: string;
+  // B-095 fix (2026-08-08): optional — Executive's read path
+  // (lib/executive-overview-service.ts) doesn't select this column yet
+  // (out of scope this batch), so it's absent (undefined) there; Manager's
+  // read path (lib/manager-team-service.ts) does select it.
+  client_status_at_meeting?: string | null;
 }
 
 export const DAY_MS = 24 * 60 * 60 * 1000;
@@ -195,7 +215,9 @@ export function mapClientRowToTeamClient(row: ClientRow, now: Date): TeamClient 
     name: row.company_name,
     agentId: row.assigned_agent_id,
     status,
-    channel: fromRemoteSalesChannel(row.sales_channel),
+    // Not yet set (e.g. brand-new client, Complete Info not done) — '—'
+    // matches the existing display fallback used elsewhere for this field.
+    channel: fromRemoteSalesChannel(row.sales_channel) ?? '—',
     checklist: buildChecklist(row),
     deadline,
     ...(deadlineWarn ? { deadlineWarn } : {}),
@@ -256,6 +278,7 @@ export function mapMeetingRowToTeamMeeting(row: MeetingRow, clientCustomerType: 
     startTime: row.start_captured_at ? formatTime(row.start_captured_at) : undefined,
     endTime: row.end_captured_at ? formatTime(row.end_captured_at) : undefined,
     meetingDateIso: row.meeting_date,
+    clientStatusAtMeeting: toClientStatusAtMeeting(row.client_status_at_meeting),
   };
 }
 

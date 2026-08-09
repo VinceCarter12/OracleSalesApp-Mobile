@@ -4,6 +4,7 @@ import { computeClientEditChanges } from './client-edit-request-payload';
 import { determineCompleteInfoSubmitBranch, type CompleteInfoSubmitBranch } from './complete-info-branch';
 import { CLIENT_EDITABLE_FIELDS, CLIENT_APPROVAL_EXEMPT_FIELDS, getFieldsRequiringApproval } from './policies/approval-policy';
 import { toRemoteSalesChannel, toRemoteCustomerType } from './remote-client-mapping';
+import { isValidContactNumber, CONTACT_NUMBER_INVALID_MESSAGE } from './field-validation';
 import type { Client, SalesChannel } from '../types';
 
 // Batch 6 PR D: orchestration split out of app/(tabs)/clients/complete.tsx
@@ -72,6 +73,15 @@ function buildBeforeAfter(client: Client, form: CompleteInfoFormValues): { befor
  */
 export async function submitCompleteInfo(input: SubmitCompleteInfoInput): Promise<CompleteInfoSubmitBranch> {
   const { client, clientId, profileId, form } = input;
+
+  // 2026-08-09 field validation (defense-in-depth): the screen gates too, but
+  // this write-path guard guarantees an invalid phone can never reach SQLite/
+  // the outbox regardless of caller. Optional field — blank is fine.
+  const trimmedNumber = form.contactNumber.trim();
+  if (trimmedNumber !== '' && !isValidContactNumber(trimmedNumber)) {
+    throw new Error(CONTACT_NUMBER_INVALID_MESSAGE);
+  }
+
   const { before, after } = buildBeforeAfter(client, form);
   const fullDiff = computeClientEditChanges(before, after, CLIENT_EDITABLE_FIELDS);
   const branch = determineCompleteInfoSubmitBranch({

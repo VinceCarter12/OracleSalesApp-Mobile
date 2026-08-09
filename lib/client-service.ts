@@ -80,7 +80,12 @@ export async function createClient(input: CreateClientInput): Promise<string> {
   // UI/`Client` type expects when read back); only the outbox payload sent
   // to Supabase needs the remote column names/casing (lib/remote-client-mapping.ts).
   const localStatus = 'prospect' as const;
-  const localSalesChannel = 'Distributor' as const;
+  // B-0xx fix (2026-08-09): was hardcoded to 'Distributor', which made the
+  // info-completion checklist's "Sales channel" item read as done for every
+  // brand-new client even though nobody picked one — left null until the
+  // agent actually chooses one in Complete Info (Wireframe-Sales-BizLink.html
+  // a-complete; Create Client never asks for this field).
+  const localSalesChannel: SalesChannel | null = null;
 
   // Remote column names/values differ from mobile's local ones in three
   // places, confirmed against the live Supabase migrations (2026-07-15):
@@ -157,7 +162,7 @@ export interface UpdateClientInfoInput {
   position: string;
   contactNumber: string;
   officeAddress: string;
-  salesChannel: SalesChannel;
+  salesChannel: SalesChannel | null;
   // ADR-052 (Batch 6 Phase 5): approval-EXEMPT field — always settable
   // directly through this function regardless of role, never through
   // `lib/client-edit-request-service.ts::createClientEditRequest()`. No UI

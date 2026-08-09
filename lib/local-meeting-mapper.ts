@@ -33,6 +33,10 @@ export interface LocalMeetingRow {
   // the device — optional so a stale `SELECT m.*` result during the exact
   // migration transaction can never crash the mapper.
   validity_status?: string;
+  // B-095 fix: nullable — absent entirely on rows recorded before Migration
+  // v26 added the column (SQLite returns undefined for a column that didn't
+  // exist on that row's original INSERT, not null).
+  client_status_at_meeting?: string | null;
 }
 
 export function rowToMeeting(row: LocalMeetingRow): Meeting {
@@ -60,5 +64,6 @@ export function rowToMeeting(row: LocalMeetingRow): Meeting {
     remarks: row.remarks,
     sync_status: row.sync_status,
     validity_status: (row.validity_status as MeetingValidityStatus | undefined) ?? 'valid',
+    client_status_at_meeting: (row.client_status_at_meeting as Meeting['client_status_at_meeting']) ?? null,
   };
 }

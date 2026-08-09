@@ -10,6 +10,7 @@ import { useSession } from '../../lib/session-store';
 import { withTimeout } from '../../lib/with-timeout';
 import { wipeLocalDataIfAccountChanged } from '../../lib/wipe-local-data';
 import { writeSnapshot } from '../../lib/app-lock/session-snapshot';
+import { EMAIL_INVALID_MESSAGE, PASSWORD_TOO_SHORT_MESSAGE, PASSWORD_MIN_LENGTH, isValidEmail } from '../../lib/field-validation';
 import type { UserRole } from '../../types';
 
 /** Maps raw Supabase/network errors to the wireframe's login-error copy (a-loginErr). */
@@ -41,7 +42,19 @@ export default function LoginScreen() {
     setErrorMessage(null);
 
     try {
-      const { error: authError, userId } = await signInWithPassword(email.trim(), password);
+      // 2026-08-09 (field validation): format checks before hitting Supabase —
+      // a typo'd email or short password should fail client-side with clear copy.
+      const trimmedEmail = email.trim();
+      if (!isValidEmail(trimmedEmail)) {
+        setErrorMessage(EMAIL_INVALID_MESSAGE);
+        return;
+      }
+      if (password.length < PASSWORD_MIN_LENGTH) {
+        setErrorMessage(PASSWORD_TOO_SHORT_MESSAGE);
+        return;
+      }
+
+      const { error: authError, userId } = await signInWithPassword(trimmedEmail, password);
       if (authError || !userId) {
         setErrorMessage(toFriendlyMessage(authError ?? new Error('Invalid credentials.')));
         return;

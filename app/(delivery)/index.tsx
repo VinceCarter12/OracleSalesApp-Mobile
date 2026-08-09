@@ -1,5 +1,5 @@
 import { useCallback, useState } from 'react';
-import { Pressable, ScrollView } from 'react-native';
+import { Pressable, RefreshControl, ScrollView } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router, useFocusEffect } from 'expo-router';
 import { Bell, History, Package, PackageX, User, Vault } from 'lucide-react-native';
@@ -85,6 +85,9 @@ export default function DeliveryDashboardScreen() {
   // F-007 Phase 1: real data from the local mirror; re-read on focus.
   const { pos, refresh } = useDeliveryPos();
   useFocusEffect(useCallback(() => { refresh(); }, [refresh]));
+  // Pull-to-refresh spinner must be bound to a user-gesture-only flag, not
+  // the hook's own `loading` — see app/(tabs)/index.tsx's twin.
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
   const summary = getDeliverySummary(pos);
   const preview = pos.filter((p) => p.status === 'pending').slice(0, 3);
@@ -110,7 +113,22 @@ export default function DeliveryDashboardScreen() {
         </Pressable>
       </XStack>
 
-      <ScrollView contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 40 }}>
+      <ScrollView
+        contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 40 }}
+        refreshControl={
+          <RefreshControl
+            refreshing={isRefreshing}
+            onRefresh={async () => {
+              setIsRefreshing(true);
+              try {
+                await refresh();
+              } finally {
+                setIsRefreshing(false);
+              }
+            }}
+          />
+        }
+      >
         <XStack gap={10} marginTop={10}>
           <YStack flex={1}>
             <BizStatCard

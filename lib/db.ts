@@ -12,7 +12,7 @@ export const DATABASE_NAME = 'oracle-sales-app.db';
 
 // Bump this and add a new `case` below whenever the schema changes — never
 // edit an already-shipped case, since devices may have already run it.
-const LATEST_SCHEMA_VERSION = 24;
+const LATEST_SCHEMA_VERSION = 26;
 
 /**
  * Runs once per app launch via `SQLiteProvider`'s `onInit` (see app/_layout.tsx).
@@ -1086,6 +1086,24 @@ export async function migrateDbIfNeeded(db: SQLiteDatabase): Promise<void> {
       ALTER TABLE collection_visits ADD COLUMN is_additional INTEGER NOT NULL DEFAULT 0;
     `);
     currentVersion = 25;
+  }
+
+  // B-095 fix (2026-08-08): meeting cards on the two list screens (My
+  // Meetings, Manager Meetings) used to show the CLIENT's live status —
+  // every card for the same client showed the same, constantly-changing
+  // badge (e.g. an old meeting retroactively flipping to "IN PROGRESS" once
+  // a later meeting promoted the client). This freezes what the client's
+  // status actually was at the moment each meeting was recorded — set once
+  // in lib/meeting-service.ts::createMeeting(), never recomputed. Nullable:
+  // legacy meetings recorded before this migration have no such record and
+  // intentionally show no badge (Vince-approved, 2026-08-08) rather than
+  // guessing. Mirrored to Supabase (`meetings.client_status_at_meeting`) via
+  // a companion migration in the web repo — see Bugs.md.
+  if (currentVersion === 25) {
+    await db.execAsync(`
+      ALTER TABLE meetings ADD COLUMN client_status_at_meeting TEXT;
+    `);
+    currentVersion = 26;
   }
 
   await db.execAsync(`PRAGMA user_version = ${currentVersion}`);

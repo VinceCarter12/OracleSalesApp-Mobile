@@ -15,6 +15,7 @@ import {
   deleteDraft,
   type MeetingDraft,
 } from './meeting-drafts';
+import { markLiveSession, hasLiveSession, clearLiveSession } from './meeting-live-session';
 import type { Client, MeetingMode, TeamRosterEntry } from '../types';
 
 export interface MeetingStartCapture {
@@ -59,6 +60,16 @@ export function useMeetingRecordingController({ clientId, flow }: UseMeetingReco
   const [startConfirmOpen, setStartConfirmOpen] = useState(false);
 
   const [pendingDraft, setPendingDraft] = useState<MeetingDraft | null>(null);
+  // A draft found for THIS JS process (hasLiveSession) — restored silently,
+  // never shown as a DraftResumePrompt. See lib/meeting-live-session.ts.
+  const [autoResumeDraft, setAutoResumeDraft] = useState<MeetingDraft | null>(null);
+  // Guards the render-time adjustment below so a given draft is only ever
+  // applied once, not on every re-render while `autoResumeDraft` is set.
+  const [lastAutoResumedDraftId, setLastAutoResumedDraftId] = useState<string | null>(null);
+  // Fires once per silent auto-resume so the two screens can restore their
+  // own `selectedAgendas` state (agenda lives outside this controller,
+  // same as the explicit resumeDraft() path below already required).
+  const [autoResumedAgendas, setAutoResumedAgendas] = useState<string[] | null>(null);
 
   const elapsedSeconds = useElapsedTimer(start?.capturedAt ?? null);
 
@@ -87,13 +98,25 @@ export function useMeetingRecordingController({ clientId, flow }: UseMeetingReco
         await deleteDraft(clientId).catch((err) =>
           console.error('[useMeetingRecordingController] Failed to discard orphaned draft:', err)
         );
+        if (profileId) clearLiveSession(profileId, clientId);
         setClientLoading(false);
         return;
       }
       setClient(foundClient);
       if (profileId) {
         const draft = await getDraftForClient(clientId, profileId);
-        if (!cancelled) setPendingDraft(draft);
+        if (!cancelled && draft) {
+          // Vince 2026-08-09: only a draft with NO live-session marker means
+          // this JS process never had it running — i.e. the app was actually
+          // killed/crashed and relaunched. A draft found WITH the marker
+          // means the agent just navigated away and back within the same
+          // running app; auto-resume it silently instead of interrupting.
+          if (hasLiveSession(profileId, clientId)) {
+            setAutoResumeDraft(draft);
+          } else {
+            setPendingDraft(draft);
+          }
+        }
       }
       setClientLoading(false);
     })();
@@ -119,6 +142,30 @@ export function useMeetingRecordingController({ clientId, flow }: UseMeetingReco
       cancelled = true;
     };
   }, []);
+
+  // Silent auto-resume for a same-process draft (see setAutoResumeDraft
+  // above). Adjusts state during render rather than in a useEffect — the
+  // documented React pattern for "derive state once when an input becomes
+  // ready" (react.dev "You Might Not Need An Effect" > Adjusting some state
+  // when a prop changes) — since this only needs to run once per draft, not
+  // resubscribe to an external system. Waits on `rosterLoaded` exactly like
+  // the explicit resumeDraft() callback below does — a draft with
+  // companions restored before the roster query settles would drop the
+  // selections permanently.
+  if (autoResumeDraft && autoResumeDraft.id !== lastAutoResumedDraftId) {
+    const hasCompanions = (autoResumeDraft.payload.companions?.length ?? 0) > 0;
+    if (!hasCompanions || rosterLoaded) {
+      setLastAutoResumedDraftId(autoResumeDraft.id);
+      setMode(autoResumeDraft.payload.mode);
+      setStart({
+        capturedAt: autoResumeDraft.payload.capturedAt,
+        gpsLat: autoResumeDraft.payload.gpsLat,
+        gpsLng: autoResumeDraft.payload.gpsLng,
+      });
+      setSelectedCompanions(hasCompanions ? restoreCompanionsFromDraft(autoResumeDraft.payload.companions, roster) : []);
+      setAutoResumedAgendas(autoResumeDraft.payload.agendas ?? []);
+    }
+  }
 
   const toggleCompanion = useCallback((entry: TeamRosterEntry): void => {
     setSelectedCompanions((prev) => {
@@ -169,6 +216,10 @@ export function useMeetingRecordingController({ clientId, flow }: UseMeetingReco
             companions: companionsForDraft(selectedCompanionsRef.current),
           },
         });
+        // From this point on, this JS process "owns" the meeting — leaving
+        // and returning to this screen (still the same app run) must never
+        // ask again; see lib/meeting-live-session.ts.
+        markLiveSession(profileId, clientId);
       } catch (draftErr) {
         console.error('[useMeetingRecordingController] Failed to persist meeting draft:', draftErr);
       }
@@ -238,13 +289,19 @@ export function useMeetingRecordingController({ clientId, flow }: UseMeetingReco
     });
     setSelectedCompanions(restoreCompanionsFromDraft(pendingDraft.payload.companions, roster));
     setPendingDraft(null);
-  }, [pendingDraft, rosterLoaded, rosterLoadError, roster]);
+    // The one required confirmation after a real interruption is done —
+    // from here on this process owns the meeting too, same as a fresh
+    // Start; further navigate-away-and-back within this run must not ask
+    // again.
+    if (profileId && clientId) markLiveSession(profileId, clientId);
+  }, [pendingDraft, rosterLoaded, rosterLoadError, roster, profileId, clientId]);
 
   const discardDraft = useCallback(async (): Promise<void> => {
     if (!clientId) return;
     await deleteDraft(clientId);
     setPendingDraft(null);
-  }, [clientId]);
+    if (profileId) clearLiveSession(profileId, clientId);
+  }, [clientId, profileId]);
 
   /** Called after a successful save — the draft must never survive past it (ADR-026 P1 item 3). Best-effort: a cleanup failure must never surface as a save error. */
   const clearDraft = useCallback(async (): Promise<void> => {
@@ -252,7 +309,8 @@ export function useMeetingRecordingController({ clientId, flow }: UseMeetingReco
     await deleteDraft(clientId).catch((err) =>
       console.error('[useMeetingRecordingController] Failed to clear meeting draft:', err)
     );
-  }, [clientId]);
+    if (profileId) clearLiveSession(profileId, clientId);
+  }, [clientId, profileId]);
 
   const companionSelections: CompanionSelection[] = selectedCompanions.map((entry) => ({
     profileId: entry.profileId,
@@ -291,6 +349,7 @@ export function useMeetingRecordingController({ clientId, flow }: UseMeetingReco
     confirmStartMeeting,
     updateStartGps,
     updateDraftAgendas,
+    autoResumedAgendas,
     pendingDraft,
     resumeDraft,
     discardDraft,

@@ -3,6 +3,7 @@ import { AUDIT_OUTBOX_TABLE_NAME } from './sync/audit-log';
 import { RLS_PERMISSION_DENIED_CODE } from './sync/outbox-status';
 import type { FailureClass, OutboxStatus } from './sync/outbox-status';
 import type { PhotoKind } from './sync/photo-upload-registry';
+import { SYNC_TABLE_LABEL } from './sync-history-display';
 
 // More > Sync History (Wireframe `id="a-synchistory"`, `aRenderSyncHistory()`):
 // per-record terminal-outcome log. `sync_audit_log` (Sprint.md T-016) is a
@@ -78,13 +79,11 @@ function labelFor(tableName: string, payload: string): string {
     if (tableName === 'clients' && typeof parsed.company_name === 'string') {
       return parsed.company_name;
     }
-    if (tableName === 'meetings') {
-      return 'Meeting record';
-    }
   } catch {
     // Malformed/partial payload — fall through to the generic label.
   }
-  return tableName === 'clients' ? 'Client record' : tableName;
+  const tableLabel = SYNC_TABLE_LABEL[tableName] ?? tableName;
+  return `${tableLabel} record`;
 }
 
 function toCreatedOnline(value: number | null): boolean | null {

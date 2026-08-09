@@ -1,6 +1,7 @@
 import { TextInput } from 'react-native';
 import { Text, XStack } from 'tamagui';
 import { useBizlinkColors, BIZLINK_FONTS } from '../../lib/theme';
+import { REMARKS_MAX_LENGTH } from '../../lib/field-validation';
 import { BizSectionHeader } from '../bizlink/BizSectionHeader';
 import { BizChip } from '../bizlink/BizChip';
 import { type MeetingOutcome } from '../../types';
@@ -16,8 +17,16 @@ interface MeetingWrapUpSectionProps {
   onRemarksChange: (value: string) => void;
   outcome: MeetingOutcome | null;
   onSelectOutcome: (outcome: MeetingOutcome) => void;
-  /** ADR-044/046 point 7: the PoEvidenceCard slots in right after the agenda tiles, before Remarks — matching Wireframe-Sales-BizLink.html's `#a-poEvidence` placement exactly. */
+  /** ADR-044/046 point 7: the PoEvidenceCard slots in right after the agenda tiles, before the capture section — matching Wireframe-Sales-BizLink.html's `#a-poEvidence` placement exactly. */
   afterAgenda?: React.ReactNode;
+  /**
+   * Layout change (2026-08-09, Vince direct instruction): the Auto-captured
+   * GPS/date-time/selfie block now renders ABOVE Meeting outcome instead of
+   * at the very end of the flow — caller (record.tsx) passes its
+   * `AutoCapturedPanel` here. Remarks moved to sit directly above the Save
+   * button, below Meeting outcome (see render order below).
+   */
+  captureSection?: React.ReactNode;
 }
 
 /**
@@ -34,6 +43,7 @@ export function MeetingWrapUpSection({
   outcome,
   onSelectOutcome,
   afterAgenda,
+  captureSection,
 }: MeetingWrapUpSectionProps) {
   const BIZLINK_COLORS = useBizlinkColors();
   return (
@@ -42,7 +52,7 @@ export function MeetingWrapUpSection({
           generic "piliin lahat" caption this used to carry. */}
       <BizSectionHeader title="Agenda" helper="· stage-aware" />
       <Text fontSize={12} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} marginTop={-6} marginBottom="$2" lineHeight={17}>
-        Ang "Product / company presentation" tick dito ang buong basehan ng progress % ng client — hindi na Complete Info (B-001).
+        Ang “Product / company presentation” tick dito ang buong basehan ng progress % ng client — hindi na Complete Info (B-001).
       </Text>
       {agendaNote}
       <XStack gap="$2" flexWrap="wrap">
@@ -57,6 +67,16 @@ export function MeetingWrapUpSection({
       </XStack>
       {afterAgenda}
 
+      {captureSection}
+
+      <BizSectionHeader title="Meeting outcome *" />
+      <XStack gap="$2" flexWrap="wrap">
+        <BizChip label="✓ Successful" tone="ok" selected={outcome === 'Successful'} onPress={() => onSelectOutcome('Successful')} />
+        <BizChip label="Follow-up required" selected={outcome === 'Follow-up Required'} onPress={() => onSelectOutcome('Follow-up Required')} />
+        <BizChip label="No decision" selected={outcome === 'No Decision'} onPress={() => onSelectOutcome('No Decision')} />
+        <BizChip label="Lost opportunity" tone="lost" selected={outcome === 'Lost Opportunity'} onPress={() => onSelectOutcome('Lost Opportunity')} />
+      </XStack>
+
       <BizSectionHeader title="Remarks" />
       <TextInput
         value={remarks}
@@ -64,6 +84,7 @@ export function MeetingWrapUpSection({
         placeholder="Notes / comments…"
         placeholderTextColor={BIZLINK_COLORS.muted}
         multiline
+        maxLength={REMARKS_MAX_LENGTH}
         style={{
           height: 74,
           borderRadius: 16,
@@ -78,14 +99,6 @@ export function MeetingWrapUpSection({
           textAlignVertical: 'top',
         }}
       />
-
-      <BizSectionHeader title="Meeting outcome *" />
-      <XStack gap="$2" flexWrap="wrap">
-        <BizChip label="✓ Successful" tone="ok" selected={outcome === 'Successful'} onPress={() => onSelectOutcome('Successful')} />
-        <BizChip label="Follow-up required" selected={outcome === 'Follow-up Required'} onPress={() => onSelectOutcome('Follow-up Required')} />
-        <BizChip label="No decision" selected={outcome === 'No Decision'} onPress={() => onSelectOutcome('No Decision')} />
-        <BizChip label="Lost opportunity" tone="lost" selected={outcome === 'Lost Opportunity'} onPress={() => onSelectOutcome('Lost Opportunity')} />
-      </XStack>
     </>
   );
 }

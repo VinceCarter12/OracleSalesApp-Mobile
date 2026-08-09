@@ -16,7 +16,7 @@ import { getPoConfirmationForMeeting, type PoConfirmationRecord } from '../../..
 import { PO_CONFIRMATION_STATUS_LABELS, PO_CONFIRMATION_BADGE_TONES } from '../../../lib/policies/po-confirmation-status-policy';
 import { OUTCOME_BADGE_STYLES, useBizlinkColors, BIZLINK_ON_INK, BIZLINK_FONTS } from '../../../lib/theme';
 import { getClientById } from '../../../lib/client-service';
-import { getClientStatus, WAITING_MANAGER_PO_APPROVAL_BADGE } from '../../../lib/client-status';
+import { getClientStatus, getMeetingLifecycleStatus, WAITING_MANAGER_PO_APPROVAL_BADGE } from '../../../lib/client-status';
 import { getClientJourneyProgress } from '../../../lib/client-progress';
 import { useMeetings } from '../../../lib/useMeetings';
 import { useClientFlowRoutes } from '../../../lib/use-role-routes';
@@ -24,6 +24,7 @@ import { BizTopBar } from '../../../components/bizlink/BizTopBar';
 import { BizCard } from '../../../components/bizlink/BizCard';
 import { BizSectionHeader } from '../../../components/bizlink/BizSectionHeader';
 import { StatusBadge } from '../../../components/ui/StatusBadge';
+import { ImagePreviewModal } from '../../../components/ui/ImagePreviewModal';
 import { SyncBadge } from '../../../components/sync/SyncBadge';
 import { SelectedClientCard } from '../../../components/meetings/SelectedClientCard';
 import { formatMeetingLocation } from '../../../lib/format-meeting-location';
@@ -45,6 +46,7 @@ export default function MeetingDetailScreen() {
   const [poConfirmation, setPoConfirmation] = useState<PoConfirmationRecord | null>(null);
   const [client, setClient] = useState<Client | null>(null);
   const [loading, setLoading] = useState(true);
+  const [previewImageUrl, setPreviewImageUrl] = useState<string | null>(null);
   // Progress-card metric (lib/client-progress.ts::getClientJourneyProgress)
   // needs the client's own full meeting history, not just this one meeting —
   // `useMeetings` is undefined-safe (returns empty until `meeting` resolves).
@@ -107,7 +109,16 @@ export default function MeetingDetailScreen() {
   const isFastPath = Boolean(meeting.start_photo_url || meeting.end_photo_url);
   const outcomeStyle = meeting.outcome ? OUTCOME_BADGE_STYLES[meeting.outcome] : null;
   const humanLocation = formatMeetingLocation(meeting);
+  // Live — must stay live: gates the "Waiting for Manager's Approval" PO
+  // badge below, which reflects a real-time pending decision, not history.
   const clientStatus = client ? getClientStatus(client) : null;
+  // B-095 fix: the header card displays what THIS meeting's client status
+  // was when it was recorded (frozen snapshot), never the client's current
+  // status — same fix as MeetingRow.tsx/Manager meetings list, extended here
+  // after Vince found the same live-status bug on this screen's header card.
+  // Null (no second badge/stage-rail highlight) for meetings recorded before
+  // Migration v26 added the column — deliberately not backfilled/guessed.
+  const displayStatus = getMeetingLifecycleStatus(meeting);
   const progress = client ? getClientJourneyProgress(client, clientMeetings) : null;
   // Only present when the row has a real client_id (legacy rows missing one
   // must never navigate into a broken journey route) AND this screen is
@@ -124,7 +135,7 @@ export default function MeetingDetailScreen() {
       <ScrollView contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 24 }}>
         <SelectedClientCard
           clientName={meeting.client_name ?? null}
-          status={clientStatus}
+          status={displayStatus}
           progress={progress ?? undefined}
         />
 
@@ -196,7 +207,9 @@ export default function MeetingDetailScreen() {
               </XStack>
               <XStack alignItems="center" gap="$3">
                 {meeting.start_photo_url ? (
-                  <Image source={{ uri: meeting.start_photo_url }} style={{ width: 56, height: 56, borderRadius: 16 }} />
+                  <Pressable onPress={() => meeting.start_photo_url && setPreviewImageUrl(meeting.start_photo_url)}>
+                    <Image source={{ uri: meeting.start_photo_url }} style={{ width: 56, height: 56, borderRadius: 16 }} />
+                  </Pressable>
                 ) : (
                   <YStack width={56} height={56} borderRadius={16} backgroundColor={BIZLINK_ON_INK.circleFill} alignItems="center" justifyContent="center">
                     <Camera size={20} color={BIZLINK_ON_INK.solid} strokeWidth={1.75} />
@@ -220,7 +233,9 @@ export default function MeetingDetailScreen() {
               </XStack>
               <XStack alignItems="center" gap="$3">
                 {meeting.end_photo_url ? (
-                  <Image source={{ uri: meeting.end_photo_url }} style={{ width: 56, height: 56, borderRadius: 16 }} />
+                  <Pressable onPress={() => meeting.end_photo_url && setPreviewImageUrl(meeting.end_photo_url)}>
+                    <Image source={{ uri: meeting.end_photo_url }} style={{ width: 56, height: 56, borderRadius: 16 }} />
+                  </Pressable>
                 ) : (
                   <YStack width={56} height={56} borderRadius={16} backgroundColor={BIZLINK_ON_INK.circleFill} alignItems="center" justifyContent="center">
                     <Camera size={20} color={BIZLINK_ON_INK.solid} strokeWidth={1.75} />
@@ -256,7 +271,9 @@ export default function MeetingDetailScreen() {
               </XStack>
               <XStack alignItems="center" gap="$3">
                 {meeting.selfie_url ? (
-                  <Image source={{ uri: meeting.selfie_url }} style={{ width: 56, height: 56, borderRadius: 16 }} />
+                  <Pressable onPress={() => meeting.selfie_url && setPreviewImageUrl(meeting.selfie_url)}>
+                    <Image source={{ uri: meeting.selfie_url }} style={{ width: 56, height: 56, borderRadius: 16 }} />
+                  </Pressable>
                 ) : (
                   <YStack width={56} height={56} borderRadius={16} backgroundColor={BIZLINK_ON_INK.circleFill} alignItems="center" justifyContent="center">
                     <Camera size={20} color={BIZLINK_ON_INK.solid} strokeWidth={1.75} />
@@ -354,6 +371,12 @@ export default function MeetingDetailScreen() {
           Recorded {new Date(meeting.created_at).toLocaleString()}
         </Text>
       </ScrollView>
+
+      <ImagePreviewModal
+        visible={Boolean(previewImageUrl)}
+        imageUrl={previewImageUrl}
+        onClose={() => setPreviewImageUrl(null)}
+      />
     </YStack>
   );
 }

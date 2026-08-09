@@ -1,21 +1,23 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { Modal, Pressable, ScrollView, TextInput, View as RNView } from 'react-native';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Modal, Pressable, ScrollView, TextInput } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect, router } from 'expo-router';
-import { Calendar, Search, X } from 'lucide-react-native';
+import { Search, SlidersHorizontal, X } from 'lucide-react-native';
 import { Text, View, XStack, YStack } from 'tamagui';
-import { BIZLINK_COLORS, BIZLINK_FONTS } from '../../../lib/theme';
-import { useMapsScreen, meetingLocationLabel, type MeetingTypeFilterValue } from '../../../lib/use-maps-screen';
+import { BIZLINK_COLORS, BIZLINK_FONTS, BIZLINK_ON_INK } from '../../../lib/theme';
+import { useAuth } from '../../../lib/useAuth';
+import { useSession } from '../../../lib/session-store';
+import { useUserMapMarker } from '../../../lib/use-user-map-marker';
+import { useMapsScreen, type MeetingTypeFilterValue, type MeetingStatusFilterValue } from '../../../lib/use-maps-screen';
 import { MEETING_MARKER_TYPE_LABEL } from '../../../lib/policies/meeting-marker-type';
 import { isLikelyOnline } from '../../../lib/sync/connectivity';
 import { BizTopBar } from '../../../components/bizlink/BizTopBar';
-import { BizCard } from '../../../components/bizlink/BizCard';
 import type { BizFilterOption } from '../../../components/bizlink/BizFilterScroll';
-import {
-  MapLegend,
-  OfflineBanner,
-} from '../../../components/maps/MapsScreenSections';
-import { DatePickerModal } from '../../../components/maps/DatePickerModal';
+import { MapLegend, OfflineBanner } from '../../../components/maps/MapsScreenSections';
+import { BizFilterSheet } from '../../../components/bizlink/BizFilterSheet';
+import type { DateRange } from '../../../components/bizlink/DateRangePickerModal';
+import { MapsFilterPanel } from '../../../components/maps/MapsFilterPanel';
+import { MapsMeetingCardList } from '../../../components/maps/MapsMeetingCardList';
 import { LeafletWebViewMapWithControls, type MapTileType } from '../../../components/maps/LeafletWebViewMap';
 import { BizFloatingPager } from '../../../components/bizlink/BizFloatingPager';
 
@@ -26,7 +28,32 @@ const MEETING_TYPE_FILTER_OPTIONS: BizFilterOption<MeetingTypeFilterValue>[] = [
   { value: 'others', label: MEETING_MARKER_TYPE_LABEL.others },
 ];
 
-const ITEMS_PER_PAGE = 4;
+/** Client status at the time of the meeting (Vince 2026-08-08 direction) — 'inactive' excluded, agents never manually filter for it here. */
+const MEETING_STATUS_FILTER_OPTIONS: BizFilterOption<MeetingStatusFilterValue>[] = [
+  { value: 'all', label: 'All' },
+  { value: 'prospect', label: 'Prospect' },
+  { value: 'in_progress', label: 'In Progress' },
+  { value: 'new', label: 'New' },
+  { value: 'existing', label: 'Existing' },
+];
+
+const ITEMS_PER_PAGE = 10;
+type DatePreset = 'today' | 'last7' | 'last30' | 'custom';
+const DATE_PRESET_OPTIONS: BizFilterOption<DatePreset>[] = [
+  { value: 'today', label: 'Today' }, { value: 'last7', label: 'Last 7 days' },
+  { value: 'last30', label: 'Last 30 days' }, { value: 'custom', label: 'Custom range' },
+];
+function makePresetRange(preset: Exclude<DatePreset, 'custom'>): DateRange {
+  const end = new Date();
+  const start = new Date(end);
+  start.setDate(start.getDate() - (preset === 'today' ? 0 : preset === 'last7' ? 6 : 29));
+  return { start, end };
+}
+function toDateWindow(range: DateRange | null): { startAt?: string; endAtExclusive?: string } | undefined {
+  if (!range) return undefined;
+  const end = new Date(range.end.getFullYear(), range.end.getMonth(), range.end.getDate() + 1);
+  return { startAt: new Date(range.start.getFullYear(), range.start.getMonth(), range.start.getDate()).toISOString(), endAtExclusive: end.toISOString() };
+}
 
 /**
  * Wireframe `a-maps` (Wireframe-Sales-BizLink.html ~line 1009) —
@@ -38,17 +65,28 @@ const ITEMS_PER_PAGE = 4;
  */
 export default function AgentMapsScreen() {
   const insets = useSafeAreaInsets();
-  const state = useMapsScreen(MEETING_MARKER_TYPE_LABEL);
   const [online, setOnline] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
-  const [mapType, setMapType] = useState<MapTileType>('dark');
-  const [datePickerVisible, setDatePickerVisible] = useState(false);
+  const [mapType, setMapType] = useState<MapTileType>('light');
   const [selectedMarkerIds, setSelectedMarkerIds] = useState<Set<string>>(new Set());
   const [currentPage, setCurrentPage] = useState(0);
   const [mapExpanded, setMapExpanded] = useState(false);
   const scrollViewRef = useRef<ScrollView>(null);
-  const [dateFilterEnabled, setDateFilterEnabled] = useState(false);
-  const [selectedDate, setSelectedDate] = useState(new Date());
+  const [datePreset, setDatePreset] = useState<DatePreset>('last7');
+  const [dateRange, setDateRange] = useState<DateRange>(() => makePresetRange('last7'));
+  const [filterOpen, setFilterOpen] = useState(false);
+  const state = useMapsScreen(MEETING_MARKER_TYPE_LABEL, toDateWindow(dateRange), searchQuery);
+
+  const { session } = useAuth();
+  const { fullName } = useSession();
+  const userMarker = useUserMapMarker(session?.user.id, fullName);
+
+  // "You here" marker merged into the office/meeting pins — shared by the
+  // inline map and the expanded full-screen map so both show the same set.
+  const mapMarkers = useMemo(
+    () => (userMarker ? [...state.mapMarkers, userMarker] : state.mapMarkers),
+    [state.mapMarkers, userMarker]
+  );
 
   const checkOnline = useCallback(() => {
     isLikelyOnline().then(setOnline);
@@ -56,12 +94,8 @@ export default function AgentMapsScreen() {
   useEffect(() => { checkOnline(); }, [checkOnline]);
   useFocusEffect(useCallback(() => { checkOnline(); }, [checkOnline]));
 
-  // Filter meetings by date only if date filter is enabled
-  const displayedMeetings = dateFilterEnabled 
-    ? state.filteredMeetingMarkers.filter(meeting => 
-        new Date(meeting.startCapturedAt).toDateString() === selectedDate.toDateString()
-      )
-    : state.filteredMeetingMarkers;
+  // Date filtering now happens inside useMapsScreen so the map markers and this card list stay in sync.
+  const displayedMeetings = state.filteredMeetingMarkers;
 
   // Pagination logic
   const totalPages = Math.ceil(displayedMeetings.length / ITEMS_PER_PAGE);
@@ -83,16 +117,25 @@ export default function AgentMapsScreen() {
     setSelectedMarkerIds(newSelected);
   }
 
-  function handleDateSelect(date: Date) {
-    setSelectedDate(date);
-    setDateFilterEnabled(true);
+  function handlePresetChange(value: DatePreset) {
+    setDatePreset(value);
+    if (value !== 'custom') setDateRange(makePresetRange(value));
     setCurrentPage(0);
-    setDatePickerVisible(false);
   }
 
-  function handleClearDateFilter() {
-    setDateFilterEnabled(false);
-    setCurrentPage(0);
+  function handleMarkerPress(id: string): void {
+    const [kind, recordId] = id.split(':');
+    if (kind === 'office') router.push(`/(tabs)/more/office-map/${recordId}`);
+    if (kind === 'meeting') router.push(`/(tabs)/meetings/${recordId}`);
+  }
+
+  const filtersActive =
+    datePreset !== 'last7' || state.meetingTypeFilter !== 'all' || state.meetingStatusFilter !== 'all';
+
+  function resetFilters(): void {
+    handlePresetChange('last7');
+    state.setMeetingTypeFilter('all');
+    state.setMeetingStatusFilter('all');
   }
 
   return (
@@ -101,9 +144,9 @@ export default function AgentMapsScreen() {
       <ScrollView ref={scrollViewRef} contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 120 }}>
         {!online ? <OfflineBanner /> : null}
 
-        {/* Search Bar with Date Picker */}
-        <XStack gap="$2" marginBottom="$3">
-          <XStack flex={1} alignItems="center" gap="$2" height={44} paddingHorizontal={12} backgroundColor={BIZLINK_COLORS.card} borderRadius={16}>
+        {/* Search Bar + Filters pill */}
+        <XStack gap="$2" alignItems="center" marginBottom="$3">
+          <XStack flex={1} alignItems="center" gap="$2" height={52} paddingHorizontal={12} backgroundColor={BIZLINK_COLORS.card} borderRadius={16}>
             <Search size={17} color={BIZLINK_COLORS.muted} strokeWidth={1.75} />
             <TextInput
               value={searchQuery}
@@ -114,136 +157,83 @@ export default function AgentMapsScreen() {
             />
           </XStack>
           <Pressable
-            onPress={() => setDatePickerVisible(true)}
+            accessibilityLabel="Toggle filters"
+            onPress={() => setFilterOpen((open) => !open)}
             style={{
-              height: 44,
-              paddingHorizontal: 12,
-              backgroundColor: dateFilterEnabled ? BIZLINK_COLORS.brand : BIZLINK_COLORS.card,
-              borderRadius: 16,
-              justifyContent: 'center',
+              flexDirection: 'row',
               alignItems: 'center',
+              gap: 6,
+              backgroundColor: filterOpen || filtersActive ? BIZLINK_COLORS.ink : BIZLINK_COLORS.card,
+              borderRadius: 16,
+              paddingHorizontal: 14,
+              height: 52,
+              borderWidth: 1,
+              borderColor: filterOpen || filtersActive ? BIZLINK_COLORS.ink : BIZLINK_COLORS.line,
             }}
           >
-            <Calendar size={20} color={dateFilterEnabled ? '#FFFFFF' : BIZLINK_COLORS.brand} strokeWidth={1.75} />
-          </Pressable>
-          {dateFilterEnabled && (
-            <Pressable
-              onPress={handleClearDateFilter}
-              style={{
-                height: 44,
-                paddingHorizontal: 12,
-                backgroundColor: BIZLINK_COLORS.card,
-                borderRadius: 16,
-                justifyContent: 'center',
-                alignItems: 'center',
-              }}
+            <SlidersHorizontal
+              size={16}
+              color={filterOpen || filtersActive ? BIZLINK_ON_INK.solid : BIZLINK_COLORS.muted}
+              strokeWidth={1.75}
+            />
+            <Text
+              fontSize={11.5}
+              fontFamily={BIZLINK_FONTS.medium}
+              color={filterOpen || filtersActive ? BIZLINK_ON_INK.solid : BIZLINK_COLORS.muted}
             >
-              <X size={20} color={BIZLINK_COLORS.text} strokeWidth={1.75} />
-            </Pressable>
-          )}
+              Filters
+            </Text>
+          </Pressable>
         </XStack>
+
+        <BizFilterSheet visible={filterOpen} onClose={() => setFilterOpen(false)} filtersActive={filtersActive} onReset={resetFilters}>
+          <MapsFilterPanel
+            datePreset={datePreset}
+            onDatePresetChange={handlePresetChange}
+            dateRange={dateRange}
+            onDateRangeApply={(range) => { if (range) setDateRange(range); setCurrentPage(0); }}
+            datePresetOptions={DATE_PRESET_OPTIONS}
+            meetingTypeFilter={state.meetingTypeFilter}
+            onMeetingTypeChange={state.setMeetingTypeFilter}
+            meetingTypeOptions={MEETING_TYPE_FILTER_OPTIONS}
+            meetingStatusFilter={state.meetingStatusFilter}
+            onMeetingStatusChange={state.setMeetingStatusFilter}
+            meetingStatusOptions={MEETING_STATUS_FILTER_OPTIONS}
+          />
+        </BizFilterSheet>
 
         {/* Interactive Map with Controls */}
         <LeafletWebViewMapWithControls
-          markers={state.mapMarkers}
+          markers={mapMarkers}
           selectedMarkerIds={Array.from(selectedMarkerIds)}
           height={300}
           tileType={mapType}
           onTileTypeChange={setMapType}
           onExpandPress={() => setMapExpanded(true)}
+          onMarkerPress={handleMarkerPress}
         />
 
-        <MapLegend />
+        <Text fontSize={12} fontFamily={BIZLINK_FONTS.semibold} color={BIZLINK_COLORS.brand} marginTop="$2">
+          {state.filteredPins.length} office · {displayedMeetings.length} meeting{displayedMeetings.length === 1 ? '' : 's'}
+        </Text>
+<MapLegend />
 
         {/* Meetings Section */}
         <Text fontSize={14} fontFamily={BIZLINK_FONTS.semibold} color={BIZLINK_COLORS.text} marginTop="$4" marginBottom="$2">
           Meetings
         </Text>
 
-        {/* Meeting Type Filters - Scrollable */}
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 8 }}>
-          <XStack gap="$2">
-            {MEETING_TYPE_FILTER_OPTIONS.map((option) => (
-              <Pressable
-                key={option.value}
-                onPress={() => state.setMeetingTypeFilter(option.value)}
-                style={{
-                  paddingHorizontal: 16,
-                  paddingVertical: 8,
-                  borderRadius: 999,
-                  backgroundColor:
-                    state.meetingTypeFilter === option.value
-                      ? BIZLINK_COLORS.brand
-                      : BIZLINK_COLORS.card,
-                }}
-              >
-                <Text
-                  fontSize={13}
-                  fontFamily={BIZLINK_FONTS.semibold}
-                  color={
-                    state.meetingTypeFilter === option.value
-                      ? '#FFFFFF'
-                      : BIZLINK_COLORS.text
-                  }
-                >
-                  {option.label}
-                </Text>
-              </Pressable>
-            ))}
-          </XStack>
-        </ScrollView>
-
         <Text fontSize={14} fontFamily={BIZLINK_FONTS.semibold} color={BIZLINK_COLORS.brand} marginBottom="$3">
           {displayedMeetings.length} meeting{displayedMeetings.length === 1 ? '' : 's'}
-          {dateFilterEnabled && ` as ${selectedDate.toLocaleDateString()}`}
         </Text>
 
         {/* Meeting Cards with Pagination */}
-        <YStack gap="$2">
-          {paginatedMeetings.map((meeting, index) => {
-            const globalIndex = currentPage * ITEMS_PER_PAGE + index + 1;
-            const markerId = `meeting:${meeting.id}`;
-            const isSelected = selectedMarkerIds.has(markerId);
-            
-            return (
-              <Pressable
-                key={meeting.id}
-                onPress={() => handleCardPress(meeting.id)}
-              >
-                <View
-                  backgroundColor={isSelected ? BIZLINK_COLORS.soft : BIZLINK_COLORS.card}
-                  borderRadius={20}
-                  padding={14}
-                  borderWidth={isSelected ? 2 : 0}
-                  borderColor={BIZLINK_COLORS.brand}
-                >
-                  <XStack gap="$3" alignItems="center">
-                    <View
-                      width={36}
-                      height={36}
-                      borderRadius={18}
-                      backgroundColor={BIZLINK_COLORS.brand}
-                      alignItems="center"
-                      justifyContent="center"
-                    >
-                      <Text fontSize={16} fontFamily={BIZLINK_FONTS.semibold} color="#FFFFFF">
-                        {globalIndex}
-                      </Text>
-                    </View>
-                    <YStack flex={1} gap="$1">
-                      <Text fontSize={14} fontFamily={BIZLINK_FONTS.semibold} color={BIZLINK_COLORS.text}>
-                        {meeting.clientName}
-                      </Text>
-                      <Text fontSize={12} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted}>
-                        {meetingLocationLabel(meeting, MEETING_MARKER_TYPE_LABEL)}
-                      </Text>
-                    </YStack>
-                  </XStack>
-                </View>
-              </Pressable>
-            );
-          })}
-        </YStack>
+        <MapsMeetingCardList
+          meetings={paginatedMeetings}
+          startIndex={currentPage * ITEMS_PER_PAGE}
+          selectedMarkerIds={selectedMarkerIds}
+          onCardPress={handleCardPress}
+        />
 
       </ScrollView>
 
@@ -278,12 +268,13 @@ export default function AgentMapsScreen() {
               </XStack>
               <YStack flex={1} borderRadius={24} overflow="hidden">
                 <LeafletWebViewMapWithControls
-                  markers={state.mapMarkers}
+                  markers={mapMarkers}
                   selectedMarkerIds={Array.from(selectedMarkerIds)}
                   height={0}
                   tileType={mapType}
                   onTileTypeChange={setMapType}
                   expanded
+                  onMarkerPress={handleMarkerPress}
                 />
               </YStack>
             </YStack>
@@ -291,12 +282,6 @@ export default function AgentMapsScreen() {
         </Modal>
       )}
 
-      <DatePickerModal
-        visible={datePickerVisible}
-        selectedDate={selectedDate}
-        onSelectDate={handleDateSelect}
-        onClose={() => setDatePickerVisible(false)}
-      />
     </YStack>
   );
 }

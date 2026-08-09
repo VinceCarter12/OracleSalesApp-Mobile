@@ -1,14 +1,12 @@
 import { getDb } from './db';
 import { uuidv4 } from './uuid';
 import { runSync } from './sync-engine';
-import { enqueueOutboxRow } from './sync/entity-registry';
 import { enqueuePendingUpload, type PhotoKind } from './sync/photo-uploads';
 import { buildMeetingPhotoStoragePath } from './meeting-photo-service';
 import { isLikelyOnline } from './sync/connectivity';
-import { insertMeetingCompanionRequests, type CompanionSelection } from './tag-along-service';
-import { insertAcceptedMeetingCompanions } from './tag-along-manager-service';
+import { type CompanionSelection } from './tag-along-service';
 import { computeMeetingValidityStatusOnCreate } from './policies/tag-along-validity-policy';
-import { writeOfficePinLocal } from './office-pin-service';
+import { insertMeetingRecord } from './meeting-record-insert';
 import { getCurrentAgendaCatalog } from './meeting-agenda-catalog-source';
 import { mapAgendaLabelsToIds } from './policies/agenda-label-mapping';
 import { buildRemoteMeetingPayload } from './remote-meeting-payload';
@@ -16,7 +14,7 @@ import { verifyAccountActive, AccountSuspendedError } from './app-lock/account-s
 import { applyLocalLifecyclePrediction } from './local-lifecycle-prediction-service';
 import { notifySyncComplete } from './sync/sync-events';
 import { submitMeetingPoEvidenceIfPresent } from './meeting-po-evidence-submission';
-import type { MeetingMode, MeetingOutcome } from '../types';
+import type { ClientStatus, MeetingMode, MeetingOutcome } from '../types';
 
 // Batch 5 Slice 2 (ADR-051): short budget so a suspension check never
 // meaningfully delays an offline field write — this must fail open fast.
@@ -129,7 +127,22 @@ export async function createMeeting(record: NewMeetingRecord): Promise<string> {
   // them — see lib/meeting-agenda-catalog-source.ts for the fallback rule.
   const { catalog: agendaCatalog } = await getCurrentAgendaCatalog(db);
   const agendaIds = mapAgendaLabelsToIds(agendaCatalog, record.agendas);
-  const remotePayload = buildRemoteMeetingPayload(id, record, agendaIds);
+
+  // B-095 fix (2026-08-08): read the client's CURRENT status now, before
+  // this meeting is inserted and before `applyLocalLifecyclePrediction()`
+  // (below, after the transaction commits) can mutate it — this is the
+  // "frozen at meeting time" snapshot the meeting-list badges rely on
+  // (lib/client-status.ts::getMeetingLifecycleStatus()). Null when there's
+  // no client_id (e.g. a meeting-first prospect flow before a client row
+  // exists — out of scope; those already go through a different path).
+  const clientStatusAtMeeting = record.client_id
+    ? ((await db.getFirstAsync<{ status: ClientStatus | null }>(
+        'SELECT status FROM clients WHERE id = ?',
+        [record.client_id]
+      ))?.status ?? null)
+    : null;
+
+  const remotePayload = buildRemoteMeetingPayload(id, record, agendaIds, clientStatusAtMeeting);
 
   const createdOnline = await isLikelyOnline();
 
@@ -142,82 +155,22 @@ export async function createMeeting(record: NewMeetingRecord): Promise<string> {
     record.companionsPreAccepted ?? false
   );
 
-  await db.withTransactionAsync(async () => {
-    await db.runAsync(
-      `INSERT INTO meetings
-        (id, client_id, agent_id, gps_lat, gps_lng, selfie_url, agendas, agenda_ids, outcome, meeting_mode,
-         start_photo_url, start_captured_at, end_photo_url, end_captured_at, end_gps_lat, end_gps_lng,
-         logged_at, created_at, contact_person, contact_position, location_type, location_name, remarks,
-         validity_status, sync_status, local_updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?)`,
-      [
-        id,
-        record.client_id,
-        record.agent_id,
-        record.gps_lat,
-        record.gps_lng,
-        record.selfie_url ?? null,
-        JSON.stringify(record.agendas),
-        JSON.stringify(agendaIds),
-        record.outcome,
-        record.meeting_mode,
-        null,
-        record.start_captured_at ?? null,
-        record.end_photo_url ?? null,
-        record.end_captured_at ?? null,
-        record.end_gps_lat ?? null,
-        record.end_gps_lng ?? null,
-        record.logged_at,
-        now,
-        record.contactPerson?.trim() || null,
-        record.contactPosition ?? null,
-        record.locationType ?? null,
-        record.locationName ?? null,
-        record.remarks ?? null,
-        validityStatus,
-        now,
-      ]
-    );
-    await enqueueOutboxRow(db, {
-      outboxId,
-      recordId: id,
-      tableName: 'meetings',
-      operation: 'insert',
-      payload: JSON.stringify(remotePayload),
-      createdAt: now,
-      createdOnline,
-    });
-    // ADR-030 Pass 2.5: companion requests now created at Record Meeting
-    // time (moved from Complete Info) — same transaction as the meeting
-    // insert + its outbox row above, so a crash between the two can never
-    // strand a companion request without its outbox row, or vice versa.
-    if (record.companions?.length && record.client_id) {
-      const insertCompanions = record.companionsPreAccepted
-        ? insertAcceptedMeetingCompanions
-        : insertMeetingCompanionRequests;
-      await insertCompanions(db, {
-        clientId: record.client_id,
-        meetingId: id,
-        requesterId: record.agent_id,
-        companions: record.companions,
-        createdOnline,
-      });
-    }
-    // Batch 4: Client Office meetings auto-capture the office pin from THIS
-    // meeting's own start GPS ([[Office-Location-Spec-2026-07-29]]) —
-    // local-only, so it stays inside this transaction (unlike the
-    // network-I/O poEvidence block below). Reuses the same `db` transaction
-    // handle — expo-sqlite can't nest `withTransactionAsync`.
-    if (record.captureOfficePin && record.client_id) {
-      await writeOfficePinLocal(db, {
-        clientId: record.client_id,
-        agentId: record.agent_id,
-        lat: record.gps_lat,
-        lng: record.gps_lng,
-        source: 'client_office_meeting',
-        capturedAt: record.logged_at,
-      });
-    }
+  // 2026-08-09 fix: was a bare `db.withTransactionAsync(...)` — see
+  // lib/meeting-record-insert.ts + lib/sync/with-transaction-retry.ts's
+  // `withInsertTransactionRetry` doc comment and Bugs.md for why this
+  // needed to become retry/verify-aware (the PO-evidence "Advance Deal"
+  // save's "cannot rollback - no transaction is active" crash).
+  await insertMeetingRecord({
+    db,
+    id,
+    outboxId,
+    record,
+    agendaIds,
+    clientStatusAtMeeting,
+    remotePayload,
+    createdOnline,
+    validityStatus,
+    now,
   });
 
   // Phase C (ADR-026 P1 item 4): queue the confirmed photo's upload only

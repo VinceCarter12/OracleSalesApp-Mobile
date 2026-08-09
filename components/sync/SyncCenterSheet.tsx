@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Modal, Pressable, ScrollView } from 'react-native';
+import { Animated, Modal, Pressable, ScrollView, StyleSheet } from 'react-native';
 import { AlertTriangle, CloudOff, GitBranch, KeyRound, RefreshCw, ServerOff, Wifi, WifiOff } from 'lucide-react-native';
 import { Spinner, Text, XStack, YStack } from 'tamagui';
 import { BIZLINK_COLORS, BIZLINK_FONTS } from '../../lib/theme';
@@ -145,6 +145,15 @@ interface SyncCenterSheetProps {
   onClose: () => void;
 }
 
+/** Off-screen starting offset for the slide-up entrance/exit — mirrors
+ * BizFilterSheet's shell so the backdrop fades independently of the sheet's
+ * slide (Vince, 2026-08-09): only needs to clear the sheet's tallest
+ * realistic content, exact value doesn't matter since the transform target
+ * is always 0. */
+const SHEET_OFFSCREEN_Y = 420;
+const ANIM_DURATION_IN = 240;
+const ANIM_DURATION_OUT = 200;
+
 export function SyncCenterSheet({ visible, onClose }: SyncCenterSheetProps) {
   const { profileId, teamId } = useSession();
   const [counts, setCounts] = useState<OutboxCounts | null>(null);
@@ -153,6 +162,8 @@ export function SyncCenterSheet({ visible, onClose }: SyncCenterSheetProps) {
   const [retrying, setRetrying] = useState(false);
   const [checkingNow, setCheckingNow] = useState(false);
   const [lastSyncAt, setLastSyncAt] = useState<string | null>(null);
+  const [overlayOpacity] = useState(() => new Animated.Value(0));
+  const [sheetTranslateY] = useState(() => new Animated.Value(SHEET_OFFSCREEN_Y));
 
   const refresh = () => {
     getOutboxCounts().then(setCounts).catch(() => {});
@@ -175,7 +186,20 @@ export function SyncCenterSheet({ visible, onClose }: SyncCenterSheetProps) {
   useEffect(() => {
     if (!visible) return;
     refresh();
-  }, [visible]);
+    Animated.parallel([
+      Animated.timing(overlayOpacity, { toValue: 1, duration: ANIM_DURATION_IN, useNativeDriver: true }),
+      Animated.timing(sheetTranslateY, { toValue: 0, duration: ANIM_DURATION_IN, useNativeDriver: true }),
+    ]).start();
+  }, [visible, overlayOpacity, sheetTranslateY]);
+
+  function handleDismiss(): void {
+    Animated.parallel([
+      Animated.timing(overlayOpacity, { toValue: 0, duration: ANIM_DURATION_OUT, useNativeDriver: true }),
+      Animated.timing(sheetTranslateY, { toValue: SHEET_OFFSCREEN_Y, duration: ANIM_DURATION_OUT, useNativeDriver: true }),
+    ]).start(({ finished }) => {
+      if (finished) onClose();
+    });
+  }
 
   // B-023: `retryFailedOutboxRow` existed since ADR-018 but had no UI ever
   // calling it — failed records never left "failed" (not even auto-retried
@@ -192,19 +216,21 @@ export function SyncCenterSheet({ visible, onClose }: SyncCenterSheetProps) {
   }
 
   return (
-    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-      <Pressable
-        onPress={onClose}
-        style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'flex-end' }}
-      >
-        <Pressable onPress={(e) => e.stopPropagation()}>
-          <YStack
-            backgroundColor={BIZLINK_COLORS.canvas}
-            borderTopLeftRadius={28}
-            borderTopRightRadius={28}
-            padding={18}
-            paddingBottom={28}
-          >
+    <Modal visible={visible} transparent animationType="none" onRequestClose={handleDismiss}>
+      <Pressable onPress={handleDismiss} style={{ flex: 1, justifyContent: 'flex-end' }}>
+        <Animated.View
+          pointerEvents="none"
+          style={[StyleSheet.absoluteFill, { backgroundColor: '#000', opacity: overlayOpacity.interpolate({ inputRange: [0, 1], outputRange: [0, 0.4] }) }]}
+        />
+        <Animated.View style={{ transform: [{ translateY: sheetTranslateY }] }}>
+          <Pressable onPress={(e) => e.stopPropagation()}>
+            <YStack
+              backgroundColor={BIZLINK_COLORS.canvas}
+              borderTopLeftRadius={28}
+              borderTopRightRadius={28}
+              padding={18}
+              paddingBottom={28}
+            >
             <XStack justifyContent="center" marginBottom={12}>
               <YStack width={40} height={4} borderRadius={2} backgroundColor={BIZLINK_COLORS.line} />
             </XStack>
@@ -266,9 +292,10 @@ export function SyncCenterSheet({ visible, onClose }: SyncCenterSheetProps) {
               />
             ) : null}
 
-            <BizButton label="Got it" variant="brand" onPress={onClose} style={{ marginTop: 8 }} />
+            <BizButton label="Got it" variant="brand" onPress={handleDismiss} style={{ marginTop: 8 }} />
           </YStack>
         </Pressable>
+        </Animated.View>
       </Pressable>
     </Modal>
   );

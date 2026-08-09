@@ -22,11 +22,37 @@ interface BizFloatingPagerProps {
  * `YStack`/`View` — never inside a `ListFooterComponent`, since
  * `position="absolute"` needs a positioned ancestor the list content itself
  * can't provide reliably.
+ *
+ * Page buttons are windowed (2026-08-09): first/last plus the current page
+ * and its immediate neighbours are shown, with a `…` separator for any gap —
+ * so a long paginated list (e.g. Sync History) never overflows the screen
+ * the way rendering every page number would.
  */
+
+/** Page numbers (or `'ellipsis'` gap markers) to render for the given page window. */
+export function getPageWindow(page: number, totalPages: number): (number | 'ellipsis')[] {
+  const maxButtons = 5;
+  if (totalPages <= maxButtons) {
+    return Array.from({ length: totalPages }, (_, i) => i + 1);
+  }
+  const candidates = [1, totalPages, page, page - 1, page + 1];
+  const sorted = Array.from(new Set(candidates))
+    .filter((p) => p >= 1 && p <= totalPages)
+    .sort((a, b) => a - b);
+  const result: (number | 'ellipsis')[] = [];
+  let prev = 0;
+  for (const p of sorted) {
+    if (p - prev > 1) result.push('ellipsis');
+    result.push(p);
+    prev = p;
+  }
+  return result;
+}
+
 export function BizFloatingPager({ page, totalPages, onPageChange, bottomOffset }: BizFloatingPagerProps) {
   const BIZLINK_COLORS = useBizlinkColors();
   if (totalPages <= 0) return null;
-  const pages = Array.from({ length: totalPages }, (_, i) => i + 1);
+  const pages = getPageWindow(page, totalPages);
 
   return (
     <View position="absolute" bottom={bottomOffset} left={0} right={0} alignItems="center" pointerEvents="box-none">
@@ -60,7 +86,22 @@ export function BizFloatingPager({ page, totalPages, onPageChange, bottomOffset 
           <ChevronLeft size={20} color={BIZLINK_COLORS.text} strokeWidth={2} />
         </Pressable>
 
-        {pages.map((p) => {
+        {pages.map((item, index) => {
+          if (item === 'ellipsis') {
+            return (
+              <Text
+                key={`ellipsis-${index}`}
+                fontSize={15}
+                fontFamily={BIZLINK_FONTS.semibold}
+                color={BIZLINK_COLORS.muted}
+                width={20}
+                textAlign="center"
+              >
+                …
+              </Text>
+            );
+          }
+          const p = item;
           const selected = p === page;
           return (
             <Pressable

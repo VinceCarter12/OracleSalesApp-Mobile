@@ -1,15 +1,17 @@
 import { useMemo, useState } from 'react';
-import { FlatList, TextInput } from 'react-native';
+import { FlatList, Pressable, TextInput } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
-import { Eye, Search } from 'lucide-react-native';
+import { Eye, Search, SlidersHorizontal } from 'lucide-react-native';
 import { Spinner, Text, XStack, YStack } from 'tamagui';
-import { BIZLINK_COLORS, BIZLINK_FONTS } from '../../../lib/theme';
+import { BIZLINK_COLORS, BIZLINK_FONTS, BIZLINK_ON_INK } from '../../../lib/theme';
 import { CLIENT_STATUS_BADGES } from '../../../lib/client-status';
 import { useExecutiveOverview } from '../../../lib/use-executive-overview';
 import { avatarPaletteFor } from '../../../lib/avatar-palette';
 import { BizChip } from '../../../components/bizlink/BizChip';
 import { BizButton } from '../../../components/bizlink/BizButton';
+import { BizFilterSheet } from '../../../components/bizlink/BizFilterSheet';
+import { BizFilterSheetRow } from '../../../components/bizlink/BizFilterSheetRow';
 import { Avatar } from '../../../components/ui/Avatar';
 import { StatusBadge } from '../../../components/ui/StatusBadge';
 import type { ClientStatus, ExecAgent, ExecManager } from '../../../types';
@@ -27,6 +29,7 @@ export default function ExecutiveClientsScreen() {
   const [search, setSearch] = useState('');
   const [managerFilter, setManagerFilter] = useState<string | 'all'>('all');
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
+  const [filterOpen, setFilterOpen] = useState(false);
 
   const managers = overview?.managers ?? [];
   const agentById = useMemo(() => new Map(overview?.agents.map((a) => [a.id, a]) ?? []), [overview]);
@@ -42,41 +45,75 @@ export default function ExecutiveClientsScreen() {
     });
   }, [overview, search, managerFilter, statusFilter]);
 
+  const managerLabel = managerFilter === 'all' ? 'All' : managers.find((m) => m.id === managerFilter)?.name.split(' ')[0] ?? 'All';
+  const statusLabel = statusFilter === 'all' ? 'All' : CLIENT_STATUS_BADGES[statusFilter].label;
+  const filtersActive = managerFilter !== 'all' || statusFilter !== 'all';
+
+  function resetFilters(): void {
+    setManagerFilter('all');
+    setStatusFilter('all');
+  }
+
   return (
     <YStack flex={1} backgroundColor={BIZLINK_COLORS.canvas} paddingTop={insets.top}>
       <XStack alignItems="center" paddingHorizontal="$4" paddingTop="$2.5" paddingBottom="$1.5">
         <Text fontFamily={BIZLINK_FONTS.semibold} fontSize={21} color={BIZLINK_COLORS.text}>Clients</Text>
       </XStack>
       <YStack paddingHorizontal="$4" gap="$2.5">
-        <XStack alignItems="center" backgroundColor={BIZLINK_COLORS.card} borderRadius={16} height={52} paddingHorizontal={14} gap="$2">
-          <Search size={16} color={BIZLINK_COLORS.muted} strokeWidth={1.75} />
-          <TextInput
-            value={search}
-            onChangeText={setSearch}
-            placeholder="Search company name…"
-            placeholderTextColor={BIZLINK_COLORS.muted}
-            style={{ flex: 1, fontFamily: BIZLINK_FONTS.medium, fontSize: 14.5, color: BIZLINK_COLORS.text }}
-          />
-        </XStack>
-        <Text fontSize={11} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} letterSpacing={0.4}>Filter by manager</Text>
-        <XStack gap="$2" flexWrap="wrap">
-          <BizChip label="All" selected={managerFilter === 'all'} onPress={() => setManagerFilter('all')} />
-          {managers.map((m: ExecManager) => (
-            <BizChip key={m.id} label={m.name.split(' ')[0]} selected={managerFilter === m.id} onPress={() => setManagerFilter(m.id)} />
-          ))}
-        </XStack>
-        <Text fontSize={11} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} letterSpacing={0.4}>Filter by status</Text>
-        <XStack gap="$2" flexWrap="wrap">
-          {STATUS_FILTERS.map((s) => (
-            <BizChip
-              key={s}
-              label={s === 'all' ? 'All' : CLIENT_STATUS_BADGES[s].label}
-              selected={statusFilter === s}
-              onPress={() => setStatusFilter(s)}
+        <XStack gap="$2" alignItems="center">
+          <XStack flex={1} alignItems="center" backgroundColor={BIZLINK_COLORS.card} borderRadius={16} height={52} paddingHorizontal={14} gap="$2">
+            <Search size={16} color={BIZLINK_COLORS.muted} strokeWidth={1.75} />
+            <TextInput
+              value={search}
+              onChangeText={setSearch}
+              placeholder="Search company name…"
+              placeholderTextColor={BIZLINK_COLORS.muted}
+              style={{ flex: 1, fontFamily: BIZLINK_FONTS.medium, fontSize: 14.5, color: BIZLINK_COLORS.text }}
             />
-          ))}
+          </XStack>
+          <Pressable
+            accessibilityLabel="Toggle filters"
+            onPress={() => setFilterOpen((open) => !open)}
+            style={{
+              flexDirection: 'row',
+              alignItems: 'center',
+              gap: 6,
+              backgroundColor: filterOpen || filtersActive ? BIZLINK_COLORS.ink : BIZLINK_COLORS.card,
+              borderRadius: 16,
+              paddingHorizontal: 14,
+              height: 52,
+              borderWidth: 1,
+              borderColor: filterOpen || filtersActive ? BIZLINK_COLORS.ink : BIZLINK_COLORS.line,
+            }}
+          >
+            <SlidersHorizontal size={16} color={filterOpen || filtersActive ? BIZLINK_ON_INK.solid : BIZLINK_COLORS.muted} strokeWidth={1.75} />
+            <Text fontSize={11.5} fontFamily={BIZLINK_FONTS.medium} color={filterOpen || filtersActive ? BIZLINK_ON_INK.solid : BIZLINK_COLORS.muted}>Filters</Text>
+          </Pressable>
         </XStack>
       </YStack>
+
+      <BizFilterSheet visible={filterOpen} onClose={() => setFilterOpen(false)} filtersActive={filtersActive} onReset={resetFilters}>
+        <BizFilterSheetRow label="Manager" value={managerLabel}>
+          <XStack gap="$2" flexWrap="wrap">
+            <BizChip label="All" selected={managerFilter === 'all'} onPress={() => setManagerFilter('all')} />
+            {managers.map((m: ExecManager) => (
+              <BizChip key={m.id} label={m.name.split(' ')[0]} selected={managerFilter === m.id} onPress={() => setManagerFilter(m.id)} />
+            ))}
+          </XStack>
+        </BizFilterSheetRow>
+        <BizFilterSheetRow label="Status" value={statusLabel}>
+          <XStack gap="$2" flexWrap="wrap">
+            {STATUS_FILTERS.map((s) => (
+              <BizChip
+                key={s}
+                label={s === 'all' ? 'All' : CLIENT_STATUS_BADGES[s].label}
+                selected={statusFilter === s}
+                onPress={() => setStatusFilter(s)}
+              />
+            ))}
+          </XStack>
+        </BizFilterSheetRow>
+      </BizFilterSheet>
 
       {loading ? (
         <YStack alignItems="center" paddingVertical="$6">

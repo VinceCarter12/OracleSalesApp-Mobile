@@ -1,4 +1,5 @@
-import { Pressable, ScrollView } from 'react-native';
+import { useState } from 'react';
+import { Pressable, RefreshControl, ScrollView } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { Bell, Building2, Map, RefreshCw, Users } from 'lucide-react-native';
@@ -28,10 +29,17 @@ import { getDashboardActionHref } from '../../lib/dashboard-action-registry';
  */
 export default function ExecutiveHomeScreen() {
   const insets = useSafeAreaInsets();
-  const { overview, loading, error, reload } = useExecutiveOverview();
+  const { overview, error, reload } = useExecutiveOverview();
   const freshnessTime = new Date().toLocaleTimeString('en-PH', { hour: 'numeric', minute: '2-digit' });
+  // Pull-to-refresh spinner must be bound to a user-gesture-only flag, not
+  // the hook's own `loading` — see app/(tabs)/index.tsx's twin.
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
-  if (loading || !overview) {
+  // Only show the full-screen spinner on the true initial load (no data
+  // yet) — a pull-to-refresh also sets `loading` true, and that must show
+  // the RefreshControl's own spinner over existing content, not blank the
+  // whole screen.
+  if (!overview) {
     return (
       <YStack flex={1} justifyContent="center" alignItems="center" backgroundColor={BIZLINK_COLORS.canvas}>
         <Spinner size="large" color={BIZLINK_COLORS.brand} />
@@ -49,7 +57,6 @@ export default function ExecutiveHomeScreen() {
   }
 
   const { totals, managers } = overview;
-  const totalMeetings = managers.reduce((sum, m) => sum + m.meetings, 0);
 
   return (
     <YStack flex={1} backgroundColor={BIZLINK_COLORS.canvas} paddingTop={insets.top}>
@@ -75,7 +82,22 @@ export default function ExecutiveHomeScreen() {
         </Text>
       </XStack>
 
-      <ScrollView contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 96 }}>
+      <ScrollView
+        contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 96 }}
+        refreshControl={
+          <RefreshControl
+            refreshing={isRefreshing}
+            onRefresh={async () => {
+              setIsRefreshing(true);
+              try {
+                await reload();
+              } finally {
+                setIsRefreshing(false);
+              }
+            }}
+          />
+        }
+      >
         <XStack gap={10} marginTop={6}>
           <YStack flex={1}>
             <BizStatCard

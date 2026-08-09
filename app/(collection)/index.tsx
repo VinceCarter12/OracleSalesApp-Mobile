@@ -1,5 +1,5 @@
 import { useCallback, useState } from 'react';
-import { Pressable, ScrollView } from 'react-native';
+import { Pressable, RefreshControl, ScrollView } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router, useFocusEffect } from 'expo-router';
 import { Bell, ClipboardList, History, Hourglass, User, Vault } from 'lucide-react-native';
@@ -124,6 +124,9 @@ export default function CollectionDashboardScreen() {
   // Re-read on focus so a just-published list / completed stop shows on return.
   const { stores, refresh } = useCollectionStores();
   useFocusEffect(useCallback(() => { refresh(); }, [refresh]));
+  // Pull-to-refresh spinner must be bound to a user-gesture-only flag, not
+  // the hook's own `loading` — see app/(tabs)/index.tsx's twin.
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
   const summary = getCollectionSummary(stores);
   // Additional (admin added mid-day) stores float to the front so the 3-row
@@ -152,7 +155,22 @@ export default function CollectionDashboardScreen() {
         </Pressable>
       </XStack>
 
-      <ScrollView contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 40 }}>
+      <ScrollView
+        contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 40 }}
+        refreshControl={
+          <RefreshControl
+            refreshing={isRefreshing}
+            onRefresh={async () => {
+              setIsRefreshing(true);
+              try {
+                await refresh();
+              } finally {
+                setIsRefreshing(false);
+              }
+            }}
+          />
+        }
+      >
         <XStack gap={10} marginTop={6}>
           <YStack flex={1}>
             <BizStatCard

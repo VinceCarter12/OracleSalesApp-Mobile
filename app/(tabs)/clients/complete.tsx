@@ -18,6 +18,16 @@ import { BizSectionHeader } from '../../../components/bizlink/BizSectionHeader';
 import { BizButton } from '../../../components/bizlink/BizButton';
 import { BizPendingBanner } from '../../../components/bizlink/BizPendingBanner';
 import { SALES_CHANNELS, type Client, type SalesChannel } from '../../../types';
+import {
+  CONTACT_NUMBER_MAX_LENGTH,
+  CONTACT_NUMBER_INVALID_MESSAGE,
+  CONTACT_PERSON_MAX_LENGTH,
+  POSITION_MAX_LENGTH,
+  OFFICE_ADDRESS_MAX_LENGTH,
+  MINOR_NOTES_MAX_LENGTH,
+  isValidContactNumber,
+  sanitizeContactNumber,
+} from '../../../lib/field-validation';
 
 /**
  * Complete Info (Wireframe a-complete, F-001 Phase B / F-002): first-time
@@ -41,10 +51,16 @@ export default function CompleteInfoScreen() {
   const [position, setPosition] = useState('');
   const [contactNumber, setContactNumber] = useState('');
   const [officeAddress, setOfficeAddress] = useState('');
-  const [channel, setChannel] = useState<SalesChannel>('Distributor');
+  // B-0xx fix (2026-08-09): no pre-selected fallback — was defaulting to
+  // 'Distributor' so an agent could submit without ever actually choosing a
+  // channel. Null until tapped; required before submit (see canSubmit below).
+  const [channel, setChannel] = useState<SalesChannel | null>(null);
   const [existingOverride, setExistingOverride] = useState(false);
   const [minorNotes, setMinorNotes] = useState('');
   const [saving, setSaving] = useState(false);
+  // 2026-08-09 (field validation): the 09-format hint only appears after the
+  // user leaves the field or tries to save — never mid-typing.
+  const [contactNumberTouched, setContactNumberTouched] = useState(false);
 
   useEffect(() => {
     if (!clientId) return;
@@ -58,7 +74,7 @@ export default function CompleteInfoScreen() {
         setPosition(foundClient.position ?? '');
         setContactNumber(foundClient.contact_number ?? '');
         setOfficeAddress(foundClient.office_address ?? '');
-        setChannel(foundClient.sales_channel ?? 'Distributor');
+        setChannel(foundClient.sales_channel ?? null);
         setExistingOverride(foundClient.status === 'existing');
         setMinorNotes(foundClient.minor_notes ?? '');
       }
@@ -77,8 +93,21 @@ export default function CompleteInfoScreen() {
   const firstTime = !isInfoComplete(client);
   const isManagerOwnClient = role === 'sales_manager' && client.agent_id === profileId;
 
+  // Contact number is OPTIONAL (blank allowed), but when provided it must be
+  // a valid 11-digit 09-format Philippine mobile number (lib/field-validation).
+  const contactNumberValid = contactNumber.trim() === '' || isValidContactNumber(contactNumber.trim());
+
   async function handleSubmit(): Promise<void> {
     if (!profileId || !clientId || !client) return;
+    if (channel === null) {
+      Alert.alert('Error', 'Piliin ang sales channel bago i-save.');
+      return;
+    }
+    if (!contactNumberValid) {
+      setContactNumberTouched(true);
+      Alert.alert('Error', CONTACT_NUMBER_INVALID_MESSAGE);
+      return;
+    }
 
     setSaving(true);
     try {
@@ -117,7 +146,7 @@ export default function CompleteInfoScreen() {
     }
   }
 
-  const canSubmit = !saving && pendingRequest === null;
+  const canSubmit = !saving && pendingRequest === null && channel !== null && contactNumberValid;
 
   return (
     <YStack flex={1} backgroundColor={BIZLINK_COLORS.canvas} paddingTop={insets.top}>
@@ -186,25 +215,53 @@ export default function CompleteInfoScreen() {
             </View>
           </YStack>
         </XStack>
-        <BizField label="CONTACT PERSON" value={contactPerson} onChangeText={setContactPerson} placeholder="Full name" />
+        <BizField
+          label="CONTACT PERSON"
+          value={contactPerson}
+          onChangeText={setContactPerson}
+          placeholder="Full name"
+          maxLength={CONTACT_PERSON_MAX_LENGTH}
+        />
         <BizField
           label="POSITION (decision-maker lang: purchasing/CEO/owner)"
           value={position}
           onChangeText={setPosition}
           placeholder="e.g. Purchasing Manager"
+          maxLength={POSITION_MAX_LENGTH}
         />
         <BizField
           label="CONTACT NUMBER"
           value={contactNumber}
-          onChangeText={setContactNumber}
+          onChangeText={(text) => {
+            setContactNumber(sanitizeContactNumber(text));
+            setContactNumberTouched(false);
+          }}
+          onBlur={() => setContactNumberTouched(true)}
           placeholder="09xx xxx xxxx"
           keyboardType="phone-pad"
+          maxLength={CONTACT_NUMBER_MAX_LENGTH}
+          hint={
+            contactNumberTouched && !contactNumberValid ? (
+              <Text
+                fontSize={11.5}
+                fontFamily={BIZLINK_FONTS.semibold}
+                backgroundColor={BIZLINK_COLORS.tintB}
+                color={BIZLINK_COLORS.red}
+                borderRadius={14}
+                paddingHorizontal={13}
+                paddingVertical={9}
+              >
+                {CONTACT_NUMBER_INVALID_MESSAGE}
+              </Text>
+            ) : null
+          }
         />
         <BizField
           label="OFFICE ADDRESS"
           value={officeAddress}
           onChangeText={setOfficeAddress}
           placeholder="Complete address"
+          maxLength={OFFICE_ADDRESS_MAX_LENGTH}
         />
 
         <BizSectionHeader title="Client status" />
@@ -233,6 +290,7 @@ export default function CompleteInfoScreen() {
           onChangeText={setMinorNotes}
           placeholder="Internal notes — no approval needed"
           multiline
+          maxLength={MINOR_NOTES_MAX_LENGTH}
         />
 
         <YStack marginTop="$5">

@@ -36,7 +36,7 @@ export function ClientInfoCard({ client }: ClientInfoCardProps) {
       <Text fontSize={15.5} fontFamily={BIZLINK_FONTS.semibold} color={BIZLINK_COLORS.text}>{client.company_name}</Text>
       <InfoRow label="Contact Person" value={client.contact_person} />
       <InfoRow label="Customer Type" value={client.customer_type} />
-      <InfoRow label="Sales Channel" value={client.sales_channel} />
+      <InfoRow label="Sales Channel" value={client.sales_channel ?? ''} />
     </YStack>
   );
 }

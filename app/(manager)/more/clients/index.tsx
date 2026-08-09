@@ -1,10 +1,10 @@
 import { useMemo, useState } from 'react';
-import { FlatList, ScrollView, TextInput } from 'react-native';
+import { FlatList, Pressable, TextInput } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
-import { Plus, Search } from 'lucide-react-native';
+import { Plus, Search, SlidersHorizontal } from 'lucide-react-native';
 import { Spinner, Text, XStack, YStack } from 'tamagui';
-import { BIZLINK_COLORS, BIZLINK_FONTS } from '../../../../lib/theme';
+import { BIZLINK_COLORS, BIZLINK_FONTS, BIZLINK_ON_INK } from '../../../../lib/theme';
 import { CLIENT_STATUS_BADGES } from '../../../../lib/client-status';
 import { useTeamOverview } from '../../../../lib/use-team-overview';
 import { useManagerScope } from '../../../../lib/manager-scope-store';
@@ -16,6 +16,8 @@ import { BizTopBar } from '../../../../components/bizlink/BizTopBar';
 import { BizChip } from '../../../../components/bizlink/BizChip';
 import { BizButton } from '../../../../components/bizlink/BizButton';
 import { BizScopeFilter } from '../../../../components/bizlink/BizScopeFilter';
+import { BizFilterSheet } from '../../../../components/bizlink/BizFilterSheet';
+import { BizFilterSheetRow } from '../../../../components/bizlink/BizFilterSheetRow';
 import { StatusBadge } from '../../../../components/ui/StatusBadge';
 import { Avatar } from '../../../../components/ui/Avatar';
 import { type ClientStatus, type TeamAgent, type TeamClient, type TeamMeeting } from '../../../../types';
@@ -40,6 +42,7 @@ export default function ManagerClientsScreen() {
   const [agentFilter, setAgentFilter] = useState<string | 'all'>('all');
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
   const [lastScope, setLastScope] = useState(scope);
+  const [filterOpen, setFilterOpen] = useState(false);
 
   if (scope !== lastScope) {
     setLastScope(scope);
@@ -64,6 +67,15 @@ export default function ManagerClientsScreen() {
     });
   }, [clients, search, agentFilter, statusFilter]);
 
+  const agentLabel = agentFilter === 'all' ? 'All' : agents.find((a) => a.id === agentFilter)?.name.split(' ')[0] ?? 'All';
+  const statusLabel = statusFilter === 'all' ? 'All' : CLIENT_STATUS_BADGES[statusFilter].label;
+  const filtersActive = agentFilter !== 'all' || statusFilter !== 'all';
+
+  function resetFilters(): void {
+    setAgentFilter('all');
+    setStatusFilter('all');
+  }
+
   return (
     <YStack flex={1} backgroundColor={BIZLINK_COLORS.canvas} paddingTop={insets.top}>
       <BizTopBar
@@ -81,39 +93,58 @@ export default function ManagerClientsScreen() {
       />
       <YStack paddingHorizontal="$4" gap="$2.5">
         <BizScopeFilter />
-        <XStack alignItems="center" backgroundColor={BIZLINK_COLORS.card} borderWidth={1} borderColor={BIZLINK_COLORS.line} borderRadius={16} height={52} paddingHorizontal={16} gap="$2">
-          <Search size={16} color={BIZLINK_COLORS.muted} strokeWidth={1.75} />
-          <TextInput
-            value={search}
-            onChangeText={setSearch}
-            placeholder="Search company name…"
-            placeholderTextColor={BIZLINK_COLORS.muted}
-            style={{ flex: 1, fontFamily: BIZLINK_FONTS.medium, fontSize: 14.5, color: BIZLINK_COLORS.text }}
-          />
+        <XStack gap="$2" alignItems="center">
+          <XStack flex={1} alignItems="center" backgroundColor={BIZLINK_COLORS.card} borderWidth={1} borderColor={BIZLINK_COLORS.line} borderRadius={16} height={52} paddingHorizontal={16} gap="$2">
+            <Search size={16} color={BIZLINK_COLORS.muted} strokeWidth={1.75} />
+            <TextInput
+              value={search}
+              onChangeText={setSearch}
+              placeholder="Search company name…"
+              placeholderTextColor={BIZLINK_COLORS.muted}
+              style={{ flex: 1, fontFamily: BIZLINK_FONTS.medium, fontSize: 14.5, color: BIZLINK_COLORS.text }}
+            />
+          </XStack>
+          <Pressable
+            accessibilityLabel="Toggle filters"
+            onPress={() => setFilterOpen((open) => !open)}
+            style={{
+              flexDirection: 'row',
+              alignItems: 'center',
+              gap: 6,
+              backgroundColor: filterOpen || filtersActive ? BIZLINK_COLORS.ink : BIZLINK_COLORS.card,
+              borderRadius: 16,
+              paddingHorizontal: 14,
+              height: 52,
+              borderWidth: 1,
+              borderColor: filterOpen || filtersActive ? BIZLINK_COLORS.ink : BIZLINK_COLORS.line,
+            }}
+          >
+            <SlidersHorizontal size={16} color={filterOpen || filtersActive ? BIZLINK_ON_INK.solid : BIZLINK_COLORS.muted} strokeWidth={1.75} />
+            <Text fontSize={11.5} fontFamily={BIZLINK_FONTS.medium} color={filterOpen || filtersActive ? BIZLINK_ON_INK.solid : BIZLINK_COLORS.muted}>Filters</Text>
+          </Pressable>
         </XStack>
+      </YStack>
+
+      <BizFilterSheet visible={filterOpen} onClose={() => setFilterOpen(false)} filtersActive={filtersActive} onReset={resetFilters}>
         {scope !== 'mine' ? (
-          <>
-            <Text fontSize={11} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} letterSpacing={0.4}>Filter by agent</Text>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-              <XStack gap="$2">
-                <BizChip label="All" selected={agentFilter === 'all'} onPress={() => setAgentFilter('all')} />
-                {agents.map((a) => (
-                  <BizChip key={a.id} label={a.name.split(' ')[0]} selected={agentFilter === a.id} onPress={() => setAgentFilter(a.id)} />
-                ))}
-              </XStack>
-            </ScrollView>
-          </>
+          <BizFilterSheetRow label="Agent" value={agentLabel}>
+            <XStack gap="$2" flexWrap="wrap">
+              <BizChip label="All" selected={agentFilter === 'all'} onPress={() => setAgentFilter('all')} />
+              {agents.map((a) => (
+                <BizChip key={a.id} label={a.name.split(' ')[0]} selected={agentFilter === a.id} onPress={() => setAgentFilter(a.id)} />
+              ))}
+            </XStack>
+          </BizFilterSheetRow>
         ) : null}
-        <Text fontSize={11} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} letterSpacing={0.4}>Filter by status</Text>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-          <XStack gap="$2">
+        <BizFilterSheetRow label="Status" value={statusLabel}>
+          <XStack gap="$2" flexWrap="wrap">
             <BizChip label="All" selected={statusFilter === 'all'} onPress={() => setStatusFilter('all')} />
             {CLIENT_STATUS_FILTER_ORDER.map((s) => (
               <BizChip key={s} label={CLIENT_STATUS_BADGES[s].label} selected={statusFilter === s} onPress={() => setStatusFilter(s)} />
             ))}
           </XStack>
-        </ScrollView>
-      </YStack>
+        </BizFilterSheetRow>
+      </BizFilterSheet>
 
       {loading ? (
         <YStack alignItems="center" paddingVertical="$6">

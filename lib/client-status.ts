@@ -1,5 +1,5 @@
 import { COLORS } from './theme';
-import type { Client, ClientStatus } from '../types';
+import type { Client, ClientStatus, Meeting } from '../types';
 
 /**
  * Resolves a client's lifecycle status. Records without a status column
@@ -112,4 +112,22 @@ export function isFastPathEligible(client: Pick<Client, 'status'>): boolean {
 /** True only for 'inactive' — mirrors ADR-006's server-only-lifecycle-automation rule: no other status is ever set by the server alone. */
 export function isServerManagedStatus(status: ClientStatus): boolean {
   return status === 'inactive';
+}
+
+/**
+ * B-095 fix (2026-08-08): the per-MEETING lifecycle badge on a meeting list
+ * card (My Meetings, Manager Meetings) must show the client's status AT THE
+ * TIME that meeting happened, never the client's live/current status —
+ * otherwise every card for the same client shows the same, constantly
+ * mutating badge. `null` means either a legacy meeting recorded before
+ * Migration v26 or a meeting with no client_id — callers must render no
+ * badge in that case rather than falling back to `getClientStatus()`.
+ * Deliberately does NOT apply to the single Meeting Detail page
+ * (`app/(tabs)/meetings/[id].tsx`), which keeps live `getClientStatus()` for
+ * its dual-purpose display + PO-approval gating check.
+ */
+export function getMeetingLifecycleStatus(
+  meeting: Pick<Meeting, 'client_status_at_meeting'>
+): ClientStatus | null {
+  return meeting.client_status_at_meeting ?? null;
 }

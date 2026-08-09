@@ -224,6 +224,13 @@ export type Database = {
           // Stable agenda ids, additive alongside the legacy `agenda`
           // display-label array above — never used as display text.
           agenda_ids: string[] | null;
+          // B-095 fix (2026-08-08): the client's lifecycle status frozen at
+          // the moment this meeting was recorded — see lib/db.ts's local
+          // Migration v26 + Bugs.md. Companion web-repo migration
+          // (`supabase/migrations/067_meetings_client_status_at_meeting.sql`,
+          // renumbered from the originally-drafted 064) applied & CI-deployed
+          // live 2026-08-08 — this column round-trips normally now.
+          client_status_at_meeting: string | null;
         };
         Insert: Omit<Database['public']['Tables']['meetings']['Row'], 'id' | 'created_at' | 'cycle_id'>;
         Update: Partial<Database['public']['Tables']['meetings']['Insert']>;

@@ -201,8 +201,9 @@ export async function upsertSyncedMeeting(
       (id, client_id, agent_id, gps_lat, gps_lng, selfie_url, agendas, outcome,
        meeting_mode, start_photo_url, start_captured_at, end_photo_url, end_captured_at,
        end_gps_lat, end_gps_lng, logged_at, created_at, contact_person, contact_position,
-       location_type, location_name, remarks, cycle_id, agenda_ids, sync_status, local_updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'synced', ?)
+       location_type, location_name, remarks, cycle_id, agenda_ids, client_status_at_meeting,
+       sync_status, local_updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'synced', ?)
      ON CONFLICT(id) DO UPDATE SET
        client_id = excluded.client_id, agent_id = excluded.agent_id, gps_lat = excluded.gps_lat,
        gps_lng = excluded.gps_lng, selfie_url = excluded.selfie_url, agendas = excluded.agendas,
@@ -214,6 +215,7 @@ export async function upsertSyncedMeeting(
        contact_person = excluded.contact_person, contact_position = excluded.contact_position,
        location_type = excluded.location_type, location_name = excluded.location_name,
        remarks = excluded.remarks, cycle_id = excluded.cycle_id, agenda_ids = excluded.agenda_ids,
+       client_status_at_meeting = excluded.client_status_at_meeting,
        sync_status = 'synced', sync_error = NULL, local_updated_at = excluded.local_updated_at
      WHERE meetings.sync_status = 'synced'`,
     [
@@ -244,6 +246,11 @@ export async function upsertSyncedMeeting(
       // either of these itself at meeting-creation time.
       (row.cycle_id as string) ?? null,
       JSON.stringify(row.agenda_ids ?? []),
+      // B-095 fix (2026-08-08): mirrors the frozen-at-creation status
+      // written by lib/meeting-service.ts::createMeeting() — this sync-down
+      // path only ever reflects whatever the server already has, never
+      // recomputes it.
+      (row.client_status_at_meeting as string) ?? null,
       now,
     ]
   );
