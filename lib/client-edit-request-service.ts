@@ -5,6 +5,7 @@ import { enqueueOutboxRow } from './sync/entity-registry';
 import { isLikelyOnline } from './sync/connectivity';
 import { verifyAccountActive, AccountSuspendedError } from './app-lock/account-status';
 import { buildClientEditRequestRemotePayload, type ClientEditRequestChanges } from './client-edit-request-payload';
+import { describeLoadError } from './error-message';
 
 // ADR-052 (Batch 6 Phase 5): mirrors lib/client-service.ts::updateClientInfo()'s
 // structure exactly — local-first write + outbox enqueue in one transaction,
@@ -108,8 +109,13 @@ export async function createClientEditRequest(
     });
   });
 
+  // `Error.message` is non-enumerable, so `JSON.stringify(err)` alone
+  // silently drops the actual cause — `describeLoadError()` already falls
+  // back to a full JSON dump when there's no usable `.message`, so it's
+  // sufficient on its own (same fix as meeting-service.ts's background-sync
+  // catch).
   runSync(requesterId).catch((err) =>
-    console.error('[client-edit-request-service] background sync failed:', JSON.stringify(err, null, 2))
+    console.error('[client-edit-request-service] background sync failed:', describeLoadError(err))
   );
 
   return id;

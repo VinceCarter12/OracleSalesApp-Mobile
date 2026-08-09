@@ -1,4 +1,4 @@
-import { ChevronRight, FileCheck2, PencilLine, Users } from 'lucide-react-native';
+import { ChevronRight } from 'lucide-react-native';
 import { Text, XStack, YStack } from 'tamagui';
 import { useBizlinkColors, BIZLINK_FONTS } from '../../lib/theme';
 import type { MyRequestRow } from '../../lib/my-request-status-service';
@@ -7,20 +7,15 @@ import { BizBadge } from './BizBadge';
 
 interface BizMyRequestRowProps {
   row: MyRequestRow;
+  rowNumber: number;
   onPress: () => void;
 }
 
-// Wireframe `aRequestTypeLabel()`/`aRequestTypeIcon()` (Wireframe-Sales-BizLink.html ~line 1191-1192).
+// Wireframe `aRequestTypeLabel()` (Wireframe-Sales-BizLink.html ~line 1191).
 const KIND_LABEL: Record<MyRequestRow['requestKind'], string> = {
   po_confirmation: 'PO confirmation',
   client_edit: 'Client edit',
   tag_along: 'Tag-along',
-};
-
-const KIND_ICON: Record<MyRequestRow['requestKind'], typeof FileCheck2> = {
-  po_confirmation: FileCheck2,
-  client_edit: PencilLine,
-  tag_along: Users,
 };
 
 // Wireframe `aRequestStatusHtml()` labels (~line 1194).
@@ -40,12 +35,13 @@ function formatDate(iso: string): string {
 /**
  * My Requests list row (Batch 8, `app/(tabs)/more/my-requests/index.tsx`).
  * Wireframe-Sales-BizLink.html's `aRenderMyRequests()` (~line 1202) renders a
- * type icon + "type · client name" title, "Submitted <date>" subtitle, and a
- * status badge — this composes `BizCard` the same way `BizApprovalRow` does.
+ * "type · client name" title, "Submitted <date>" subtitle, and a status
+ * badge — this composes `BizCard` the same way `BizApprovalRow` does. The
+ * leading numbered circle (filled brand color, white number) reuses the
+ * Maps meeting-list convention (`MapsMeetingCardList`) instead of a type icon.
  */
-export function BizMyRequestRow({ row, onPress }: BizMyRequestRowProps) {
+export function BizMyRequestRow({ row, rowNumber, onPress }: BizMyRequestRowProps) {
   const BIZLINK_COLORS = useBizlinkColors();
-  const Icon = KIND_ICON[row.requestKind];
 
   return (
     <BizCard onPress={onPress} pressStyle={{ opacity: 0.85 }} marginBottom={10} gap="$1.5">
@@ -54,11 +50,13 @@ export function BizMyRequestRow({ row, onPress }: BizMyRequestRowProps) {
           width={36}
           height={36}
           borderRadius={18}
-          backgroundColor={BIZLINK_COLORS.soft}
+          backgroundColor={BIZLINK_COLORS.brand}
           alignItems="center"
           justifyContent="center"
         >
-          <Icon size={16} color={BIZLINK_COLORS.navy} strokeWidth={1.75} />
+          <Text fontSize={16} fontFamily={BIZLINK_FONTS.semibold} color="#FFFFFF">
+            {rowNumber}
+          </Text>
         </YStack>
         <YStack flex={1} gap="$0.5">
           <Text fontFamily={BIZLINK_FONTS.semibold} fontSize={14} color={BIZLINK_COLORS.text}>

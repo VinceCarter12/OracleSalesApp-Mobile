@@ -107,8 +107,8 @@ export default function MyRequestDetailScreen() {
       <BizTopBar title="Request detail" fallbackHref="/(tabs)/more/my-requests" />
       <ScrollView contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 32 }}>
         <BizCard gap="$1.5">
-          <XStack alignItems="flex-start" justifyContent="space-between" gap="$2">
-            <YStack gap="$1.5">
+          <XStack alignItems="flex-start" gap="$2">
+            <YStack gap="$1.5" flex={1}>
               <XStack alignItems="center" gap="$1.5">
                 <Icon size={13} color={BIZLINK_COLORS.navy} strokeWidth={1.75} />
                 <Text fontSize={11} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.navy}>
@@ -123,7 +123,9 @@ export default function MyRequestDetailScreen() {
                 {row.decidedAt ? ` · Updated ${formatDateTime(row.decidedAt)}` : ''}
               </Text>
             </YStack>
-            <BizBadge variant={row.status} label={STATUS_LABEL[row.status]} />
+            <YStack flexShrink={0}>
+              <BizBadge variant={row.status} label={STATUS_LABEL[row.status]} />
+            </YStack>
           </XStack>
         </BizCard>
 

@@ -2,6 +2,8 @@ import { useCallback, useMemo, useState } from 'react';
 import { getSyncHistory, type SyncHistoryEntry } from './sync-history';
 import { getDisplayStatus, type SyncHistoryFilterValue } from './sync-history-display';
 import { usePagination } from './use-pagination';
+import { isWithinDateRange } from './date-range';
+import type { DateRange } from '../components/bizlink/DateRangePickerModal';
 
 /**
  * Shared Sync History screen logic (Batch 2026-08-09): loads the local
@@ -18,6 +20,7 @@ export function useSyncHistory() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [outcomeFilter, setOutcomeFilter] = useState<SyncHistoryFilterValue>('all');
+  const [dateRange, setDateRange] = useState<DateRange | null>(null);
 
   const reload = useCallback(() => {
     setLoading(true);
@@ -31,6 +34,7 @@ export function useSyncHistory() {
     return entries.filter((entry) => {
       const displayStatus = getDisplayStatus(entry);
       if (outcomeFilter !== 'all' && displayStatus !== outcomeFilter) return false;
+      if (!isWithinDateRange(new Date(entry.occurredAt), dateRange)) return false;
       if (!query) return true;
       return (
         entry.label.toLowerCase().includes(query) ||
@@ -38,12 +42,17 @@ export function useSyncHistory() {
         (entry.lastError ?? '').toLowerCase().includes(query)
       );
     });
-  }, [entries, search, outcomeFilter]);
+  }, [entries, search, outcomeFilter, dateRange]);
 
-  const { page, totalPages, pageItems, setPage } = usePagination(
-    filteredEntries,
-    `${outcomeFilter}:${search.trim().toLowerCase()}`
-  );
+  const resetKey = `${outcomeFilter}:${dateRange ? `${dateRange.start.getTime()}-${dateRange.end.getTime()}` : 'all'}:${search.trim().toLowerCase()}`;
+  const { page, totalPages, pageItems, setPage } = usePagination(filteredEntries, resetKey);
+
+  const filtersActive = outcomeFilter !== 'all' || dateRange !== null;
+
+  const resetFilters = useCallback(() => {
+    setOutcomeFilter('all');
+    setDateRange(null);
+  }, []);
 
   return {
     entries,
@@ -53,6 +62,10 @@ export function useSyncHistory() {
     onSearchChange: setSearch,
     outcomeFilter,
     onFilterChange: setOutcomeFilter,
+    dateRange,
+    onDateRangeChange: setDateRange,
+    filtersActive,
+    resetFilters,
     filteredEntries,
     page,
     totalPages,

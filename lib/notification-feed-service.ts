@@ -56,6 +56,8 @@ export interface NotificationFeedItem {
   timestamp: string;
   /** Present when the item should navigate to a client's own Client Detail on tap. */
   clientId: string | null;
+  /** Present when the item should navigate to a specific meeting's Meeting Detail on tap (PO evidence items). */
+  meetingId: string | null;
   /** Discriminates which sync icon/tone to render — only set for `category === 'sync'`. */
   syncKind: 'failed' | 'conflict' | 'pending' | null;
   /** Only set for `category === 'po'` — drives icon tone via `PO_CONFIRMATION_BADGE_TONES`. */
@@ -91,6 +93,7 @@ export async function getNotificationFeedItems(profileId: string | null): Promis
       body: 'Needs attention — check Sync History for details.',
       timestamp: loadedAt,
       clientId: null,
+      meetingId: null,
       syncKind: 'failed',
       poDisplayStatus: null,
     });
@@ -105,6 +108,7 @@ export async function getNotificationFeedItems(profileId: string | null): Promis
       body: 'A record was changed on both the device and the server.',
       timestamp: loadedAt,
       clientId: null,
+      meetingId: null,
       syncKind: 'conflict',
       poDisplayStatus: null,
     });
@@ -119,6 +123,7 @@ export async function getNotificationFeedItems(profileId: string | null): Promis
       body: 'Auto-uploads kapag may signal.',
       timestamp: loadedAt,
       clientId: null,
+      meetingId: null,
       syncKind: 'pending',
       poDisplayStatus: null,
     });
@@ -135,6 +140,7 @@ export async function getNotificationFeedItems(profileId: string | null): Promis
       body: tag.clientName ?? 'Walang client name na naka-sync.',
       timestamp: tag.createdAt,
       clientId: tag.clientId,
+      meetingId: null,
       syncKind: null,
       poDisplayStatus: null,
     });
@@ -156,6 +162,7 @@ export async function getNotificationFeedItems(profileId: string | null): Promis
       body: PO_CONFIRMATION_STATUS_LABELS[record.displayStatus],
       timestamp: record.updatedAt,
       clientId: record.clientId,
+      meetingId: record.meetingId,
       syncKind: null,
       poDisplayStatus: record.displayStatus,
     });

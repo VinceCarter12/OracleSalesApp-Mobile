@@ -1,7 +1,6 @@
 import { Image, ScrollView } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
-import { ImagePlus } from 'lucide-react-native';
 import { Text, View, YStack } from 'tamagui';
 import { BIZLINK_COLORS, BIZLINK_FONTS } from '../../../lib/theme';
 import { useSession } from '../../../lib/session-store';
@@ -19,12 +18,12 @@ import { clearSnapshot } from '../../../lib/app-lock/session-snapshot';
 // shell — same precedent as Sales (Phase 2) and Manager (Phase 3), both of which
 // already stopped using it. Builds its own BizLink-styled layout locally.
 
-/** Wireframe x-account — Executive profile, security row, sign out. Gallery avatar picker reused from lib/profile-avatar.ts (ADR-007 follow-up, F-014). */
+/** Wireframe x-account — Executive profile, security row, sign out. Avatar is read-only (admin/web-managed, F-014 follow-up 2026-08-09). */
 export default function ExecutiveAccountScreen() {
   const insets = useSafeAreaInsets();
   const { signOut } = useSession();
   const { session, signOut: signOutSupabase } = useAuth();
-  const { avatarUri, pickingAvatar, handlePickAvatar } = useProfileAvatar(session?.user.id);
+  const { avatarUri } = useProfileAvatar(session?.user.id);
 
   async function handleSignOut(): Promise<void> {
     await signOutSupabase();
@@ -40,31 +39,13 @@ export default function ExecutiveAccountScreen() {
       <BizTopBar title="Account & Security" />
       <ScrollView contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 24 }}>
         <BizCard flexDirection="row" alignItems="center" gap="$3.5">
-          <View position="relative">
-            {avatarUri ? (
-              <View width={60} height={60} borderRadius={30} overflow="hidden">
-                <Image source={{ uri: avatarUri }} style={{ width: 60, height: 60 }} resizeMode="cover" />
-              </View>
-            ) : (
-              <Avatar initials="EX" size="lg" background={BIZLINK_COLORS.soft} color={BIZLINK_COLORS.navy} />
-            )}
-            <View
-              position="absolute"
-              right={-4}
-              bottom={-4}
-              width={26}
-              height={26}
-              borderRadius={13}
-              backgroundColor={BIZLINK_COLORS.brand}
-              borderWidth={2}
-              borderColor={BIZLINK_COLORS.card}
-              alignItems="center"
-              justifyContent="center"
-              onPress={pickingAvatar ? undefined : handlePickAvatar}
-            >
-              <ImagePlus size={13} color={BIZLINK_COLORS.card} strokeWidth={1.75} />
+          {avatarUri ? (
+            <View width={60} height={60} borderRadius={30} overflow="hidden">
+              <Image source={{ uri: avatarUri }} style={{ width: 60, height: 60 }} resizeMode="cover" />
             </View>
-          </View>
+          ) : (
+            <Avatar initials="EX" size="lg" background={BIZLINK_COLORS.soft} color={BIZLINK_COLORS.navy} />
+          )}
           <YStack>
             <Text fontFamily={BIZLINK_FONTS.semibold} fontSize={17} color={BIZLINK_COLORS.text}>Executive</Text>
             <Text fontSize={13} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted}>Company-wide na access</Text>

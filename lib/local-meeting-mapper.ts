@@ -20,6 +20,11 @@ export interface LocalMeetingRow {
   start_captured_at: string | null;
   end_photo_url: string | null;
   end_captured_at: string | null;
+  end_gps_lat?: number | null;
+  end_gps_lng?: number | null;
+  selfie_captured_at?: string | null;
+  selfie_gps_lat?: number | null;
+  selfie_gps_lng?: number | null;
   logged_at: string;
   created_at: string;
   contact_person: string | null;
@@ -55,6 +60,11 @@ export function rowToMeeting(row: LocalMeetingRow): Meeting {
     start_captured_at: row.start_captured_at,
     end_photo_url: row.end_photo_url,
     end_captured_at: row.end_captured_at,
+    end_gps_lat: row.end_gps_lat ?? null,
+    end_gps_lng: row.end_gps_lng ?? null,
+    selfie_captured_at: row.selfie_captured_at ?? null,
+    selfie_gps_lat: row.selfie_gps_lat ?? null,
+    selfie_gps_lng: row.selfie_gps_lng ?? null,
     logged_at: row.logged_at,
     created_at: row.created_at,
     contact_person: row.contact_person,

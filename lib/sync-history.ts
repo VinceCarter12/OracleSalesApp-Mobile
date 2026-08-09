@@ -56,6 +56,8 @@ interface PendingUploadHistoryRow {
   kind: PhotoKind;
   status: OutboxStatus;
   created_at: string;
+  synced_at: string | null;
+  last_attempt_at: string | null;
   last_error: string | null;
   retry_count: number;
   failure_class: FailureClass | null;
@@ -146,7 +148,18 @@ export const FAILURE_CLASS_LABEL: Record<FailureClass, string> = {
   unknown: 'Hindi tiyak na dahilan',
 };
 
-/** Most-recent-first terminal outbox outcomes (synced/conflict/failed), capped for a device-local list view. */
+/**
+ * Most-recent-first terminal outcomes (synced/conflict/failed), capped for a
+ * device-local list view.
+ *
+ * B-105: photo uploads (selfie, meeting start/end, collection payment,
+ * delivery receipt/proof, backload, COD, receiver signature) sync through
+ * the separate `pending_uploads` table (ADR-026 P1 item 4), not `outbox` —
+ * this only ever read `outbox`, so every successfully-synced photo upload
+ * was invisible on the Sync History screen even though it genuinely synced.
+ * Mirrors the merge already done for the PENDING list in
+ * `getPendingSyncEntries()` (B-059), just for the terminal-outcome list.
+ */
 export async function getSyncHistory(limit = 50): Promise<SyncHistoryEntry[]> {
   const db = await getDb();
   const rows = await db.getAllAsync<OutboxHistoryRow>(
@@ -157,7 +170,7 @@ export async function getSyncHistory(limit = 50): Promise<SyncHistoryEntry[]> {
      LIMIT ?`,
     [AUDIT_OUTBOX_TABLE_NAME, limit]
   );
-  return rows.map((row) => ({
+  const outboxEntries: SyncHistoryEntry[] = rows.map((row) => ({
     id: row.id,
     tableName: row.table_name,
     operation: row.operation,
@@ -172,6 +185,34 @@ export async function getSyncHistory(limit = 50): Promise<SyncHistoryEntry[]> {
     failureClass: row.failure_class,
     lastAttemptAt: row.last_attempt_at,
   }));
+
+  const uploadRows = await db.getAllAsync<PendingUploadHistoryRow>(
+    `SELECT id, kind, status, created_at, synced_at, last_attempt_at, last_error, retry_count, failure_class
+     FROM pending_uploads
+     WHERE status IN ('synced', 'conflict', 'failed')
+     ORDER BY COALESCE(last_attempt_at, synced_at, created_at) DESC
+     LIMIT ?`,
+    [limit]
+  );
+  const uploadEntries: SyncHistoryEntry[] = uploadRows.map((row) => ({
+    id: row.id,
+    tableName: 'pending_uploads',
+    operation: 'upload',
+    status: row.status as SyncHistoryOutcome,
+    createdAt: row.created_at,
+    occurredAt: row.last_attempt_at ?? row.synced_at ?? row.created_at,
+    label: UPLOAD_KIND_LABEL[row.kind],
+    lastError: row.last_error,
+    createdOnline: null,
+    adminMessage: adminMessageFor(row.status, row.retry_count, row.last_error, row.failure_class),
+    retryCount: row.retry_count,
+    failureClass: row.failure_class,
+    lastAttemptAt: row.last_attempt_at,
+  }));
+
+  return [...outboxEntries, ...uploadEntries]
+    .sort((a, b) => b.occurredAt.localeCompare(a.occurredAt))
+    .slice(0, limit);
 }
 
 export interface PendingSyncEntry {

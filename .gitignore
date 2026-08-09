@@ -27,3 +27,5 @@ WEB_STATUS.md
 .claude/
 .codex-logs/
 *.apk
+metro.log
+metro.err.log

@@ -1,11 +1,11 @@
 import { useState } from 'react';
 import { Alert, Image, Pressable } from 'react-native';
-import * as ImagePicker from 'expo-image-picker';
 import { Spinner, Text, YStack } from 'tamagui';
 import { captureGps } from '../../lib/gps';
 import { useBizlinkColors, BIZLINK_FONTS, BIZLINK_ON_INK } from '../../lib/theme';
 import { BizButton } from '../bizlink/BizButton';
 import { PhotoLightbox } from './PhotoLightbox';
+import { InAppCameraOverlay } from './InAppCameraOverlay';
 
 export interface CapturedPhoto {
   uri: string;
@@ -26,29 +26,12 @@ interface PhotoCaptureProps {
 }
 
 /** Camera only — no gallery (F-010/ADR-008). Returns null on cancel/deny. */
-async function takePhoto(): Promise<string | null> {
-  const camera = await ImagePicker.requestCameraPermissionsAsync();
-  if (camera.status !== 'granted') {
-    Alert.alert('Permission denied', 'Camera permission is required.');
-    return null;
-  }
-  const result = await ImagePicker.launchCameraAsync({
-    mediaTypes: ImagePicker.MediaTypeOptions.Images,
-    quality: 0.7,
-    allowsEditing: false,
-  });
-  if (result.canceled || result.assets.length === 0) return null;
-  return result.assets[0].uri;
-}
-
-async function takePhotoWithGps(): Promise<CapturedPhoto | null> {
-  const uri = await takePhoto();
-  if (!uri) return null;
+async function bindGps(uri: string, capturedAt: string): Promise<CapturedPhoto | null> {
   try {
     const gps = await captureGps();
     return {
       uri,
-      capturedAt: new Date().toISOString(),
+      capturedAt,
       gpsLat: gps.lat,
       gpsLng: gps.lng,
     };
@@ -78,21 +61,16 @@ export function PhotoCapture({
   const [busy, setBusy] = useState(false);
   const [locked, setLocked] = useState(false);
   const [previewOpen, setPreviewOpen] = useState(false);
+  const [cameraOpen, setCameraOpen] = useState(false);
 
   async function capture(): Promise<void> {
-    setBusy(true);
-    const captured = await takePhotoWithGps();
-    if (captured) setPhoto(captured);
-    setBusy(false);
+    setCameraOpen(true);
   }
 
   /** Retake: photo only — reuses the first shot's locked GPS/timestamp. */
   async function retake(): Promise<void> {
     if (!photo) return;
-    setBusy(true);
-    const uri = await takePhoto();
-    if (uri) setPhoto({ ...photo, uri });
-    setBusy(false);
+    setCameraOpen(true);
   }
 
   function confirm(): void {
@@ -146,6 +124,18 @@ export function PhotoCapture({
           icon={busy ? <Spinner color={BIZLINK_ON_INK.solid} /> : undefined}
         />
       )}
+      <InAppCameraOverlay
+        visible={cameraOpen}
+        title={label}
+        onCancel={() => setCameraOpen(false)}
+        onCaptured={(uri, capturedAt) => {
+          setCameraOpen(false);
+          setBusy(true);
+          void (photo ? Promise.resolve({ ...photo, uri }) : bindGps(uri, capturedAt))
+            .then((captured) => { if (captured) setPhoto(captured); })
+            .finally(() => setBusy(false));
+        }}
+      />
     </YStack>
   );
 }

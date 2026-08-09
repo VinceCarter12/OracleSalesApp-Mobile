@@ -12,7 +12,6 @@ export default function MoreStackLayout() {
   return (
     <Stack screenOptions={{ headerShown: false }}>
       <Stack.Screen name="notifications" />
-      <Stack.Screen name="tag-along" />
       <Stack.Screen name="sync-history" />
       <Stack.Screen name="sync-record/[id]" />
       <Stack.Screen name="reports" />

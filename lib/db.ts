@@ -12,7 +12,13 @@ export const DATABASE_NAME = 'oracle-sales-app.db';
 
 // Bump this and add a new `case` below whenever the schema changes — never
 // edit an already-shipped case, since devices may have already run it.
-const LATEST_SCHEMA_VERSION = 29;
+const LATEST_SCHEMA_VERSION = 31;
+
+const SELFIE_PROOF_COLUMNS: readonly (readonly [string, string])[] = [
+  ['selfie_captured_at', 'TEXT'],
+  ['selfie_gps_lat', 'REAL'],
+  ['selfie_gps_lng', 'REAL'],
+];
 
 /**
  * Idempotent `ADD COLUMN` — only adds `column` if the table doesn't already
@@ -35,6 +41,18 @@ async function addColumnIfMissing(
 }
 
 /**
+ * The v30 selfie-proof columns are additive and safe to check on every launch.
+ * A few development databases reached user_version 30 without actually
+ * receiving the columns, so version gating alone can leave Save Meeting
+ * attempting to insert into a missing column.
+ */
+async function ensureSelfieProofColumns(db: SQLiteDatabase): Promise<void> {
+  for (const [column, definition] of SELFIE_PROOF_COLUMNS) {
+    await addColumnIfMissing(db, 'meetings', column, definition);
+  }
+}
+
+/**
  * Runs once per app launch via `SQLiteProvider`'s `onInit` (see app/_layout.tsx).
  * Uses `PRAGMA user_version` so each migration step applies exactly once per
  * device, in order, regardless of which version the device is upgrading from.
@@ -43,7 +61,12 @@ export async function migrateDbIfNeeded(db: SQLiteDatabase): Promise<void> {
   const result = await db.getFirstAsync<{ user_version: number }>('PRAGMA user_version');
   let currentVersion = result?.user_version ?? 0;
 
-  if (currentVersion >= LATEST_SCHEMA_VERSION) return;
+  // Do this before the version short-circuit: inconsistent devices may report
+  // v30 (or newer) while one or more additive columns are absent.
+  if (currentVersion >= LATEST_SCHEMA_VERSION) {
+    await ensureSelfieProofColumns(db);
+    return;
+  }
 
   // Foreign keys are validated by the sync layer against Supabase, not
   // enforced locally — an agent can create a meeting for a client that
@@ -1182,6 +1205,14 @@ export async function migrateDbIfNeeded(db: SQLiteDatabase): Promise<void> {
     currentVersion = 28;
   }
 
+  // Tag-Along roster hardening: retain the server's active-state decision in
+  // the local snapshot so inactive users cannot reappear from an old cache.
+  if (currentVersion === 28) {
+    await addColumnIfMissing(db, 'team_roster_snapshot', 'is_active', 'INTEGER NOT NULL DEFAULT 0');
+    await db.runAsync('DELETE FROM team_roster_snapshot');
+    currentVersion = 29;
+  }
+
   // F-007 Delivery partial COD (web migration 073, 2026-08-09): the delivery twin
   // of the collection_payments queue above. The driver's RLS on the remote
   // `cod_payments` is INSERT-only (no UPDATE), so the proof photo URL rides IN the
@@ -1192,7 +1223,7 @@ export async function migrateDbIfNeeded(db: SQLiteDatabase): Promise<void> {
   // so the processor gates each insert on the parent PO being locally 'synced'.
   // The remote `purchase_orders.status='partial'` roll-up (server trigger) is what
   // the UI reads back on the next sync-down — no local partial mirror needed.
-  if (currentVersion === 28) {
+  if (currentVersion === 29) {
     await db.execAsync(`
       CREATE TABLE IF NOT EXISTS cod_payments (
         id TEXT PRIMARY KEY NOT NULL,
@@ -1215,10 +1246,57 @@ export async function migrateDbIfNeeded(db: SQLiteDatabase): Promise<void> {
       CREATE INDEX IF NOT EXISTS idx_cod_payments_status ON cod_payments (status);
       CREATE INDEX IF NOT EXISTS idx_cod_payments_po ON cod_payments (po_id);
     `);
-    currentVersion = 29;
+    currentVersion = 30;
   }
 
+  if (currentVersion === 30) {
+    await ensureSelfieProofColumns(db);
+    currentVersion = 31;
+  }
+
+  // Keep this unconditional as a final defensive check for databases that
+  // traversed an older path with a partially-applied v30 block.
+  await ensureSelfieProofColumns(db);
+
+
   await db.execAsync(`PRAGMA user_version = ${currentVersion}`);
+}
+
+/**
+ * 2026-08-09 fix (Save Error: "cannot rollback - no transaction is active" /
+ * "cannot start a transaction within a transaction" on PO-evidence save
+ * racing `[sync-down] client cycles pull`): `getDb()` returns one singleton
+ * connection reused by every caller — the sync engine (`processOutbox`,
+ * `syncDown`, `syncAgendaPolicyAndCycles`) AND UI write paths like
+ * `meeting-service.ts::createMeeting()` all call `getDb()` and get the SAME
+ * native connection, not two separate ones. expo-sqlite's
+ * `withTransactionAsync` does a raw BEGIN/task/COMMIT with no built-in
+ * mutex, so two callers on this one connection can genuinely race: whichever
+ * BEGIN loses finds a transaction already open (nested-BEGIN error) or later
+ * finds its own transaction gone when it tries to ROLLBACK. The retry logic
+ * in `lib/sync/with-transaction-retry.ts` (kept, still useful for other
+ * transient cases) treats the symptom; this queues every
+ * `withTransactionAsync` call on THIS connection so only one is ever in
+ * flight at a time, removing the race itself. Deliberately not applied to
+ * plain `runAsync`/`getAllAsync` calls outside a transaction — those don't
+ * hold the writer lock long enough to nest.
+ */
+function serializeTransactions(db: SQLiteDatabase): SQLiteDatabase {
+  const originalWithTransactionAsync = db.withTransactionAsync.bind(db);
+  let queue: Promise<void> = Promise.resolve();
+  db.withTransactionAsync = (task: () => Promise<void>): Promise<void> => {
+    const run = queue.then(() => originalWithTransactionAsync(task));
+    // Chain the next caller off this attempt regardless of outcome — a
+    // failed transaction must not permanently block the queue for everyone
+    // after it, but this function's own return value/rejection must still
+    // reach ITS caller untouched.
+    queue = run.then(
+      () => undefined,
+      () => undefined
+    );
+    return run;
+  };
+  return db;
 }
 
 let dbPromise: Promise<SQLiteDatabase> | null = null;
@@ -1232,7 +1310,7 @@ export function getDb(): Promise<SQLiteDatabase> {
   if (!dbPromise) {
     dbPromise = SQLite.openDatabaseAsync(DATABASE_NAME).then(async (db) => {
       await migrateDbIfNeeded(db);
-      return db;
+      return serializeTransactions(db);
     });
   }
   return dbPromise;

@@ -1,8 +1,10 @@
+import { useEffect } from 'react';
 import { Spinner, TamaguiProvider, Theme, View } from 'tamagui';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { SQLiteProvider } from 'expo-sqlite';
+import * as SplashScreen from 'expo-splash-screen';
 import {
   useFonts,
   Inter_400Regular,
@@ -21,6 +23,18 @@ import { useSuspensionWatch } from '../lib/app-lock/use-suspension-watch';
 import { AccountSuspendedScreen } from '../components/security/AccountSuspendedScreen';
 import { LockGate } from '../components/security/LockGate';
 import { useBizlinkColors } from '../lib/theme';
+
+// Keeps the native splash screen up until fonts finish loading (see
+// RootLayout below) instead of the previous `if (!fontsLoaded) return null`
+// pattern. That pattern unmounted the entire router tree — including
+// expo-router's internal NavigationContainer/useLinking setup — for the
+// first frame(s), which raced against `Linking.getInitialURL()` resolving
+// before that tree ever mounted ("Can't perform a React state update on a
+// component that hasn't mounted yet", surfaced 2026-08-09). Call must run at
+// module scope, before RootLayout's first render.
+SplashScreen.preventAutoHideAsync().catch(() => {
+  // Already hidden, or unsupported on this platform — safe to ignore.
+});
 
 /**
  * Batch 5 Slice 1 (ADR-051): rendered only while session-store's `status` is
@@ -122,7 +136,14 @@ export default function RootLayout() {
     'GeneralSans-Bold': require('../assets/fonts/GeneralSans-Bold.otf'),
   });
 
-  if (!fontsLoaded) return null;
+  // The router tree below now mounts unconditionally on the first frame
+  // (fonts-not-ready no longer returns null) — the native splash screen
+  // covers it until this effect fires, so nothing unstyled is ever visible.
+  useEffect(() => {
+    if (fontsLoaded) {
+      SplashScreen.hideAsync().catch(() => {});
+    }
+  }, [fontsLoaded]);
 
   return (
     <SafeAreaProvider>

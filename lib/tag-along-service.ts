@@ -153,9 +153,13 @@ interface MyCompanionRequestRow extends ClientCompanionRequestRow {
 
 /**
  * Reads ALL of the current agent's own companion requests (both contexts),
- * most recent first — powers the "Tag-Along Status" view-only status center
- * (`app/(tabs)/more/tag-along.tsx`, Pass 2.5). Unlike
- * `getClientCompanionRequests`, this is not scoped to a single client.
+ * most recent first — powers `app/(tabs)/meetings/index.tsx`'s inline
+ * tag-along chip lookups. The former dedicated "Tag-Along Status" screen
+ * (`app/(tabs)/more/tag-along.tsx`) was removed 2026-08-09 (Vince direct
+ * instruction): My Requests (`lib/use-my-request-statuses.ts`) already
+ * surfaces the same `tag_along`-kind rows, making a second status screen
+ * redundant. Unlike `getClientCompanionRequests`, this is not scoped to a
+ * single client.
  * `clientName` is a best-effort join against the local `clients` mirror —
  * null if that client row isn't (or is no longer) present locally.
  */

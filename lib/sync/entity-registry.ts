@@ -37,6 +37,9 @@ export interface ScopableQuery<Self> {
   or: (filters: string) => Self;
 }
 
+/** Mirrors `expo-sqlite`'s `SQLiteBindValue` without importing the package here — this file otherwise has no expo-sqlite dependency of its own besides the `SQLiteDatabase` type import below. */
+type SqlBindValue = string | number | null | boolean;
+
 export interface EntityDependency {
   /** The other entity this one's outbox row depends on (e.g. a meeting depends on its client). */
   table: EntityTableName;
@@ -60,6 +63,55 @@ export interface SyncEntityConfig {
    * capability for F-004's real build and future T-006 approvals.
    */
   applyScope?: <Q extends ScopableQuery<Q>>(query: Q, agentId: string) => Q;
+  /**
+   * False only for `client_edit_requests` (ADR-052): every other entity
+   * table carries the generic `sync_status`/`sync_error` mirror columns that
+   * `push-batch.ts`/`outbox-status.ts` write on push success/failure —
+   * `client_edit_requests` does not (its own `status` column, driven by
+   * sync-down/`decide_client_edit_request()`, already carries that meaning).
+   * Defaults to true; callers must gate their generic `UPDATE ... SET
+   * sync_status = ...` on this instead of assuming every registry entry has
+   * the column (a client_edit_requests push that skipped this check once
+   * threw "no such column: sync_status", surfacing as the fire-and-forget
+   * background sync's ERR_INTERNAL_SQLITE_ERROR — see Bugs.md).
+   */
+  hasSyncStatusColumn?: boolean;
+}
+
+/** True unless the entity's config explicitly opts out (see `hasSyncStatusColumn` doc comment above). */
+export function tableHasSyncStatusColumn(tableName: EntityTableName): boolean {
+  return ENTITY_REGISTRY[tableName].hasSyncStatusColumn ?? true;
+}
+
+/**
+ * Narrower than `expo-sqlite`'s full `SQLiteDatabase` — this helper only
+ * ever needs `runAsync`, and keeping the param this small lets unit tests
+ * pass a plain mock object instead of a cast (no `as unknown as X`,
+ * per the TypeScript-strict house rule).
+ */
+export interface SyncStatusResettableDb {
+  runAsync(source: string, params: SqlBindValue[]): Promise<unknown>;
+}
+
+/**
+ * Resets an entity's local `sync_status` mirror back to 'pending' — shared
+ * by every "re-queue this row for another push attempt" caller
+ * (`sync-engine.ts::retryFailedOutboxRow` today). A no-op for any table
+ * without the column (see `hasSyncStatusColumn` doc comment above): the
+ * caller's own outbox-row reset already covers everything a retry needs for
+ * those tables. This is the SAME gate `push-batch.ts`'s
+ * `recordSynced()`/`resolveConflictServerWins()` and `outbox-status.ts`'s
+ * `markOutboxRow()` use — an `isEntityTableName()`-only guard here once
+ * regressed into the exact "no such column: sync_status"
+ * ERR_INTERNAL_SQLITE_ERROR this whole gate exists to prevent (B-104).
+ */
+export async function resetLocalSyncStatusForRetry(
+  db: SyncStatusResettableDb,
+  tableName: string,
+  recordId: string
+): Promise<void> {
+  if (!isEntityTableName(tableName) || !tableHasSyncStatusColumn(tableName)) return;
+  await db.runAsync(`UPDATE ${tableName} SET sync_status = 'pending', sync_error = NULL WHERE id = ?`, [recordId]);
 }
 
 export const ENTITY_REGISTRY: Record<EntityTableName, SyncEntityConfig> = {
@@ -121,6 +173,9 @@ export const ENTITY_REGISTRY: Record<EntityTableName, SyncEntityConfig> = {
     onConflict: 'id',
     applyRemoteRow: upsertSyncedClientEditRequest,
     applyScope: (query, agentId) => query.eq('requested_by', agentId),
+    // No sync_status/sync_error columns on this table — see
+    // `hasSyncStatusColumn`'s doc comment above.
+    hasSyncStatusColumn: false,
     dependencies: [
       {
         table: 'clients',

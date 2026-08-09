@@ -50,6 +50,7 @@ export const SYNC_TABLE_LABEL: Record<string, string> = {
   remittances: 'Remittance',
   cod_remittances: 'COD remittance',
   tag_along_requests: 'Tag-along request',
+  pending_uploads: 'Photo upload',
 };
 
 /** Wireframe's per-row/per-detail "note" text (`h.note` in the mock data, both wireframes). */

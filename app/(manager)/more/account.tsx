@@ -2,7 +2,6 @@ import { useCallback, useEffect, useState } from 'react';
 import { Image, ScrollView } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router, useFocusEffect } from 'expo-router';
-import { ImagePlus } from 'lucide-react-native';
 import { Text, View, XStack, YStack } from 'tamagui';
 import { BIZLINK_FONTS, useBizlinkColors } from '../../../lib/theme';
 import { useManagerDashboard } from '../../../lib/useManagerDashboard';
@@ -31,7 +30,7 @@ export default function ManagerAccountScreen() {
   const { summary } = useManagerDashboard();
   const { signOut, fullName, teamId, profileId } = useSession();
   const { session, signOut: signOutSupabase } = useAuth();
-  const { avatarUri, pickingAvatar, handlePickAvatar } = useProfileAvatar(session?.user.id);
+  const { avatarUri } = useProfileAvatar(session?.user.id);
   const [newClientsCount, setNewClientsCount] = useState<number | null>(null);
 
   const loadNewClientsCount = useCallback(async () => {
@@ -63,31 +62,13 @@ export default function ManagerAccountScreen() {
       <BizTopBar title="Account & Security" />
       <ScrollView contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 24 }}>
         <BizCard flexDirection="row" alignItems="center" gap="$3.5">
-          <View position="relative">
-            {avatarUri ? (
-              <View width={60} height={60} borderRadius={30} overflow="hidden">
-                <Image source={{ uri: avatarUri }} style={{ width: 60, height: 60 }} resizeMode="cover" />
-              </View>
-            ) : (
-              <Avatar initials={initialsFromName(fullName)} size="lg" background={BIZLINK_COLORS.tintA} color={BIZLINK_COLORS.ink} />
-            )}
-            <View
-              position="absolute"
-              right={-4}
-              bottom={-4}
-              width={26}
-              height={26}
-              borderRadius={13}
-              backgroundColor={BIZLINK_COLORS.brand}
-              borderWidth={2}
-              borderColor={BIZLINK_COLORS.card}
-              alignItems="center"
-              justifyContent="center"
-              onPress={pickingAvatar ? undefined : handlePickAvatar}
-            >
-              <ImagePlus size={13} color={BIZLINK_COLORS.card} strokeWidth={1.75} />
+          {avatarUri ? (
+            <View width={60} height={60} borderRadius={30} overflow="hidden">
+              <Image source={{ uri: avatarUri }} style={{ width: 60, height: 60 }} resizeMode="cover" />
             </View>
-          </View>
+          ) : (
+            <Avatar initials={initialsFromName(fullName)} size="lg" background={BIZLINK_COLORS.tintA} color={BIZLINK_COLORS.ink} />
+          )}
           <YStack>
             <Text fontFamily={BIZLINK_FONTS.semibold} fontSize={17} color={BIZLINK_COLORS.text}>{fullName ?? '—'}</Text>
             {/* ADR-017: a single `sales_manager` role. Team-level Sales-vs-RSR "track" retired 2026-07-23 — teams are now mixed, team_id no longer implies a track. */}

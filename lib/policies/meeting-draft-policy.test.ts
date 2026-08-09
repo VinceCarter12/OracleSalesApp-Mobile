@@ -21,15 +21,15 @@ describe('meeting draft companion payload', () => {
   });
 
   it('derives persisted kind from roster role', () => {
-    expect(companionsForDraft([{ profileId: 'm1', fullName: 'M', role: 'sales_manager', teamId: 't', avatarUrl: null, syncedAt: 's' }])).toEqual([
+    expect(companionsForDraft([{ profileId: 'm1', fullName: 'M', role: 'sales_manager', teamId: 't', isActive: true, avatarUrl: null, syncedAt: 's' }])).toEqual([
       { profileId: 'm1', kind: 'manager' },
     ]);
   });
 
   it('restores only roster entries matching persisted identity and kind', () => {
     const roster = [
-      { profileId: 'm1', fullName: 'M', role: 'sales_manager' as const, teamId: 't', avatarUrl: null, syncedAt: 's' },
-      { profileId: 't1', fullName: 'T', role: 'sales_specialist' as const, teamId: 't', avatarUrl: null, syncedAt: 's' },
+      { profileId: 'm1', fullName: 'M', role: 'sales_manager' as const, teamId: 't', isActive: true, avatarUrl: null, syncedAt: 's' },
+      { profileId: 't1', fullName: 'T', role: 'sales_specialist' as const, teamId: 't', isActive: true, avatarUrl: null, syncedAt: 's' },
     ];
     expect(restoreCompanionsFromDraft([{ profileId: 'm1', kind: 'manager' }], roster)).toEqual([roster[0]]);
     expect(restoreCompanionsFromDraft([{ profileId: 'm1', kind: 'teammate' }], roster)).toEqual([]);

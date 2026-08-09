@@ -38,10 +38,12 @@ export function useMeetings(clientId?: string) {
         ? `SELECT m.*, c.company_name as client_name
            FROM meetings m LEFT JOIN clients c ON c.id = m.client_id
            WHERE m.agent_id = ? AND m.client_id = ?
+             AND (m.client_id IS NULL OR c.id IS NOT NULL)
            ORDER BY m.logged_at DESC`
         : `SELECT m.*, c.company_name as client_name
            FROM meetings m LEFT JOIN clients c ON c.id = m.client_id
            WHERE m.agent_id = ?
+             AND (m.client_id IS NULL OR c.id IS NOT NULL)
            ORDER BY m.logged_at DESC`,
       clientId ? [profileId, clientId] : [profileId]
     );

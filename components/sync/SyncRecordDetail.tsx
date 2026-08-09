@@ -41,6 +41,7 @@ export function SyncRecordDetail({ entry, showFullFields, noticeText }: SyncReco
     if (entry.tableName === 'purchase_orders') return 'Client, items, quantities';
     if (entry.tableName === 'remittances' || entry.tableName === 'cod_remittances') return 'Amount, reference, photo';
     if (entry.tableName === 'tag_along_requests') return 'Requester, meeting, status';
+    if (entry.tableName === 'pending_uploads') return 'Photo file';
     return 'Record fields';
   }
 

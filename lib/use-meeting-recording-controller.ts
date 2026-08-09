@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Alert } from 'react-native';
 import { getClientById } from './client-service';
 import { useSession } from './session-store';
@@ -44,7 +44,7 @@ export interface UseMeetingRecordingControllerInput {
  * ADR-015) are untouched — only this shared logic layer moved.
  */
 export function useMeetingRecordingController({ clientId, flow }: UseMeetingRecordingControllerInput) {
-  const { profileId, role, markSuspended } = useSession();
+  const { profileId, teamId, role, markSuspended } = useSession();
 
   const [client, setClient] = useState<Client | null>(null);
   const [clientLoading, setClientLoading] = useState(true);
@@ -127,7 +127,7 @@ export function useMeetingRecordingController({ clientId, flow }: UseMeetingReco
 
   useEffect(() => {
     let cancelled = false;
-    getTeamRoster()
+    getTeamRoster(profileId, teamId, role)
       .then((entries) => {
         if (!cancelled) setRoster(entries);
       })
@@ -141,7 +141,22 @@ export function useMeetingRecordingController({ clientId, flow }: UseMeetingReco
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [profileId, teamId, role]);
+
+  // The picker and both draft-resume paths must share this fail-closed view.
+  // `roster` may be a preserved last-good cache after a failed sync; it is
+  // never safe to expose directly to the current viewer.
+  const visibleRoster = useMemo(
+    () => getCompanionRosterForViewer(roster, role, teamId),
+    [roster, role, teamId]
+  );
+
+  const currentVisibleCompanions = useCallback(
+    (): TeamRosterEntry[] => selectedCompanionsRef.current.filter((entry) =>
+      visibleRoster.some((visibleEntry) => visibleEntry.profileId === entry.profileId)
+    ),
+    [visibleRoster]
+  );
 
   // Silent auto-resume for a same-process draft (see setAutoResumeDraft
   // above). Adjusts state during render rather than in a useEffect — the
@@ -162,7 +177,7 @@ export function useMeetingRecordingController({ clientId, flow }: UseMeetingReco
         gpsLat: autoResumeDraft.payload.gpsLat,
         gpsLng: autoResumeDraft.payload.gpsLng,
       });
-      setSelectedCompanions(hasCompanions ? restoreCompanionsFromDraft(autoResumeDraft.payload.companions, roster) : []);
+      setSelectedCompanions(hasCompanions ? restoreCompanionsFromDraft(autoResumeDraft.payload.companions, visibleRoster) : []);
       setAutoResumedAgendas(autoResumeDraft.payload.agendas ?? []);
     }
   }
@@ -213,7 +228,7 @@ export function useMeetingRecordingController({ clientId, flow }: UseMeetingReco
             gpsLat: gps.lat,
             gpsLng: gps.lng,
             capturedAt,
-            companions: companionsForDraft(selectedCompanionsRef.current),
+            companions: companionsForDraft(currentVisibleCompanions()),
           },
         });
         // From this point on, this JS process "owns" the meeting — leaving
@@ -228,7 +243,7 @@ export function useMeetingRecordingController({ clientId, flow }: UseMeetingReco
     } finally {
       setStarting(false);
     }
-  }, [clientId, profileId, flow, mode]);
+  }, [clientId, profileId, flow, mode, currentVisibleCompanions]);
 
   /** For the full form's post-Start GPS retry (AutoCapturedPanel's onRetryLocation) — updates only the fix, never the locked-in start timestamp. */
   const updateStartGps = useCallback((gps: { lat: number; lng: number }): void => {
@@ -257,7 +272,7 @@ export function useMeetingRecordingController({ clientId, flow }: UseMeetingReco
             gpsLat: start.gpsLat,
             gpsLng: start.gpsLng,
             capturedAt: start.capturedAt,
-            companions: companionsForDraft(selectedCompanionsRef.current),
+            companions: companionsForDraft(currentVisibleCompanions()),
             agendas,
           },
         });
@@ -265,7 +280,7 @@ export function useMeetingRecordingController({ clientId, flow }: UseMeetingReco
         console.error('[useMeetingRecordingController] Failed to persist agenda to draft:', err);
       }
     },
-    [clientId, profileId, flow, mode, start]
+    [clientId, profileId, flow, mode, start, currentVisibleCompanions]
   );
 
   const resumeDraft = useCallback((): void => {
@@ -287,14 +302,14 @@ export function useMeetingRecordingController({ clientId, flow }: UseMeetingReco
       gpsLat: pendingDraft.payload.gpsLat,
       gpsLng: pendingDraft.payload.gpsLng,
     });
-    setSelectedCompanions(restoreCompanionsFromDraft(pendingDraft.payload.companions, roster));
+    setSelectedCompanions(restoreCompanionsFromDraft(pendingDraft.payload.companions, visibleRoster));
     setPendingDraft(null);
     // The one required confirmation after a real interruption is done —
     // from here on this process owns the meeting too, same as a fresh
     // Start; further navigate-away-and-back within this run must not ask
     // again.
     if (profileId && clientId) markLiveSession(profileId, clientId);
-  }, [pendingDraft, rosterLoaded, rosterLoadError, roster, profileId, clientId]);
+  }, [pendingDraft, rosterLoaded, rosterLoadError, visibleRoster, profileId, clientId]);
 
   const discardDraft = useCallback(async (): Promise<void> => {
     if (!clientId) return;
@@ -312,10 +327,29 @@ export function useMeetingRecordingController({ clientId, flow }: UseMeetingReco
     if (profileId) clearLiveSession(profileId, clientId);
   }, [clientId, profileId]);
 
-  const companionSelections: CompanionSelection[] = selectedCompanions.map((entry) => ({
-    profileId: entry.profileId,
-    kind: inviteeKindForRole(entry.role),
-  }));
+  /**
+   * Explicitly abandons a running meeting. This is intentionally a local
+   * SQLite draft delete only: no meeting row or sync/outbox item exists until
+   * the agent confirms the end/save action, so cancelling can never submit a
+   * partial meeting. Callers own the confirmation dialog and navigation.
+   */
+  const cancelActiveMeeting = useCallback(async (): Promise<void> => {
+    if (!clientId) return;
+    await deleteDraft(clientId);
+    setStart(null);
+    setSelectedCompanions([]);
+    setAutoResumeDraft(null);
+    setPendingDraft(null);
+    setAutoResumedAgendas(null);
+    if (profileId) clearLiveSession(profileId, clientId);
+  }, [clientId, profileId]);
+
+  const companionSelections: CompanionSelection[] = selectedCompanions
+    .filter((entry) => visibleRoster.some((visibleEntry) => visibleEntry.profileId === entry.profileId))
+    .map((entry) => ({
+      profileId: entry.profileId,
+      kind: inviteeKindForRole(entry.role),
+    }));
 
   // F-205 decision 2: a manager requesting companions on their OWN meeting
   // has no counterpart to approve it — those rows insert pre-accepted
@@ -333,7 +367,7 @@ export function useMeetingRecordingController({ clientId, flow }: UseMeetingReco
     roster,
     rosterLoaded,
     rosterLoadError,
-    visibleRoster: getCompanionRosterForViewer(roster, role),
+    visibleRoster,
     selectedCompanions,
     toggleCompanion,
     companionSelections,
@@ -353,6 +387,7 @@ export function useMeetingRecordingController({ clientId, flow }: UseMeetingReco
     pendingDraft,
     resumeDraft,
     discardDraft,
+    cancelActiveMeeting,
     clearDraft,
   };
 }

@@ -21,7 +21,6 @@ export type DashboardActionId =
   | 'create-client'
   | 'record-meeting'
   | 'my-clients'
-  | 'tag-along'
   | 'manager-approvals'
   | 'manager-tag-along'
   | 'manager-sales-history'
@@ -45,7 +44,6 @@ const DASHBOARD_ACTIONS: Record<DashboardActionId, DashboardActionDef> = {
   'create-client': { href: '/(tabs)/clients/create' as Href, roles: ['sales_specialist', 'rsr'] },
   'record-meeting': { href: '/(tabs)/meetings/select-client' as Href, roles: ['sales_specialist', 'rsr'] },
   'my-clients': { href: '/(tabs)/clients' as Href, roles: ['sales_specialist', 'rsr'] },
-  'tag-along': { href: '/(tabs)/more/tag-along' as Href, roles: ['sales_specialist', 'rsr'] },
 
   'manager-approvals': { href: '/(manager)/approvals' as Href, roles: ['sales_manager'] },
   'manager-tag-along': { href: '/(manager)/tag-along' as Href, roles: ['sales_manager'] },

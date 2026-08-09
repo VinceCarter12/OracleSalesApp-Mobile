@@ -35,6 +35,7 @@ interface BuildMeetingRecordCommon {
 export interface BuildFullMeetingRecordInput extends BuildMeetingRecordCommon {
   flow: 'full';
   selfieUri: string;
+  selfieEvidence?: { capturedAt: string; gpsLat: number; gpsLng: number };
   outcome: MeetingOutcome;
   contactName: string;
   contactPosition: string;
@@ -43,6 +44,15 @@ export interface BuildFullMeetingRecordInput extends BuildMeetingRecordCommon {
   remarks: string;
   /** ADR-044/046 point 7 — already gated by isCloseDealPoEligible() at the call site; omitted/null when not applicable. */
   poEvidence: { localPhotoUri: string; cycleId: string } | null;
+  /**
+   * F-003 gap fix (2026-08-09): end-of-meeting GPS, captured silently at
+   * Save time (no dedicated button, same treatment as start GPS at Start) —
+   * gives Prospect/In Progress meetings the same start-vs-end GPS admin
+   * validation (ADR-019) the fast path already has via `endPhoto`. Optional
+   * because a GPS failure at Save must not block the save itself (matches
+   * `end_gps_lat`/`end_gps_lng` already being nullable on `NewMeetingRecord`).
+   */
+  endGps: { capturedAt: string; gpsLat: number; gpsLng: number } | null;
 }
 
 export interface BuildVisitMeetingRecordInput extends BuildMeetingRecordCommon {
@@ -100,6 +110,9 @@ export function buildMeetingRecord(input: BuildMeetingRecordInput): NewMeetingRe
     ...base,
     outcome: input.outcome,
     selfie_url: input.selfieUri,
+    selfie_captured_at: input.selfieEvidence?.capturedAt ?? null,
+    selfie_gps_lat: input.selfieEvidence?.gpsLat ?? null,
+    selfie_gps_lng: input.selfieEvidence?.gpsLng ?? null,
     contactPerson: input.contactName || null,
     contactPosition: input.contactPosition || null,
     locationType: input.meetingLocation,
@@ -112,5 +125,12 @@ export function buildMeetingRecord(input: BuildMeetingRecordInput): NewMeetingRe
     // Office Location Spec (2026-07-29): only an in-person 'Client Office'
     // meeting auto-captures the permanent office pin; Online/Others never do.
     captureOfficePin: input.mode === 'in_person' && input.meetingLocation === 'Client Office',
+    // F-003 gap fix: null when the Save-time GPS fix failed/timed out — the
+    // caller (record.tsx) already alerted and blocked the save in that case,
+    // so reaching here with `endGps: null` only happens if that contract
+    // ever changes; kept nullable rather than assumed-always-present.
+    end_gps_lat: input.endGps?.gpsLat ?? null,
+    end_gps_lng: input.endGps?.gpsLng ?? null,
+    end_captured_at: input.endGps?.capturedAt ?? null,
   };
 }

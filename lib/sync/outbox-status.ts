@@ -1,4 +1,4 @@
-import { isEntityTableName } from './entity-registry';
+import { isEntityTableName, tableHasSyncStatusColumn } from './entity-registry';
 import type { SQLiteDatabase } from 'expo-sqlite';
 
 // T-002/T-005/T-014: outbox row state transitions — split out of
@@ -10,9 +10,10 @@ export type OutboxStatus = 'pending' | 'syncing' | 'synced' | 'conflict' | 'fail
 // ADR-052 (Batch 6 Phase 5): the one entity whose outbox table_name isn't
 // `clients`/`meetings`/etc's generic `sync_status`/`sync_error` shape — its
 // own local-only terminal `status='superseded'` value IS the failure
-// signal, so `markOutboxRow()` below special-cases it instead of running
-// the generic per-table update (which would try to write a `sync_status`
-// column this table doesn't have).
+// signal, so `markOutboxRow()` below special-cases it (gated on
+// `tableHasSyncStatusColumn()`, entity-registry.ts's single source of truth
+// for which tables have the column) instead of running the generic
+// per-table update.
 const CLIENT_EDIT_REQUESTS_TABLE = 'client_edit_requests';
 
 // Exponential backoff capped at 15s: 1s, 2s, 4s, 8s, 15s, 15s, ...
@@ -174,7 +175,7 @@ export async function markOutboxRow(
     }
     return;
   }
-  if (isEntityTableName(tableName)) {
+  if (isEntityTableName(tableName) && tableHasSyncStatusColumn(tableName)) {
     await db.runAsync(`UPDATE ${tableName} SET sync_status = ?, sync_error = ? WHERE id = ?`, [
       status,
       classified.message,

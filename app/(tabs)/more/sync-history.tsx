@@ -23,7 +23,11 @@ import { SyncHistoryList } from '../../../components/sync/SyncHistoryList';
 export default function SyncHistoryScreen() {
   const insets = useSafeAreaInsets();
   const BIZLINK_COLORS = useBizlinkColors();
-  const { loading, reload, search, onSearchChange, outcomeFilter, onFilterChange, entries, pageItems, page, totalPages, setPage } = useSyncHistory();
+  const {
+    loading, reload, search, onSearchChange, outcomeFilter, onFilterChange,
+    dateRange, onDateRangeChange, filtersActive, resetFilters,
+    entries, pageItems, page, totalPages, setPage,
+  } = useSyncHistory();
 
   useFocusEffect(useCallback(() => { reload(); }, [reload]));
 
@@ -41,6 +45,10 @@ export default function SyncHistoryScreen() {
           onSearchChange={onSearchChange}
           outcomeFilter={outcomeFilter}
           onFilterChange={onFilterChange}
+          dateRange={dateRange}
+          onDateRangeChange={onDateRangeChange}
+          filtersActive={filtersActive}
+          onResetFilters={resetFilters}
           onPressEntry={(entry) => router.push({
             pathname: '/(tabs)/more/sync-record/[id]',
             params: { id: entry.id },

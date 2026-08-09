@@ -55,14 +55,13 @@ function ManagerTabs() {
         tabBarButton: ({ ref: _ref, ...props }) => (
           <Pressable {...props} android_ripple={{ color: 'transparent', borderless: false }} style={props.style} />
         ),
-        tabBarStyle: {
-          height: 78,
-          paddingTop: 8,
-          paddingBottom: 18,
-          borderTopWidth: 1,
-          borderTopColor: BIZLINK_COLORS.line,
-          backgroundColor: BIZLINK_COLORS.card,
-        },
+        // Vince direct instruction (2026-08-09): bottom tab bar removed
+        // entirely for Manager, no replacement — Home/Team/Clients/More stay
+        // reachable via Home's Quick Actions + in-screen navigation
+        // (router.push), same underlying Tabs.Screen routes, just no visible
+        // bar. `display: 'none'` (not deleting the screens) keeps every
+        // existing `router.push('/(manager)/team')`-style call working.
+        tabBarStyle: { display: 'none' },
       }}
     >
       <Tabs.Screen

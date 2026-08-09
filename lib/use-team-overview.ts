@@ -3,6 +3,7 @@ import { useFocusEffect } from 'expo-router';
 import { fetchTeamOverview, type TeamOverview } from './manager-team-service';
 import { DEFAULT_MANAGER_SCOPE, type ManagerScope } from './manager-scope';
 import { useSession } from './session-store';
+import { describeLoadError } from './error-message';
 
 export interface UseTeamOverview {
   overview: TeamOverview | null;
@@ -40,7 +41,7 @@ export function useTeamOverview(scope: ManagerScope = DEFAULT_MANAGER_SCOPE): Us
       const data = await fetchTeamOverview(teamId, profileId, scope);
       setOverview(data);
     } catch (err) {
-      console.error('[use-team-overview] load failed:', err instanceof Error ? err.message : String(err));
+      console.error('[use-team-overview] load failed:', describeLoadError(err));
       setError('Hindi na-load ang team data. Subukan ulit.');
     } finally {
       setLoading(false);

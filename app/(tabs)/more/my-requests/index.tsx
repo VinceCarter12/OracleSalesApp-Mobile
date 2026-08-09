@@ -7,7 +7,7 @@ import { Spinner, Text, YStack } from 'tamagui';
 import { BIZLINK_COLORS, BIZLINK_FONTS } from '../../../../lib/theme';
 import { useMyRequestStatuses } from '../../../../lib/use-my-request-statuses';
 import type { MyRequestRow, MyRequestStatus } from '../../../../lib/my-request-status-service';
-import { usePagination } from '../../../../lib/use-pagination';
+import { usePagination, PAGINATION_PAGE_SIZE } from '../../../../lib/use-pagination';
 import { BizTopBar } from '../../../../components/bizlink/BizTopBar';
 import { BizButton } from '../../../../components/bizlink/BizButton';
 import { BizMyRequestRow } from '../../../../components/bizlink/BizMyRequestRow';
@@ -109,10 +109,11 @@ export default function MyRequestsScreen() {
             </Text>
           </YStack>
         ) : (
-          pageItems.map((row) => (
+          pageItems.map((row, index) => (
             <BizMyRequestRow
               key={row.id}
               row={row}
+              rowNumber={(page - 1) * PAGINATION_PAGE_SIZE + index + 1}
               onPress={() => router.push(`/(tabs)/more/my-requests/${row.id}`)}
             />
           ))

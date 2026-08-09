@@ -47,7 +47,7 @@ const OUTCOME_FILTERS: Array<{ value: OutcomeFilter; label: string }> = [
     label:
       outcome === 'Follow-up Required' ? 'Follow-up' :
       outcome === 'No Decision' ? 'No decision' :
-      outcome === 'Lost Opportunity' ? 'Lost' :
+      outcome === 'Lost Opportunity' ? 'Lost Opportunity' :
       outcome,
   })),
 ];

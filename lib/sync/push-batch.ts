@@ -1,4 +1,4 @@
-import { isBlockedByDependency, isEntityTableName } from './entity-registry';
+import { isBlockedByDependency, isEntityTableName, tableHasSyncStatusColumn } from './entity-registry';
 import { isServerOwnedFieldRoleConflict } from './field-role-conflict';
 import { enqueueSyncAuditRow, AUDIT_OUTBOX_TABLE_NAME, type AuditOutcome } from './audit-log';
 import { getPushTarget, pushChunk, pushSingleRow, type PushTarget } from './remote-upsert';
@@ -74,7 +74,12 @@ async function enqueueAuditForRow(
 async function recordSynced(db: SQLiteDatabase, row: OutboxRow, agentId: string): Promise<void> {
   const now = new Date().toISOString();
   await db.runAsync("UPDATE outbox SET status = 'synced', synced_at = ? WHERE id = ?", [now, row.id]);
-  if (isEntityTableName(row.table_name)) {
+  // Not every registered entity carries the generic sync_status/sync_error
+  // mirror columns — client_edit_requests doesn't (see entity-registry.ts's
+  // `hasSyncStatusColumn` doc comment); writing this UPDATE unconditionally
+  // threw "no such column: sync_status" there, surfacing as an
+  // ERR_INTERNAL_SQLITE_ERROR from the caller's fire-and-forget background sync.
+  if (isEntityTableName(row.table_name) && tableHasSyncStatusColumn(row.table_name)) {
     await db.runAsync(`UPDATE ${row.table_name} SET sync_status = 'synced', sync_error = NULL WHERE id = ?`, [
       row.record_id,
     ]);
@@ -106,9 +111,15 @@ async function resolveConflictServerWins(
     now,
     row.id,
   ]);
-  await db.runAsync(`UPDATE ${row.table_name} SET sync_status = 'synced', sync_error = NULL WHERE id = ?`, [
-    row.record_id,
-  ]);
+  // Same sync_status-column guard as recordSynced() above — this path is
+  // only reachable for the field-role tables (collection_visits/
+  // purchase_orders), which do have the column, but gate on the registry
+  // rather than assume that stays true forever.
+  if (isEntityTableName(row.table_name) && tableHasSyncStatusColumn(row.table_name)) {
+    await db.runAsync(`UPDATE ${row.table_name} SET sync_status = 'synced', sync_error = NULL WHERE id = ?`, [
+      row.record_id,
+    ]);
+  }
   await enqueueAuditForRow(db, row, 'conflict_resolved_adopt_server', classified, agentId);
   result.synced++;
 }

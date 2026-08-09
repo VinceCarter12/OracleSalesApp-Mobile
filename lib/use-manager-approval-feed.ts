@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useFocusEffect } from 'expo-router';
 import { fetchManagerApprovalFeed, type ManagerApprovalFeedRow } from './manager-approval-feed-service';
+import { describeLoadError } from './error-message';
 
 export interface UseManagerApprovalFeed {
   rows: ManagerApprovalFeedRow[];
@@ -22,7 +23,7 @@ export function useManagerApprovalFeed(): UseManagerApprovalFeed {
       const data = await fetchManagerApprovalFeed();
       setRows(data);
     } catch (err) {
-      console.error('[use-manager-approval-feed] load failed:', err instanceof Error ? err.message : String(err));
+      console.error('[use-manager-approval-feed] load failed:', describeLoadError(err));
       setError('Hindi na-load ang Approvals. Subukan ulit.');
     } finally {
       setLoading(false);

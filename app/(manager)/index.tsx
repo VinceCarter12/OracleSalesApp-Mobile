@@ -2,35 +2,57 @@ import { useCallback, useMemo, useState } from 'react';
 import { Pressable, RefreshControl, ScrollView } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router, useFocusEffect } from 'expo-router';
-import { Bell, Building2, Ellipsis, History, Hourglass, PenLine, Users } from 'lucide-react-native';
+import { Bell, Hourglass } from 'lucide-react-native';
 import { Spinner, Text, XStack, YStack } from 'tamagui';
-import { BIZLINK_COLORS, BIZLINK_FONTS, OUTCOME_BADGE_STYLES } from '../../lib/theme';
+import { BIZLINK_COLORS, BIZLINK_FONTS } from '../../lib/theme';
 import { useManagerDashboard } from '../../lib/useManagerDashboard';
 import { useTeamOverview } from '../../lib/use-team-overview';
 import { getIncomingCompanionRequests } from '../../lib/tag-along-invitee-service';
 import { useManagerApprovalFeed } from '../../lib/use-manager-approval-feed';
 import { useSession } from '../../lib/session-store';
 import { useManagerScope } from '../../lib/manager-scope-store';
+import { useActiveMeetingDrafts } from '../../lib/use-active-meeting-drafts';
+import { getLastSyncAt } from '../../lib/sync/last-sync';
+import { timeAgo } from '../../lib/time-ago';
 import { firstName, initialsFromName } from '../../lib/display-name';
 import { Avatar } from '../../components/ui/Avatar';
 import { StatusBadge } from '../../components/ui/StatusBadge';
 import { BizStatCard } from '../../components/bizlink/BizStatCard';
 import { BizHeroCard } from '../../components/bizlink/BizHeroCard';
-import { BizSectionHeader } from '../../components/bizlink/BizSectionHeader';
-import { BizQuickAction } from '../../components/bizlink/BizQuickAction';
 import { BizButton } from '../../components/bizlink/BizButton';
 import { BizScopeFilter } from '../../components/bizlink/BizScopeFilter';
 import { AvatarStatusRing } from '../../components/bizlink/AvatarStatusRing';
 import { SyncStatusChip } from '../../components/sync/SyncStatusChip';
 import { SyncCenterSheet } from '../../components/sync/SyncCenterSheet';
-import { getDashboardActionHref } from '../../lib/dashboard-action-registry';
+import { ManagerHomeActionsSection } from '../../components/manager/ManagerHomeActionsSection';
+import { ManagerHomeTeamSection } from '../../components/manager/ManagerHomeTeamSection';
+import { ActiveMeetingDashboardAlert } from '../../components/meetings/ActiveMeetingDashboardAlert';
 import type { ManagerScope } from '../../lib/manager-scope';
-import type { TeamAgent, TeamMeetingPreview } from '../../types';
 
 // Wireframe-Manager-BizLink.html renderManagerScope() (~line 1123/1127-1132):
 // `meta={mine:{...label:'My'},team:{...label:'Team'},combined:{...label:'Combined'}}`
 // — the stat-card labels below change with scope, not just their numbers.
 const SCOPE_LABEL: Record<ManagerScope, string> = { mine: 'My', team: 'Team', combined: 'Combined' };
+
+// Wireframe-Manager-BizLink.html renderManagerScope() (~line 1147-1149):
+// `document.getElementById('managerScopeNote').textContent = managerScope==='mine'
+//   ? 'Your local records are available offline.'
+//   : (managerScope==='team' ? 'Team snapshot. Last authorized sync: today, 8:12 AM.' : 'Combined view. Team data is the last authorized sync when offline.');`
+// The 'mine'/'combined' strings are copied verbatim (no data dependency). The
+// 'team' string's "today, 8:12 AM" is the wireframe's own canned demo value —
+// per `.claude/rules/50-wireframe-redesign.md` ("never copy mock data into
+// the app"), this is re-implemented with this device's real
+// `getLastSyncAt()` (same source `SyncStatusChip` already renders below) in
+// place of the fabricated clock reading, keeping the wireframe's exact
+// sentence structure.
+function scopeHelperNote(scope: ManagerScope, lastSyncAt: string | null): string {
+  if (scope === 'mine') return 'Your local records are available offline.';
+  if (scope === 'team') {
+    const syncLabel = lastSyncAt ? timeAgo(lastSyncAt) : 'hindi pa nakaka-sync';
+    return `Team snapshot. Last authorized sync: ${syncLabel}.`;
+  }
+  return 'Combined view. Team data is the last authorized sync when offline.';
+}
 
 // T-014 Phase 3 (ADR-024): local, Manager-Home-only replacements for
 // `components/manager/TeamAvatarStrip.tsx` / `TeamMeetingRow.tsx` — those two
@@ -38,42 +60,6 @@ const SCOPE_LABEL: Record<ManagerScope, string> = { mine: 'My', team: 'Team', co
 // not yet migrated), so they're left on the old `COLORS` palette rather than
 // touched in place (same "bypass the shared shell" precedent Phase 2 used
 // for `components/account/AccountScreen.tsx`).
-
-function TeamAvatarPreview({ agent, onPress }: { agent: TeamAgent; onPress: () => void }) {
-  return (
-    <YStack alignItems="center" onPress={onPress} pressStyle={{ opacity: 0.7 }} gap="$1">
-      <Avatar initials={agent.initials} background={BIZLINK_COLORS.tintA} color={BIZLINK_COLORS.ink} />
-      <Text fontSize={10.5} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted}>
-        {agent.name.split(' ')[0]}
-      </Text>
-    </YStack>
-  );
-}
-
-function RecentMeetingRow({ meeting, onPress }: { meeting: TeamMeetingPreview; onPress: () => void }) {
-  const badge = OUTCOME_BADGE_STYLES[meeting.outcome];
-  return (
-    <XStack
-      alignItems="center"
-      gap="$3"
-      backgroundColor={BIZLINK_COLORS.card}
-      borderRadius={20}
-      padding={14}
-      marginBottom={10}
-      onPress={onPress}
-      pressStyle={{ opacity: 0.85 }}
-    >
-      <Avatar initials={meeting.agentInitials} size="sm" background={BIZLINK_COLORS.tintA} color={BIZLINK_COLORS.ink} />
-      <YStack flex={1} gap="$0.5">
-        <Text fontFamily={BIZLINK_FONTS.semibold} fontSize={14} color={BIZLINK_COLORS.text}>{meeting.clientName}</Text>
-        <Text fontSize={11.5} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted}>
-          {meeting.agentName} · {meeting.date} · {meeting.time}
-        </Text>
-      </YStack>
-      <StatusBadge label={meeting.outcome} background={badge.background} color={badge.color} />
-    </XStack>
-  );
-}
 
 /** Wireframe s-home — real cross-agent Supabase data (ADR-021); manager's own-device sync chip (ADR-022 Phase D scope, not team-wide). */
 export default function ManagerDashboardScreen() {
@@ -87,6 +73,13 @@ export default function ManagerDashboardScreen() {
   // captions below.
   const { overview, reload: refreshOverview } = useTeamOverview(scope);
   const { fullName, profileId, role } = useSession();
+  // Wireframe s-home "Mga Gawain" primary-action hub (item 1): same
+  // cross-screen active-meeting visibility Sales Home uses for its
+  // "I-record ang meeting" card — a Manager can also record their own
+  // meetings (app/(manager)/clients/record.tsx, F-205 reuse of the Sales
+  // screens), so `meeting_drafts` rows keyed by the manager's own profileId
+  // apply the same way.
+  const { activeMeetingDrafts } = useActiveMeetingDrafts(profileId);
   // Pull-to-refresh spinner must be bound to a user-gesture-only flag, not
   // either hook's own `loading`/`overviewLoading` (both also flip on
   // mount/refocus, since each hook independently re-fetches on
@@ -95,6 +88,9 @@ export default function ManagerDashboardScreen() {
   const [syncSheetOpen, setSyncSheetOpen] = useState(false);
   // B-023: see app/(tabs)/index.tsx's twin — remounts the chip on sheet-close.
   const [syncChipKey, setSyncChipKey] = useState(0);
+  // Wireframe s-home managerScopeNote 'team' variant (item 3) — this
+  // device's own real last-sync timestamp, same source SyncStatusChip uses.
+  const [lastSyncAt, setLastSyncAt] = useState<string | null>(null);
   // F-205: the "Pending approvals" stat card is retired along with the
   // Approvals screen — replaced by a real count of pending tag-along
   // requests needing this manager's accept/reject (the one remaining
@@ -116,6 +112,14 @@ export default function ManagerDashboardScreen() {
   }, [profileId]);
 
   useFocusEffect(useCallback(() => { loadPendingTagAlong(); }, [loadPendingTagAlong]));
+
+  useFocusEffect(
+    useCallback(() => {
+      getLastSyncAt()
+        .then(setLastSyncAt)
+        .catch((err) => console.error('[ManagerHome] last-sync-at lookup failed:', err instanceof Error ? err.message : String(err)));
+    }, [])
+  );
 
   // Only show the full-screen spinner on the true initial load (no data
   // yet) — a pull-to-refresh also sets `loading` true, and that must show
@@ -182,6 +186,12 @@ export default function ManagerDashboardScreen() {
         }
       >
         <BizScopeFilter />
+        {/* Wireframe-Manager-BizLink.html s-home #managerScopeNote — see
+            scopeHelperNote()'s doc comment above for the 'team' real-data
+            substitution. */}
+        <Text fontSize={12} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} marginTop={2} marginBottom={10}>
+          {scopeHelperNote(scope, lastSyncAt)}
+        </Text>
 
         <XStack gap={10} marginTop={6}>
           <YStack flex={1}>
@@ -232,42 +242,15 @@ export default function ManagerDashboardScreen() {
           onPress={() => router.push('/(manager)/more/meetings')}
         />
 
-        <BizSectionHeader title="Quick Actions" />
-        <XStack gap="$2.5" flexWrap="wrap">
-          {/* Batch 6 PR B (ADR-052, F-205 reversal): Wireframe-Manager-BizLink.html
-              line 487's "Approvals" Quick Action, restored — client-edit +
-              PO-confirmation requests only (Wireframe line 687: tag-along
-              keeps its own separate flow below, unchanged). Badge count now
-              wired (2026-08-04 Full Badge Implementation) — shows pending
-              client-edit + PO-confirmation requests. */}
-          <BizQuickAction
-            icon={<PenLine size={20} color={BIZLINK_COLORS.ink} strokeWidth={1.75} />}
-            label="Approvals"
-            badgeCount={pendingApprovalCount}
-            onPress={() => router.push(getDashboardActionHref('manager-approvals', role))}
-          />
-          <BizQuickAction
-            icon={<Users size={20} color={BIZLINK_COLORS.ink} strokeWidth={1.75} />}
-            label="Tag-Along"
-            badgeCount={pendingTagAlongCount}
-            onPress={() => router.push(getDashboardActionHref('manager-tag-along', role))}
-          />
-          <BizQuickAction
-            icon={<History size={20} color={BIZLINK_COLORS.ink} strokeWidth={1.75} />}
-            label="Sales History"
-            onPress={() => router.push(getDashboardActionHref('manager-sales-history', role))}
-          />
-          <BizQuickAction
-            icon={<Building2 size={20} color={BIZLINK_COLORS.ink} strokeWidth={1.75} />}
-            label="Clients"
-            onPress={() => router.push(getDashboardActionHref('manager-clients', role))}
-          />
-          <BizQuickAction
-            icon={<Ellipsis size={20} color={BIZLINK_COLORS.ink} strokeWidth={1.75} />}
-            label="More"
-            onPress={() => router.push(getDashboardActionHref('manager-more', role))}
-          />
-        </XStack>
+        {/* Wireframe-Manager-BizLink.html s-home "Mga Gawain" + "Manager
+            Actions" (line 477-498) — extracted, see
+            ManagerHomeActionsSection's own doc comment. */}
+        <ManagerHomeActionsSection
+          role={role}
+          activeMeeting={activeMeetingDrafts.length > 0}
+          pendingApprovalCount={pendingApprovalCount}
+          pendingTagAlongCount={pendingTagAlongCount}
+        />
 
         {/* T-014 Phase 3 (ADR-022 Phase D scope): manager's OWN device outbox
             only — same SyncStatusChip/SyncCenterSheet as the Sales Agent Home,
@@ -276,6 +259,10 @@ export default function ManagerDashboardScreen() {
             (`summary.pendingSyncRecords`, always 0 per ADR-021) is replaced by
             this real per-device chip. */}
         <SyncStatusChip key={syncChipKey} onPress={() => setSyncSheetOpen(true)} />
+
+        {/* Topmost — reused as-is from Sales Home; a Manager also records
+            their own meetings (F-205 reuse of record.tsx), full-form only. */}
+        <ActiveMeetingDashboardAlert activeMeetingDrafts={activeMeetingDrafts} />
 
         {summary.deadlineWarningCount > 0 ? (
           <XStack
@@ -298,23 +285,7 @@ export default function ManagerDashboardScreen() {
           </XStack>
         ) : null}
 
-        <BizSectionHeader title="My Team" actionLabel="Tingnan lahat" onAction={() => router.push('/(manager)/team')} />
-        <XStack gap="$3.5">
-          {summary.agents.map((agent) => (
-            <TeamAvatarPreview key={agent.id} agent={agent} onPress={() => router.push(`/(manager)/team/${agent.id}`)} />
-          ))}
-        </XStack>
-
-        <BizSectionHeader title="Recent Team Meetings" actionLabel="Tingnan lahat" onAction={() => router.push('/(manager)/more/meetings')} />
-        {summary.recentMeetings.length === 0 ? (
-          <Text fontSize={13} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} paddingVertical="$3">
-            Wala pang meeting na naitala ng team.
-          </Text>
-        ) : (
-          summary.recentMeetings.map((meeting) => (
-            <RecentMeetingRow key={meeting.id} meeting={meeting} onPress={() => router.push(`/(manager)/more/meetings/${meeting.id}`)} />
-          ))
-        )}
+        <ManagerHomeTeamSection agents={summary.agents} recentMeetings={summary.recentMeetings} />
       </ScrollView>
 
       <SyncCenterSheet

@@ -20,6 +20,7 @@ import { VisitInProgressPanel } from '../../../components/meetings/VisitInProgre
 import { type CapturedPhoto } from '../../../components/meetings/PhotoCapture';
 import { DraftResumePrompt } from '../../../components/meetings/DraftResumePrompt';
 import { StartMeetingConfirmDialog } from '../../../components/meetings/StartMeetingConfirmDialog';
+import { CancelMeetingDialog } from '../../../components/meetings/CancelMeetingDialog';
 
 /**
  * Existing-client fast path (revises ADR-015, 2026-07-16): select client →
@@ -57,11 +58,12 @@ export default function RecordVisitScreen() {
     selectedCompanions, toggleCompanion, companionSelections, companionsPreAccepted,
     mode, setMode, start, starting, elapsedSeconds, startConfirmOpen,
     requestStartMeeting, cancelStartMeeting, confirmStartMeeting, updateDraftAgendas,
-    autoResumedAgendas, pendingDraft, resumeDraft, discardDraft, clearDraft,
+    autoResumedAgendas, pendingDraft, resumeDraft, discardDraft, cancelActiveMeeting, clearDraft,
   } = controller;
 
   const [selectedAgendas, setSelectedAgendas] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
+  const [cancelDialogOpen, setCancelDialogOpen] = useState(false);
 
   // Vince 2026-08-09: silent same-process resume path (see record.tsx's
   // identical render-time adjustment) — the controller already restored
@@ -133,6 +135,20 @@ export default function RecordVisitScreen() {
     }
   }
 
+  function confirmCancelMeeting(): void {
+    setCancelDialogOpen(true);
+  }
+
+  async function cancelMeeting(): Promise<void> {
+    setCancelDialogOpen(false);
+    try {
+      await cancelActiveMeeting();
+      router.replace(routes.meetingsHome());
+    } catch {
+      Alert.alert('Cancel failed', 'Hindi na-discard ang meeting draft. Subukan ulit.');
+    }
+  }
+
   if (clientLoading) {
     return (
       <YStack flex={1} justifyContent="center" alignItems="center" backgroundColor={BIZLINK_COLORS.canvas}>
@@ -198,6 +214,7 @@ export default function RecordVisitScreen() {
             onToggleAgenda={toggleAgenda}
             saving={saving}
             onConfirm={finishMeeting}
+            onCancel={confirmCancelMeeting}
           />
         )}
       </ScrollView>
@@ -208,6 +225,12 @@ export default function RecordVisitScreen() {
         onConfirm={() => {
           void confirmStartMeeting();
         }}
+      />
+
+      <CancelMeetingDialog
+        visible={cancelDialogOpen}
+        onCancel={() => setCancelDialogOpen(false)}
+        onConfirm={cancelMeeting}
       />
     </YStack>
   );

@@ -26,8 +26,9 @@ function formatDate(iso: string | null): string {
 /**
  * Wireframe `a-lostoppdetail` (Wireframe-Sales-BizLink.html ~line 1003,
  * `aOpenLostOpportunity()`/`aClaimLostOpportunity()` ~line 1372-1380): lost
- * date + reason, client contact/address/office-pin, last activity, then a
- * "Claim this opportunity" button. Claim is online-only (same pattern as
+ * date + reason and safe client profile fields, then a "Claim this
+ * opportunity" button. Prior activity/history is intentionally not shown to
+ * Sales/RSR. Claim is online-only (same pattern as
  * `app/(manager)/approvals/[id].tsx`'s Approve/Reject) — the server RPC is
  * the single source of truth (former-owner exclusion, cooldown, role,
  * already-claimed), this screen only relays its response code and never
@@ -56,7 +57,7 @@ export default function LostOpportunityDetailScreen() {
     setClaiming(true);
     setClaimError(null);
     try {
-      const { code } = await claimLostOpportunity(item.id);
+      const { code, clientId } = await claimLostOpportunity(item.id);
       if (isClaimSuccess(code)) {
         showToast(mapLostOpportunityClaimCode(code));
         // The claim RPC is a live-only write with no outbox row — force a
@@ -66,7 +67,10 @@ export default function LostOpportunityDetailScreen() {
         if (profileId) {
           await runSync(profileId, teamId);
         }
-        router.replace(routes.clientDetail(item.id));
+        // The replacement RPC returns a redacted fresh-prospect id. Never
+        // route back to the historical lost-client id (legacy RPCs are
+        // rejected by claimLostOpportunity before this point).
+        router.replace(routes.clientDetail(clientId ?? item.id));
         return;
       }
       // Any other code: never optimistic — show the mapped message and
@@ -147,65 +151,10 @@ export default function LostOpportunityDetailScreen() {
 
         <BizSectionHeader title="Client information" />
         <BizCard gap="$2.5">
-          <XStack alignItems="center" gap="$2.5">
-            <User size={16} color={BIZLINK_COLORS.navy} strokeWidth={1.75} />
-            <Text fontSize={13} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.text}>
-              Contact: {item.contactPerson ?? '—'}{item.contactPosition ? ` · ${item.contactPosition}` : ''}
-            </Text>
-          </XStack>
-          <XStack alignItems="center" gap="$2.5">
-            <Building2 size={16} color={BIZLINK_COLORS.navy} strokeWidth={1.75} />
-            <Text fontSize={13} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.text}>
-              Address: {item.officeAddress ?? '—'}
-            </Text>
-          </XStack>
+          <XStack alignItems="center" gap="$2.5"><User size={16} color={BIZLINK_COLORS.navy} strokeWidth={1.75} /><Text fontSize={13} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.text}>Contact: {item.contactPerson ?? '—'}{item.contactPosition ? ` · ${item.contactPosition}` : ''}</Text></XStack>
+          <XStack alignItems="center" gap="$2.5"><Building2 size={16} color={BIZLINK_COLORS.navy} strokeWidth={1.75} /><Text fontSize={13} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.text}>Address: {item.officeAddress ?? '—'}</Text></XStack>
         </BizCard>
-
-        {item.officeLat != null && item.officeLng != null ? (
-          <BizCard
-            onPress={() =>
-              router.push({
-                pathname: '/(tabs)/more/office-map/[id]',
-                params: {
-                  id: item.id,
-                  companyName: item.companyName,
-                  lat: String(item.officeLat),
-                  lng: String(item.officeLng),
-                  verified: item.officePinVerified ? '1' : '0',
-                  fallback: '/(tabs)/more/lost-opportunities',
-                },
-              })
-            }
-            pressStyle={{ opacity: 0.85 }}
-            marginTop="$3"
-            gap="$1"
-          >
-            <XStack alignItems="center" gap="$2.5">
-              <YStack width={36} height={36} borderRadius={18} backgroundColor={BIZLINK_COLORS.soft} alignItems="center" justifyContent="center">
-                <Map size={16} color={BIZLINK_COLORS.navy} strokeWidth={1.75} />
-              </YStack>
-              <YStack flex={1}>
-                <Text fontFamily={BIZLINK_FONTS.semibold} fontSize={13.5} color={BIZLINK_COLORS.text}>
-                  View permanent office pin
-                </Text>
-                <Text fontSize={11.5} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted}>
-                  {item.officeLat}, {item.officeLng} · not meeting GPS
-                </Text>
-              </YStack>
-              <MapPin size={16} color={BIZLINK_COLORS.muted} strokeWidth={1.75} />
-            </XStack>
-          </BizCard>
-        ) : null}
-
-        <BizSectionHeader title="Last activity" />
-        <BizCard gap="$1.5">
-          <Text fontFamily={BIZLINK_FONTS.semibold} fontSize={13} color={BIZLINK_COLORS.text}>
-            {formatDate(item.lastMeetingAt)}
-          </Text>
-          <Text fontSize={13} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} lineHeight={18}>
-            {item.lastMeetingSummary ?? 'Walang naitalang meeting.'}
-          </Text>
-        </BizCard>
+        {item.officeLat != null && item.officeLng != null ? <BizCard gap="$1" marginTop="$3"><XStack alignItems="center" gap="$2.5"><Map size={16} color={BIZLINK_COLORS.navy} strokeWidth={1.75} /><Text fontSize={13} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.text}>Office pin: {item.officeLat}, {item.officeLng}</Text><MapPin size={16} color={BIZLINK_COLORS.muted} strokeWidth={1.75} /></XStack></BizCard> : null}
 
         {canClaim ? (
           <>
