@@ -6,7 +6,7 @@ import { isNetworkConnectivityError } from './network-error';
 import { isEntityTableName } from './sync/entity-registry';
 import { pruneSyncedOutboxRows, recoverStuckSyncingRows, type OutboxStatus } from './sync/outbox-status';
 import { setLastSyncAt } from './sync/last-sync';
-import { pushDueOutboxRows, type OutboxRow, type OutboxSyncResult } from './sync/push-batch';
+import { healStuckFieldRoleConflicts, pushDueOutboxRows, type OutboxRow, type OutboxSyncResult } from './sync/push-batch';
 import { AUDIT_OUTBOX_TABLE_NAME } from './sync/audit-log';
 import { processPendingUploads, recoverStuckPendingUploads } from './sync/photo-uploads';
 import { reconcileAdditionalAcks } from './sync/additional-acks';
@@ -166,6 +166,15 @@ async function runSyncOnce(agentId: string, teamId?: string | null): Promise<Syn
   if (!hasRecoveredStuckRows) {
     await recoverStuckSyncingRows(db);
     await recoverStuckPendingUploads(db);
+    // F-007: retire any field-role day-list rows a pre-fix build left frozen in
+    // 'conflict' (see healStuckFieldRoleConflicts). Best-effort — a heal failure
+    // must never fail or delay the sync pass; the inline auto-resolve still
+    // handles every conflict from here on.
+    try {
+      await healStuckFieldRoleConflicts(db, agentId);
+    } catch (err) {
+      console.error('healStuckFieldRoleConflicts failed', err);
+    }
     // ADR-026 P2 item 7: unlike the two recovery calls above (correctness-
     // critical — a real problem there should surface), a prune failure
     // must never fail or delay a sync pass, so it gets its own try/catch.

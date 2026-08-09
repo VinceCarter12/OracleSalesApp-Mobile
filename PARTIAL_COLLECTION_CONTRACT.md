@@ -127,6 +127,38 @@ otherwise the rolled-up `amount_collected` on the visit is enough for display.
 - A partial payment returns to the list (reduced balance); a full one flips to
   `collected` and shows the celebration screen.
 
+## The invariant (why the visit never conflicts)
+
+**The phone INSERTs `collection_payments` rows; the SERVER owns the visit. The
+phone never writes the visit's money/status columns directly.**
+
+The web 070 roll-up trigger (`SECURITY DEFINER`) is the sole writer of the
+visit's `status`, `amount_collected`, `collector_id`, `payment_method`, the
+proof/gps columns, and `visited_at`. The collect flow
+(`lib/collection-delivery-write.ts::collectPayment`) enqueues a
+`collection_payments` row and does an **optimistic LOCAL-only** roll-up so the
+collector sees the new balance immediately — it sets no `sync_status='pending'`
+and enqueues **no `collection_visits` outbox row**, so nothing about a payment
+ever pushes a visit update. The next sync-down overwrites the local mirror with
+the authoritative server totals.
+
+### Conflict resolution: server-wins for server-owned columns (2026-08-09)
+
+Because the visit keeps advancing SERVER-SIDE by design — the 070 payment
+trigger, the 069 additional-ack RPCs, and web-admin claim releases (web 046)
+all bump the row's `updated_at`/version — a stale `collection_visits` (or
+`purchase_orders`) outbox UPDATE that touches **only server-owned columns** and
+comes back a unique-violation conflict is an EXPECTED "the server already moved
+on" divergence, not a real two-writer collision. The sync engine now
+auto-resolves these **server-wins**: it drops the stale local edit and lets the
+same pass's sync-down adopt the authoritative server row, recording a
+`conflict_resolved_adopt_server` audit outcome. It no longer freezes the record
+with the "May kasalukuyang bersyon na sa server — kontakin ang admin" copy.
+A payload that also writes a collector-owned column (e.g. a reschedule's
+`rescheduled_to`/`remarks`) is excluded from auto-resolution and keeps the
+normal conflict path. See `lib/sync/field-role-conflict.ts` +
+`lib/sync/push-batch.ts::resolveConflictServerWins`.
+
 ## Open questions for the owner
 
 - **Same-day vs next-day:** after a partial, should the store still be reachable

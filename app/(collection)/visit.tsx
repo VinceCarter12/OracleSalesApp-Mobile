@@ -26,8 +26,10 @@ import { BizSectionHeader } from '../../components/bizlink/BizSectionHeader';
 import { BizButton } from '../../components/bizlink/BizButton';
 import { PhotoSlot } from '../../components/collection-delivery/PhotoSlot';
 import { SignaturePad, type SignaturePadHandle } from '../../components/collection-delivery/SignaturePad';
-import { formatPeso, isOpenForCollection, remainingBalance, type PaymentMethod } from '../../lib/collection-delivery-data';
+import { formatCapturedTimestamp, formatPeso, isOpenForCollection, remainingBalance, type PaymentMethod } from '../../lib/collection-delivery-data';
+import { useNow } from '../../lib/use-now';
 import { claimStop, collectPayment, markAdditionalSeen, releaseStop, rescheduleVisit } from '../../lib/collection-delivery-write';
+import { runSync } from '../../lib/sync-engine';
 import { useCollectionStore } from '../../lib/use-collection-delivery';
 
 /**
@@ -116,7 +118,7 @@ export default function CollectPaymentScreen() {
 
   const storeId = String(id ?? '');
   const db = useSQLiteContext();
-  const { profileId, fullName } = useSession();
+  const { profileId, fullName, teamId } = useSession();
   // Real record from the local mirror for display; the collect/reschedule/claim
   // WRITE goes through collection-delivery-write.ts (local update + outbox push).
   const { store, loading, refresh } = useCollectionStore(storeId);
@@ -148,6 +150,10 @@ export default function CollectPaymentScreen() {
   // GPS captured at the moment the payment photo is taken (web rule: the fix
   // rides with the photo). Null = "no pin" — never synthesized.
   const [gps, setGps] = useState<GpsFix | null>(null);
+  // Live wall-clock preview for the Auto-captured card — the real timestamp is
+  // stamped at submit (collectPayment uses its own `now`); this just shows the
+  // collector the current date/time instead of a frozen literal.
+  const nowIso = useNow();
 
   const showAmount = METHODS_WITH_AMOUNT.includes(payMode);
   // Delivery-receipt payments are the delivery receipt itself — just the one
@@ -201,6 +207,24 @@ export default function CollectPaymentScreen() {
     if (!profileId) return;
     await claimStop(db, 'collection_visits', storeId, profileId, fullName ?? 'Collector');
     refresh();
+    // A claim rides the outbox and can be REJECTED at flush by the server's
+    // one-active-claim rule (23505, `collection_visits_one_active_claim`):
+    // someone beat us to this stop, or we already hold a different one. On
+    // rejection the row snaps back to pending (server-wins), so await a pass
+    // when online and tell the collector why — a silent revert reads as "claim
+    // is broken". Offline, the optimistic claim stands until the next flush.
+    const result = await runSync(profileId, teamId);
+    if (result?.connectivity !== 'online') return;
+    const row = await db.getFirstAsync<{ claimed_by: string | null }>(
+      'SELECT claimed_by FROM collection_visits WHERE id = ?',
+      [storeId],
+    );
+    if (row && row.claimed_by !== profileId) {
+      Alert.alert(
+        'Claim didn’t stick',
+        'Another collector already took this stop, or you’re still holding a different one. Finish or release your current stop before claiming a new one.',
+      );
+    }
   }
 
   async function release(): Promise<void> {
@@ -345,7 +369,7 @@ export default function CollectPaymentScreen() {
           <XStack alignItems="center" gap="$2">
             <Text fontSize={12.5} fontFamily={BIZLINK_FONTS.semibold} color="#8FD7B4">✓</Text>
             <Text fontSize={12.5} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_ON_INK.solid}>Date &amp; time</Text>
-            <Text fontSize={11} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_ON_INK.textMuted}>Jul 9, 2026 · 9:41 AM</Text>
+            <Text fontSize={11} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_ON_INK.textMuted}>{formatCapturedTimestamp(nowIso)}</Text>
           </XStack>
         </YStack>
 

@@ -68,6 +68,14 @@ export function formatShortDateTime(iso?: string | null): string {
   return `${SHORT_MONTHS[d.getMonth()]} ${d.getDate()} · ${formatClockTime(iso)}`;
 }
 
+/** Formats an ISO timestamp for the "Auto-captured" card — short date WITH year + wall-clock time, e.g. 'Jul 9, 2026 · 9:41 AM'. Empty for null/invalid. */
+export function formatCapturedTimestamp(iso?: string | null): string {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '';
+  return `${SHORT_MONTHS[d.getMonth()]} ${d.getDate()}, ${d.getFullYear()} · ${formatClockTime(iso)}`;
+}
+
 /** Local calendar day as `YYYY-MM-DD` (device timezone — Manila for this app). */
 function localDateStr(d: Date): string {
   const y = d.getFullYear();
