@@ -77,7 +77,9 @@ export type RemoteCollectionStatus = 'collected' | 'rescheduled' | 'pending' | '
 // NOTE (F-007): 'delivery_receipt' requires the web DB `payment_method` CHECK
 // constraint to be widened to accept it — otherwise the outbox push is rejected.
 export type RemotePaymentMethod = 'cash' | 'check' | 'gcash' | 'counter' | 'delivery_receipt';
-export type RemotePurchaseOrderStatus = 'pending' | 'delivered' | 'failed';
+// 'partial' (web 073): a COD delivery handed over but with the COD paid down over
+// installments — stays open until the running COD total reaches cod_due.
+export type RemotePurchaseOrderStatus = 'pending' | 'delivered' | 'failed' | 'partial';
 export type RemoteCodMethod = 'cash' | 'check' | 'gcash';
 // Remittances (043 collection / 044 COD). Collection remits to office / bayad
 // center / bank; COD delivery remits to office only (no destination column).
@@ -516,6 +518,28 @@ export type Database = {
         };
         Insert: Partial<Database['public']['Tables']['collection_payments']['Row']>;
         Update: Partial<Database['public']['Tables']['collection_payments']['Row']>;
+        Relationships: [];
+      };
+      // F-007 Delivery partial COD (web 073). One row per COD handover toward a
+      // PO; the parent PO's cod_amount/status is the roll-up (rollup_cod_payment
+      // trigger). Driver RLS is INSERT + SELECT-own only (no UPDATE), so the
+      // payment photo URL rides IN the insert — same pattern as collection_payments.
+      cod_payments: {
+        Row: {
+          id: string;
+          po_id: string;
+          driver_id: string;
+          amount: number;
+          payment_method: RemoteCodMethod;
+          payment_photo_url: string | null;
+          gps_lat: number | null;
+          gps_lng: number | null;
+          remarks: string | null;
+          paid_at: string;
+          created_at: string;
+        };
+        Insert: Partial<Database['public']['Tables']['cod_payments']['Row']>;
+        Update: Partial<Database['public']['Tables']['cod_payments']['Row']>;
         Relationships: [];
       };
       // F-007 Delivery module — migrations 044 (base) + 045 (client_name) + 046

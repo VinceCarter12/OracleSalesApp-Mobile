@@ -14,9 +14,9 @@ import { BizSectionHeader } from '../../components/bizlink/BizSectionHeader';
 import { BizButton } from '../../components/bizlink/BizButton';
 import { PhotoSlot } from '../../components/collection-delivery/PhotoSlot';
 import { SignaturePad, type SignaturePadHandle } from '../../components/collection-delivery/SignaturePad';
-import { formatCapturedTimestamp, formatPeso, type CodMethod } from '../../lib/collection-delivery-data';
+import { formatCapturedTimestamp, formatPeso, remainingCod, type CodMethod } from '../../lib/collection-delivery-data';
 import { useNow } from '../../lib/use-now';
-import { claimStop, deliverPo, failPo, releaseStop } from '../../lib/collection-delivery-write';
+import { claimStop, collectCodTopUp, deliverPo, failPo, releaseStop } from '../../lib/collection-delivery-write';
 import { runSync } from '../../lib/sync-engine';
 import { useDeliveryPo } from '../../lib/use-collection-delivery';
 
@@ -145,24 +145,35 @@ export default function DeliverPoScreen() {
 
   const isCod = !!po?.cod;
   const codDue = po?.codDue ?? 0;
+  // web 073: a `partial` PO was already handed over — reopening it is a COD
+  // TOP-UP only (no re-delivery), so the whole plate/proof/receiver handover is
+  // hidden and only the COD payment step shows.
+  const topUpMode = po?.status === 'partial';
+  // Remaining COD still owed — the full due on a fresh PO, the carried balance on
+  // a partial one. This is what a payment draws down and the over-check compares to.
+  const remaining = po ? remainingCod(po) : codDue;
   const codAmountValue = parseFloat((codAmount || '').replace(/[^\d.]/g, ''));
   const codAmountValid = codAmountValue > 0;
   const codOk = !isCod || (codAmountValid && !!codPhotoUri);
   const plateValid = plate.trim().length > 0;
   const claimedByMe = !!po?.claimedById && po.claimedById === profileId;
   const claimedByOther = !!po?.claimedById && !claimedByMe;
-  const canDeliver = plateValid && !!proofUri && codOk && !claimedByOther;
+  // First delivery needs the handover; a top-up needs only the COD step.
+  const canDeliver = topUpMode ? codOk : plateValid && !!proofUri && codOk && !claimedByOther;
+  // Does this payment settle the whole remaining balance? → celebrate; else the
+  // PO stays open as 'partial' and we return to the list.
+  const settlesFull = !isCod || codAmountValue >= remaining;
 
   // Red "required" flags — mirror the Collection screen. The amount lights up on
   // blur (early) or on a submit attempt; the plate/photos light up on a submit
   // attempt (no blur event). A captured/valid field never shows red.
-  const showPlateError = attempted && !plateValid;
-  const showProofError = attempted && !proofUri;
+  const showPlateError = !topUpMode && attempted && !plateValid;
+  const showProofError = !topUpMode && attempted && !proofUri;
   const showCodPhotoError = attempted && isCod && !codPhotoUri;
   const showCodAmountError = isCod && !codAmountValid && (codAmountTouched || attempted);
-  // Soft over-payment check: an amount above the COD due is still ALLOWED (real
-  // overpayments happen) — just flagged so a typo gets a second look.
-  const overCod = isCod && codAmountValid && codDue > 0 && codAmountValue > codDue;
+  // Soft over-payment check: an amount above the remaining balance is still
+  // ALLOWED (real overpayments happen) — just flagged so a typo gets a second look.
+  const overCod = isCod && codAmountValid && remaining > 0 && codAmountValue > remaining;
 
   function codIconColor(mode: CodMode) {
     return codMode === mode ? BIZLINK_ON_INK.solid : BIZLINK_COLORS.muted;
@@ -241,7 +252,34 @@ export default function DeliverPoScreen() {
       codPhotoUri: codPhotoUri ?? undefined,
       signatureUri,
     });
-    router.replace('/(delivery)/celebrate');
+    // A partial COD keeps the PO open (back to the list); a full delivery celebrates.
+    if (settlesFull) {
+      router.replace('/(delivery)/celebrate');
+    } else {
+      router.back();
+    }
+  }
+
+  // COD top-up on a `partial` PO — already handed over, so only the COD step
+  // (method + photo + amount) is required; no handover fields are re-written.
+  async function confirmTopUp(): Promise<void> {
+    if (!profileId) return;
+    if (!codOk) {
+      setAttempted(true);
+      return;
+    }
+    const fix = await resolveGps();
+    await collectCodTopUp(db, poId, profileId, {
+      amount: codAmountValue,
+      method: codMode,
+      gps: fix ?? undefined,
+      codPhotoUri: codPhotoUri ?? undefined,
+    });
+    if (settlesFull) {
+      router.replace('/(delivery)/celebrate');
+    } else {
+      router.back();
+    }
   }
 
   // Failed = backload (one outcome). The backload photo is the proof that the
@@ -271,6 +309,98 @@ export default function DeliverPoScreen() {
     );
   }
 
+  // The COD payment step — shared by the first-delivery flow (below the handover)
+  // and the reopened-`partial` top-up flow, so the amount box, validation and
+  // warnings stay identical. Uses `remaining` (full due on a fresh PO, carried
+  // balance on a partial one) so a top-up draws down what's actually left.
+  const codStep = (
+    <>
+      <BizSectionHeader title="Payment Method" helper={`· ${formatPeso(remaining)} ${topUpMode ? 'balance' : 'COD'}`} />
+      <XStack gap="$2" flexWrap="wrap">
+        <PayTile icon={<Banknote size={14} color={codIconColor('cash')} strokeWidth={1.75} />} label="Cash" selected={codMode === 'cash'} onPress={() => setCodMode('cash')} />
+        <PayTile icon={<FileCheck size={14} color={codIconColor('check')} strokeWidth={1.75} />} label="Check" selected={codMode === 'check'} onPress={() => setCodMode('check')} />
+        <PayTile icon={<Smartphone size={14} color={codIconColor('gcash')} strokeWidth={1.75} />} label="GCash" selected={codMode === 'gcash'} onPress={() => setCodMode('gcash')} />
+      </XStack>
+
+      <BizSectionHeader title="Payment photo" helper="· camera only" />
+      <PhotoSlot
+        title={COD_LABELS[codMode]}
+        subtitle="Compressed ≤3MB · saved on your phone"
+        uri={codPhotoUri}
+        onCaptured={setCodPhotoUri}
+        error={showCodPhotoError}
+      />
+      {showCodPhotoError ? (
+        <Text fontSize={11.5} fontFamily={BIZLINK_FONTS.medium} color={COLORS.ledgeRed} marginTop={6}>
+          A payment photo is required.
+        </Text>
+      ) : null}
+
+      <BizSectionHeader title="Amount collected *" />
+      {/* Due surfaced right by the input (parity with the Collection screen) so the
+          driver can compare the COD owed/balance to what they're entering. */}
+      <YStack backgroundColor={BIZLINK_COLORS.tintA} borderRadius={14} paddingHorizontal={14} paddingVertical={10} marginBottom={8}>
+        <XStack alignItems="center" justifyContent="space-between">
+          <Text fontSize={12.5} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted}>
+            {topUpMode ? 'COD balance still due' : 'Amount due (COD)'}
+          </Text>
+          <Text fontSize={15} fontFamily={BIZLINK_FONTS.semibold} color={BIZLINK_COLORS.ink}>{formatPeso(remaining)}</Text>
+        </XStack>
+        {topUpMode ? (
+          <Text fontSize={10.5} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} marginTop={3}>
+            Already paid {formatPeso(po.codAmount ?? 0)} of {formatPeso(codDue)}
+          </Text>
+        ) : null}
+      </YStack>
+      <TextInput
+        value={codAmount}
+        onChangeText={setCodAmount}
+        onBlur={() => setCodAmountTouched(true)}
+        keyboardType="numeric"
+        placeholder="₱ 0.00"
+        placeholderTextColor={BIZLINK_COLORS.muted}
+        style={{
+          height: 52,
+          borderRadius: 16,
+          paddingHorizontal: 16,
+          backgroundColor: BIZLINK_COLORS.card,
+          borderWidth: showCodAmountError ? 1.5 : 0,
+          borderColor: showCodAmountError ? COLORS.ledgeRed : 'transparent',
+          fontFamily: BIZLINK_FONTS.semibold,
+          fontSize: 20,
+          letterSpacing: -0.5,
+          color: BIZLINK_COLORS.text,
+        }}
+      />
+      {showCodAmountError ? (
+        <XStack backgroundColor={COLORS.redSoft} borderRadius={14} paddingHorizontal={13} paddingVertical={9} marginTop={8}>
+          <Text fontSize={11.5} fontFamily={BIZLINK_FONTS.medium} color={COLORS.ledgeRed}>
+            Enter the amount collected — this field is required.
+          </Text>
+        </XStack>
+      ) : overCod ? (
+        <XStack backgroundColor={COLORS.amberSoft} borderRadius={14} paddingHorizontal={13} paddingVertical={9} marginTop={8}>
+          <Text fontSize={11.5} fontFamily={BIZLINK_FONTS.medium} color={COLORS.orange}>
+            This is more than the {formatPeso(remaining)} balance — double-check the amount. You can still proceed.
+          </Text>
+        </XStack>
+      ) : codAmountValid ? (
+        <XStack backgroundColor={COLORS.greenSoft} borderRadius={14} paddingHorizontal={13} paddingVertical={9} marginTop={8}>
+          <Text fontSize={11.5} fontFamily={BIZLINK_FONTS.medium} color={COLORS.ledgeGreen}>
+            {settlesFull ? '✓ Settles the COD in full.' : '✓ Recorded — the balance stays open until it’s fully paid.'}
+          </Text>
+        </XStack>
+      ) : null}
+      <XStack gap="$1.5" marginTop={8} paddingRight={8}>
+        <Lightbulb size={14} color={COLORS.orange} strokeWidth={1.75} />
+        <Text flex={1} fontSize={12.5} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} lineHeight={18}>
+          Type the exact amount received for this COD — it’s what gets matched against the COD remittance. A short
+          amount keeps the PO open with the balance carried.
+        </Text>
+      </XStack>
+    </>
+  );
+
   return (
     <YStack flex={1} backgroundColor={BIZLINK_COLORS.canvas} paddingTop={insets.top}>
       <BizTopBar title="Deliver PO" />
@@ -279,7 +409,11 @@ export default function DeliverPoScreen() {
         <YStack backgroundColor={BIZLINK_COLORS.card} borderRadius={24} padding={16} marginTop={6}>
           <XStack alignItems="center" gap="$2" marginBottom={6} flexWrap="wrap">
             <Text fontSize={15} fontFamily={BIZLINK_FONTS.semibold} color={BIZLINK_COLORS.text}>{po.po}</Text>
-            <StatusBadge label="Pending" background={COLORS.blueSoft} color={COLORS.blue} />
+            {topUpMode ? (
+              <StatusBadge label="Partial" background={COLORS.purpleSoft} color={COLORS.purple} />
+            ) : (
+              <StatusBadge label="Pending" background={COLORS.blueSoft} color={COLORS.blue} />
+            )}
             {isCod ? <StatusBadge label="COD" background={COLORS.purpleSoft} color={COLORS.purple} /> : null}
           </XStack>
           <Text fontSize={12.5} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted}>
@@ -309,28 +443,39 @@ export default function DeliverPoScreen() {
           )
         ) : null}
 
-        {/* Outcome tabs — pick Deliver or Failed / Backload up-front (web 044). */}
-        <XStack
-          backgroundColor={BIZLINK_COLORS.soft}
-          borderRadius={24}
-          padding={4}
-          marginTop={16}
-          gap="$1"
-          overflow="hidden"
-        >
-          <OutcomeTab
-            icon={<Check size={16} color={mode === 'deliver' ? BIZLINK_COLORS.text : BIZLINK_COLORS.muted} strokeWidth={2} />}
-            label="Deliver"
-            selected={mode === 'deliver'}
-            onPress={() => setMode('deliver')}
-          />
-          <OutcomeTab
-            icon={<PackageX size={16} color={mode === 'failed' ? BIZLINK_COLORS.text : BIZLINK_COLORS.muted} strokeWidth={1.75} />}
-            label="Failed / Backload"
-            selected={mode === 'failed'}
-            onPress={() => setMode('failed')}
-          />
-        </XStack>
+        {/* Outcome tabs — pick Deliver or Failed / Backload up-front (web 044).
+            Hidden for a `partial` top-up: the goods were already handed over, so
+            the only action left is collecting more COD. */}
+        {topUpMode ? (
+          <XStack alignItems="center" gap="$2.5" backgroundColor={COLORS.purpleSoft} borderRadius={16} paddingHorizontal={14} paddingVertical={12} marginTop={16}>
+            <Banknote size={16} color={COLORS.purple} strokeWidth={1.75} />
+            <Text flex={1} fontSize={12} fontFamily={BIZLINK_FONTS.medium} color={COLORS.purple} lineHeight={16}>
+              Already delivered — collect the remaining COD balance below.
+            </Text>
+          </XStack>
+        ) : (
+          <XStack
+            backgroundColor={BIZLINK_COLORS.soft}
+            borderRadius={24}
+            padding={4}
+            marginTop={16}
+            gap="$1"
+            overflow="hidden"
+          >
+            <OutcomeTab
+              icon={<Check size={16} color={mode === 'deliver' ? BIZLINK_COLORS.text : BIZLINK_COLORS.muted} strokeWidth={2} />}
+              label="Deliver"
+              selected={mode === 'deliver'}
+              onPress={() => setMode('deliver')}
+            />
+            <OutcomeTab
+              icon={<PackageX size={16} color={mode === 'failed' ? BIZLINK_COLORS.text : BIZLINK_COLORS.muted} strokeWidth={1.75} />}
+              label="Failed / Backload"
+              selected={mode === 'failed'}
+              onPress={() => setMode('failed')}
+            />
+          </XStack>
+        )}
 
         {/* Auto-captured (dark card) — GPS rides with the proof/backload photo (web 044). */}
         <Text fontSize={10.5} fontFamily={BIZLINK_FONTS.semibold} letterSpacing={0.5} color={BIZLINK_COLORS.muted} marginTop={16} marginBottom={6}>
@@ -351,7 +496,20 @@ export default function DeliverPoScreen() {
           </XStack>
         </YStack>
 
-        {mode === 'deliver' ? (
+        {topUpMode ? (
+          <>
+        {/* COD top-up only — the goods were handed over on the first visit, so no
+            plate/proof/receiver here; the payment insert re-derives status server-side. */}
+        {codStep}
+        <BizButton
+          label="Record COD payment"
+          variant="brand"
+          onPress={confirmTopUp}
+          icon={<Check size={17} color={BIZLINK_ON_INK.solid} strokeWidth={2} />}
+          style={{ marginTop: 20 }}
+        />
+          </>
+        ) : mode === 'deliver' ? (
           <>
         {/* Truck plate */}
         <BizSectionHeader title="Truck plate number *" />
@@ -424,86 +582,8 @@ export default function DeliverPoScreen() {
           }}
         />
 
-        {/* COD payment step — only for COD POs */}
-        {isCod ? (
-          <>
-            <BizSectionHeader title="Payment Method" helper={`· ${formatPeso(codDue)} COD`} />
-            <XStack gap="$2" flexWrap="wrap">
-              <PayTile icon={<Banknote size={14} color={codIconColor('cash')} strokeWidth={1.75} />} label="Cash" selected={codMode === 'cash'} onPress={() => setCodMode('cash')} />
-              <PayTile icon={<FileCheck size={14} color={codIconColor('check')} strokeWidth={1.75} />} label="Check" selected={codMode === 'check'} onPress={() => setCodMode('check')} />
-              <PayTile icon={<Smartphone size={14} color={codIconColor('gcash')} strokeWidth={1.75} />} label="GCash" selected={codMode === 'gcash'} onPress={() => setCodMode('gcash')} />
-            </XStack>
-
-            <BizSectionHeader title="Payment photo" helper="· camera only" />
-            <PhotoSlot
-              title={COD_LABELS[codMode]}
-              subtitle="Compressed ≤3MB · saved on your phone"
-              uri={codPhotoUri}
-              onCaptured={setCodPhotoUri}
-              error={showCodPhotoError}
-            />
-            {showCodPhotoError ? (
-              <Text fontSize={11.5} fontFamily={BIZLINK_FONTS.medium} color={COLORS.ledgeRed} marginTop={6}>
-                A payment photo is required.
-              </Text>
-            ) : null}
-
-            <BizSectionHeader title="Amount collected *" />
-            {/* Due surfaced right by the input (parity with the Collection screen)
-                so the driver can compare the COD owed to what they're entering. */}
-            <YStack backgroundColor={BIZLINK_COLORS.tintA} borderRadius={14} paddingHorizontal={14} paddingVertical={10} marginBottom={8}>
-              <XStack alignItems="center" justifyContent="space-between">
-                <Text fontSize={12.5} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted}>Amount due (COD)</Text>
-                <Text fontSize={15} fontFamily={BIZLINK_FONTS.semibold} color={BIZLINK_COLORS.ink}>{formatPeso(codDue)}</Text>
-              </XStack>
-            </YStack>
-            <TextInput
-              value={codAmount}
-              onChangeText={setCodAmount}
-              onBlur={() => setCodAmountTouched(true)}
-              keyboardType="numeric"
-              placeholder="₱ 0.00"
-              placeholderTextColor={BIZLINK_COLORS.muted}
-              style={{
-                height: 52,
-                borderRadius: 16,
-                paddingHorizontal: 16,
-                backgroundColor: BIZLINK_COLORS.card,
-                borderWidth: showCodAmountError ? 1.5 : 0,
-                borderColor: showCodAmountError ? COLORS.ledgeRed : 'transparent',
-                fontFamily: BIZLINK_FONTS.semibold,
-                fontSize: 20,
-                letterSpacing: -0.5,
-                color: BIZLINK_COLORS.text,
-              }}
-            />
-            {showCodAmountError ? (
-              <XStack backgroundColor={COLORS.redSoft} borderRadius={14} paddingHorizontal={13} paddingVertical={9} marginTop={8}>
-                <Text fontSize={11.5} fontFamily={BIZLINK_FONTS.medium} color={COLORS.ledgeRed}>
-                  Enter the amount collected — this field is required.
-                </Text>
-              </XStack>
-            ) : overCod ? (
-              <XStack backgroundColor={COLORS.amberSoft} borderRadius={14} paddingHorizontal={13} paddingVertical={9} marginTop={8}>
-                <Text fontSize={11.5} fontFamily={BIZLINK_FONTS.medium} color={COLORS.orange}>
-                  This is more than the {formatPeso(codDue)} COD due — double-check the amount. You can still proceed.
-                </Text>
-              </XStack>
-            ) : codAmountValid ? (
-              <XStack backgroundColor={COLORS.greenSoft} borderRadius={14} paddingHorizontal={13} paddingVertical={9} marginTop={8}>
-                <Text fontSize={11.5} fontFamily={BIZLINK_FONTS.medium} color={COLORS.ledgeGreen}>
-                  ✓ Recorded — this amount will go to the COD remittance.
-                </Text>
-              </XStack>
-            ) : null}
-            <XStack gap="$1.5" marginTop={8} paddingRight={8}>
-              <Lightbulb size={14} color={COLORS.orange} strokeWidth={1.75} />
-              <Text flex={1} fontSize={12.5} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} lineHeight={18}>
-                Type the exact amount received for this COD — it’s what gets matched against the COD remittance.
-              </Text>
-            </XStack>
-          </>
-        ) : null}
+        {/* COD payment step — only for COD POs (shared with the top-up flow). */}
+        {isCod ? codStep : null}
 
         {/* Remarks */}
         <BizSectionHeader title="Remarks" />

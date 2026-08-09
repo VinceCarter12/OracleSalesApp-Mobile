@@ -15,6 +15,7 @@ import { enqueueOutboxRow } from './sync/entity-registry';
 import { enqueuePendingUpload } from './sync/photo-uploads';
 import { buildPhotoStoragePath, type PhotoKind, type PhotoParentTable } from './sync/photo-upload-registry';
 import { enqueueCollectionPayment } from './sync/collection-payments';
+import { enqueueCodPayment } from './sync/cod-payments';
 import { runSync } from './sync-engine';
 import { uuidv4 } from './uuid';
 import type { SQLiteDatabase } from 'expo-sqlite';
@@ -233,7 +234,21 @@ async function nextSequenceNo(db: SQLiteDatabase, driverId: string): Promise<num
   return row?.next ?? 1;
 }
 
-/** Mark a PO delivered (wireframe d-deliver → dConfirmDeliver). */
+/**
+ * Mark a PO delivered (wireframe d-deliver → dConfirmDeliver). F-007 partial COD
+ * (web 073): the handover and the COD payment are TWO writes.
+ *
+ * - Non-COD: unchanged — the outbox UPDATE sets `status='delivered'` + the
+ *   handover fields directly (there's no payment step).
+ * - COD: the outbox UPDATE carries ONLY the handover (driver_id/time_out/plate/
+ *   receiver/gps) and deliberately leaves `status`/`cod_amount`/`cod_method` to
+ *   the server — those are owned by the `cod_payments` INSERT + its
+ *   rollup_cod_payment trigger (web 073). We push the handover (which makes the
+ *   row eligible for a partial/delivered status), then the queued COD payment
+ *   lands (after the handover has synced — cod-payments.ts's own guard) and the
+ *   trigger flips the status. Locally we mirror that roll-up optimistically so
+ *   the driver sees Partial/Delivered + the new balance immediately (offline too).
+ */
 export async function deliverPo(
   db: SQLiteDatabase,
   id: string,
@@ -254,20 +269,65 @@ export async function deliverPo(
   const receiver = args.receiver?.trim() || null;
   const gpsLat = args.gps?.lat ?? null;
   const gpsLng = args.gps?.lng ?? null;
-  const codAmount = args.cod ? args.cod.amount : null;
-  const codMethod = args.cod ? args.cod.method : null;
+
+  if (!args.cod) {
+    // Non-COD delivery — the outcome IS 'delivered' (no payment step).
+    await db.runAsync(
+      `UPDATE purchase_orders
+         SET status='delivered', driver_id=?, time_in=?, time_out=?, sequence_no=?, truck_plate=?,
+             receiver_name=?, gps_lat=?, gps_lng=?, sync_status='pending', local_updated_at=?
+       WHERE id=?`,
+      [driverId, now, now, seq, args.plate, receiver, gpsLat, gpsLng, now, id],
+    );
+    await enqueueUpdate(db, 'purchase_orders', id, {
+      status: 'delivered',
+      driver_id: driverId,
+      time_in: now,
+      time_out: now,
+      sequence_no: seq,
+      truck_plate: args.plate,
+      receiver_name: receiver,
+      gps_lat: gpsLat,
+      gps_lng: gpsLng,
+    }, now);
+    await queuePhoto(db, 'purchase_orders', id, driverId, 'proof', args.proofUri);
+    await queuePhoto(db, 'purchase_orders', id, driverId, 'signature', args.signatureUri);
+    runSync(driverId).catch((err) => console.error('[collection-delivery-write] deliver sync failed:', err));
+    return;
+  }
+
+  // COD delivery. Optimistic local roll-up mirrors the server trigger: full COD
+  // → 'delivered', short → 'partial' (still owing).
+  const dueRow = await db.getFirstAsync<{ cod_due: number | null }>(
+    'SELECT cod_due FROM purchase_orders WHERE id = ?',
+    [id],
+  );
+  const due = dueRow?.cod_due ?? 0;
+  const paid = args.cod.amount;
+  const optimisticStatus = due > 0 && paid < due ? 'partial' : 'delivered';
 
   await db.runAsync(
     `UPDATE purchase_orders
-       SET status='delivered', driver_id=?, time_in=?, time_out=?, sequence_no=?, truck_plate=?,
+       SET status=?, driver_id=?, time_in=?, time_out=?, sequence_no=?, truck_plate=?,
            receiver_name=?, gps_lat=?, gps_lng=?, cod_amount=?, cod_method=?, cod_remitted=0,
            sync_status='pending', local_updated_at=?
      WHERE id=?`,
-    [driverId, now, now, seq, args.plate, receiver, gpsLat, gpsLng, codAmount, codMethod, now, id],
+    [optimisticStatus, driverId, now, now, seq, args.plate, receiver, gpsLat, gpsLng, paid, args.cod.method, now, id],
   );
-
-  const payload: Record<string, unknown> = {
-    status: 'delivered',
+  // Handover outbox payload. Must thread three web CHECKs at once:
+  //   • pending_is_unrun — a 'pending' row may NOT carry driver_id/time_out, so a
+  //     handover can't leave the status pending.
+  //   • cod_payments RLS — a payment may only INSERT against a pending|partial PO,
+  //     so the handover must NOT jump straight to 'delivered' (that would lock the
+  //     driver out of recording the COD).
+  //   • partial_is_cod — a 'partial' row must carry cod_amount>0 + cod_method.
+  // → The handover lands the row as **'partial'** with an optimistic cod_amount,
+  // which keeps it open for the cod_payments INSERT; the web 073 trigger then
+  // reconciles cod_amount to SUM(payments) and PROMOTES the status to 'delivered'
+  // once the COD is settled in full. (For a full one-shot COD this means a brief
+  // 'partial' on the server until the payment lands in the same sync pass.)
+  await enqueueUpdate(db, 'purchase_orders', id, {
+    status: 'partial',
     driver_id: driverId,
     time_in: now,
     time_out: now,
@@ -276,21 +336,78 @@ export async function deliverPo(
     receiver_name: receiver,
     gps_lat: gpsLat,
     gps_lng: gpsLng,
-  };
-  if (args.cod) {
-    payload.cod_amount = args.cod.amount;
-    payload.cod_method = args.cod.method;
-    payload.cod_remitted = false;
-  }
-  await enqueueUpdate(db, 'purchase_orders', id, payload, now);
-
+    cod_amount: paid,
+    cod_method: args.cod.method,
+    cod_remitted: false,
+  }, now);
+  // The COD photo rides the payment's own upload-then-insert lane (cod-payments.ts),
+  // NOT the generic pending_uploads lane — driver RLS on cod_payments is insert-only.
+  await enqueueCodPayment(db, {
+    id: uuidv4(),
+    poId: id,
+    driverId,
+    amount: paid,
+    paymentMethod: args.cod.method,
+    paymentPhotoUri: args.codPhotoUri ?? null,
+    gpsLat,
+    gpsLng,
+    remarks: null,
+    paidAt: now,
+  });
   await queuePhoto(db, 'purchase_orders', id, driverId, 'proof', args.proofUri);
   await queuePhoto(db, 'purchase_orders', id, driverId, 'signature', args.signatureUri);
-  if (args.cod) {
-    await queuePhoto(db, 'purchase_orders', id, driverId, 'cod', args.codPhotoUri);
-  }
-
   runSync(driverId).catch((err) => console.error('[collection-delivery-write] deliver sync failed:', err));
+}
+
+/**
+ * COD top-up on an already-handed-over `partial` PO (web 073). The goods were
+ * delivered on the first visit — this only records another COD installment, so it
+ * writes NO handover fields and enqueues a `cod_payments` row exactly like the
+ * COD path of deliverPo. Optimistic local roll-up flips the PO to 'delivered'
+ * once the running total reaches cod_due, else it stays 'partial'. Deliberately
+ * leaves sync_status untouched (the payment insert + server trigger are the real
+ * write); the next sync-down overwrites these with the authoritative totals.
+ */
+export async function collectCodTopUp(
+  db: SQLiteDatabase,
+  id: string,
+  driverId: string,
+  args: { amount: number; method: CodMethod; gps?: Gps; remarks?: string; codPhotoUri?: string },
+): Promise<void> {
+  const now = new Date().toISOString();
+  const gpsLat = args.gps?.lat ?? null;
+  const gpsLng = args.gps?.lng ?? null;
+  const remarks = args.remarks?.trim() || null;
+
+  const po = await db.getFirstAsync<{ cod_due: number | null; cod_amount: number | null }>(
+    'SELECT cod_due, cod_amount FROM purchase_orders WHERE id = ?',
+    [id],
+  );
+  const due = po?.cod_due ?? 0;
+  const newCollected = (po?.cod_amount ?? 0) + args.amount;
+  const newStatus = due > 0 && newCollected < due ? 'partial' : 'delivered';
+
+  await enqueueCodPayment(db, {
+    id: uuidv4(),
+    poId: id,
+    driverId,
+    amount: args.amount,
+    paymentMethod: args.method,
+    paymentPhotoUri: args.codPhotoUri ?? null,
+    gpsLat,
+    gpsLng,
+    remarks,
+    paidAt: now,
+  });
+
+  await db.runAsync(
+    `UPDATE purchase_orders
+       SET status=?, cod_amount=?, cod_method=?, local_updated_at=?
+     WHERE id=?`,
+    [newStatus, newCollected, args.method, now, id],
+  );
+
+  runSync(driverId).catch((err) => console.error('[collection-delivery-write] COD top-up sync failed:', err));
 }
 
 /** Mark a PO failed = backload (wireframe dFailedBackload). The backload photo is queued as proof the goods rode back. */
