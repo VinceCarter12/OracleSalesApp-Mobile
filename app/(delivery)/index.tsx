@@ -2,7 +2,7 @@ import { useCallback, useState } from 'react';
 import { Pressable, RefreshControl, ScrollView } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router, useFocusEffect } from 'expo-router';
-import { Bell, History, Package, PackageX, User, Vault } from 'lucide-react-native';
+import { Bell, History, Package, PackageX, Truck, User, Vault } from 'lucide-react-native';
 import { Text, XStack, YStack } from 'tamagui';
 import { useBizlinkColors, BIZLINK_FONTS, COLORS } from '../../lib/theme';
 import { useSession } from '../../lib/session-store';
@@ -18,10 +18,13 @@ import { SyncStatusChip } from '../../components/sync/SyncStatusChip';
 import { SyncCenterSheet } from '../../components/sync/SyncCenterSheet';
 import {
   formatPeso,
+  formatShortDateTime,
   getDeliverySummary,
+  isScheduledForToday,
   type DeliveryPo,
 } from '../../lib/collection-delivery-data';
 import { useDeliveryPos } from '../../lib/use-collection-delivery';
+import { useSyncRefresh } from '../../lib/use-sync-refresh';
 
 /**
  * F-007 first draft (2026-07-25): Driver dashboard — wireframe `d-home`
@@ -68,6 +71,19 @@ function PoPreviewRow({ po, onPress }: { po: DeliveryPo; onPress: () => void }) 
           <Text fontSize={11.5} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} numberOfLines={1}>
             {po.area}{po.cod && po.codDue ? ` · COD ${formatPeso(po.codDue)}` : ''}
           </Text>
+          {po.onTheWay && po.claimedBy ? (
+            <XStack alignItems="center" gap="$1.5">
+              <Truck size={12} color={COLORS.orange} strokeWidth={1.75} />
+              <Text fontSize={10.5} fontFamily={BIZLINK_FONTS.semibold} color={COLORS.orange}>
+                {po.claimedBy} is bringing it
+              </Text>
+            </XStack>
+          ) : null}
+          {po.syncedAt ? (
+            <Text fontSize={10.5} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted}>
+              Received {formatShortDateTime(po.syncedAt)}
+            </Text>
+          ) : null}
         </YStack>
         <PoBadge po={po} />
       </XStack>
@@ -85,12 +101,13 @@ export default function DeliveryDashboardScreen() {
   // F-007 Phase 1: real data from the local mirror; re-read on focus.
   const { pos, refresh } = useDeliveryPos();
   useFocusEffect(useCallback(() => { refresh(); }, [refresh]));
-  // Pull-to-refresh spinner must be bound to a user-gesture-only flag, not
-  // the hook's own `loading` — see app/(tabs)/index.tsx's twin.
-  const [isRefreshing, setIsRefreshing] = useState(false);
+  // Pull down to fetch today's PO list now instead of waiting for the 30s timer.
+  const { refreshing, onRefresh } = useSyncRefresh(refresh);
 
-  const summary = getDeliverySummary(pos);
-  const preview = pos.filter((p) => p.status === 'pending').slice(0, 3);
+  // Dashboard shows only TODAY's deliveries — the mirror holds past days too.
+  const todayPos = pos.filter((p) => isScheduledForToday(p.scheduledFor));
+  const summary = getDeliverySummary(todayPos);
+  const preview = todayPos.filter((p) => p.status === 'pending').slice(0, 3);
   const greetingName = firstName(fullName) || 'Driver';
 
   const openDeliver = (id: string) =>
@@ -117,15 +134,10 @@ export default function DeliveryDashboardScreen() {
         contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 40 }}
         refreshControl={
           <RefreshControl
-            refreshing={isRefreshing}
-            onRefresh={async () => {
-              setIsRefreshing(true);
-              try {
-                await refresh();
-              } finally {
-                setIsRefreshing(false);
-              }
-            }}
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor={BIZLINK_COLORS.brand}
+            colors={[BIZLINK_COLORS.brand]}
           />
         }
       >

@@ -34,8 +34,15 @@ export interface LocalCollectionVisitRow {
   claimed_at: string | null;
   claimed_by_name: string | null;
   is_additional: number | null;
+  /** web 068 acks — mirrored read-only; written server-side by the RPCs. */
+  additional_received_at: string | null;
+  additional_seen_at: string | null;
+  /** Local-only intent: 1 once the collector opens an additional store; cleared when the seen RPC lands. */
+  additional_seen_pending: number | null;
   created_at: string | null;
   updated_at: string | null;
+  /** Stamped with `now` each time sync-down writes this row into the local mirror — i.e. when this list landed on THIS device. */
+  local_updated_at: string | null;
 }
 
 export interface LocalPurchaseOrderRow {
@@ -69,6 +76,8 @@ export interface LocalPurchaseOrderRow {
   claimed_by_name: string | null;
   created_at: string | null;
   updated_at: string | null;
+  /** Stamped with `now` each time sync-down writes this row into the local mirror — i.e. when this PO landed on THIS device. */
+  local_updated_at: string | null;
 }
 
 /** Two-letter initials from a customer name (e.g. "KVR Hardware" → "KV"). */
@@ -111,6 +120,14 @@ export function rowToStore(row: LocalCollectionVisitRow): CollectionStore {
     // Additional Collection: a store the admin added after the list was
     // published. Web sets is_additional=1; absent/0 for a normal published row.
     isAdditional: row.is_additional === 1,
+    // web 068 acknowledgment timestamps (mirrored). received = "Delivered ✓" on
+    // the admin board; seen = "Viewed".
+    additionalReceivedAt: row.additional_received_at ?? undefined,
+    additionalSeenAt: row.additional_seen_at ?? undefined,
+    // When this row was last written into THIS device's local mirror — the
+    // "received in app" time shown on Today's List.
+    syncedAt: row.local_updated_at ?? undefined,
+    scheduledFor: row.scheduled_for ?? undefined,
   };
 }
 
@@ -139,5 +156,7 @@ export function rowToPo(row: LocalPurchaseOrderRow): DeliveryPo {
     onTheWay: pending && !!row.claimed_by,
     claimedBy: row.claimed_by_name ?? undefined,
     claimedById: row.claimed_by ?? undefined,
+    syncedAt: row.local_updated_at ?? undefined,
+    scheduledFor: row.scheduled_for ?? undefined,
   };
 }

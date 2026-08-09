@@ -1,4 +1,5 @@
 import { isBlockedByDependency, isEntityTableName } from './entity-registry';
+import { isServerOwnedFieldRoleConflict } from './field-role-conflict';
 import { enqueueSyncAuditRow, AUDIT_OUTBOX_TABLE_NAME, type AuditOutcome } from './audit-log';
 import { getPushTarget, pushChunk, pushSingleRow, type PushTarget } from './remote-upsert';
 import {
@@ -7,6 +8,7 @@ import {
   markOutboxSyncing,
   scheduleRetry,
   MAX_OUTBOX_ATTEMPTS,
+  UNIQUE_VIOLATION_CODE,
   type ClassifiedError,
 } from './outbox-status';
 import type { SQLiteDatabase } from 'expo-sqlite';
@@ -80,6 +82,37 @@ async function recordSynced(db: SQLiteDatabase, row: OutboxRow, agentId: string)
   await enqueueAuditForRow(db, row, 'synced', null, agentId);
 }
 
+/**
+ * F-007 (web 070/069/046): server-wins resolution for a field-role day-list
+ * conflict on server-owned columns (see ./field-role-conflict.ts). The server
+ * copy legitimately moved ahead by design (payment roll-up trigger / additional-
+ * ack RPC / admin claim release), so the phone's stale edit must be DROPPED, not
+ * frozen for admin review. The outbox row is retired terminally as 'synced'
+ * (prunable, and never surfaces the "kontakin ang admin" conflict copy), and the
+ * local mirror row is flipped back to 'synced' so THIS pass's syncDown() — which
+ * runs right after the push — overwrites it with the authoritative server row
+ * (its `WHERE sync_status='synced'` guard requires exactly that). The audit lane
+ * still records the honest `conflict_resolved_adopt_server` outcome for history.
+ */
+async function resolveConflictServerWins(
+  db: SQLiteDatabase,
+  row: OutboxRow,
+  classified: ClassifiedError,
+  result: OutboxSyncResult,
+  agentId: string
+): Promise<void> {
+  const now = new Date().toISOString();
+  await db.runAsync("UPDATE outbox SET status = 'synced', synced_at = ?, last_error = NULL WHERE id = ?", [
+    now,
+    row.id,
+  ]);
+  await db.runAsync(`UPDATE ${row.table_name} SET sync_status = 'synced', sync_error = NULL WHERE id = ?`, [
+    row.record_id,
+  ]);
+  await enqueueAuditForRow(db, row, 'conflict_resolved_adopt_server', classified, agentId);
+  result.synced++;
+}
+
 async function handleRowFailure(
   db: SQLiteDatabase,
   row: OutboxRow,
@@ -96,6 +129,16 @@ async function handleRowFailure(
     if (row.table_name === AUDIT_OUTBOX_TABLE_NAME) {
       await recordSynced(db, row, agentId);
       result.synced++;
+      return;
+    }
+    // F-007 (web 070/069/046): a unique-violation conflict on a Collection &
+    // Delivery day-list UPDATE that touches ONLY server-owned columns is an
+    // EXPECTED "the server already moved on" divergence (payment roll-up
+    // trigger / additional-ack RPC / admin claim release), not a real edit
+    // collision. Resolve it server-wins — drop the stale local edit — instead
+    // of freezing the record and telling the field officer to phone the office.
+    if (isServerOwnedFieldRoleConflict(row.table_name, row.payload)) {
+      await resolveConflictServerWins(db, row, classified, result, agentId);
       return;
     }
     await markOutboxRow(db, row.id, row.record_id, row.table_name, 'conflict', classified, row.retry_count);
@@ -139,6 +182,41 @@ async function pushAndClassifyRow(
   // re-confirm 'synced' rather than misclassify this as a push failure.
   await recordSynced(db, row, agentId);
   result.synced++;
+}
+
+/**
+ * F-007: heals field-role day-list rows left FROZEN in 'conflict' by a build
+ * that predates the inline server-wins auto-resolution above — e.g. the claim
+ * that unique-violated (`collection_visits_one_active_claim`) before this
+ * shipped, or a legacy pre-070 collect UPDATE. Such a row is the same expected
+ * "server already moved on" divergence, never a real collision, so it must NOT
+ * keep telling the field officer to "kontakin ang admin". Adopts the server row
+ * (drops the stale local edit) and retires the outbox row, exactly like a fresh
+ * conflict would now resolve. Run ONCE per session from runSyncOnce()'s recovery
+ * block — the set of stuck rows is fixed at launch; new ones self-resolve inline.
+ * Returns how many rows it healed.
+ */
+export async function healStuckFieldRoleConflicts(db: SQLiteDatabase, agentId: string): Promise<number> {
+  const rows = await db.getAllAsync<OutboxRow>(
+    `SELECT id, record_id, table_name, operation, payload, retry_count
+     FROM outbox
+     WHERE status = 'conflict' AND table_name IN ('collection_visits', 'purchase_orders')`
+  );
+  const classified: ClassifiedError = {
+    kind: 'conflict',
+    failureClass: 'conflict',
+    code: UNIQUE_VIOLATION_CODE,
+    message: 'server-wins: adopted the server row for a stuck field-role conflict',
+  };
+  let healed = 0;
+  for (const row of rows) {
+    if (!isServerOwnedFieldRoleConflict(row.table_name, row.payload)) continue;
+    // Throwaway per-row result — this path reports its own count, not the
+    // OutboxSyncResult the live push pass accumulates.
+    await resolveConflictServerWins(db, row, classified, { synced: 0, conflicted: 0, failed: 0 }, agentId);
+    healed++;
+  }
+  return healed;
 }
 
 async function markSyncingBatch(db: SQLiteDatabase, rows: OutboxRow[]): Promise<void> {

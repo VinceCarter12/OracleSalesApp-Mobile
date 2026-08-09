@@ -384,8 +384,9 @@ export async function upsertSyncedCollectionVisit(
       (id, client_id, client_name, area, status, scheduled_for, amount_due, collector_id,
        amount_collected, payment_method, payment_photo_url, delivery_receipt_photo_url,
        gps_lat, gps_lng, remarks, rescheduled_to, visited_at, claimed_by, claimed_at,
-       claimed_by_name, is_additional, created_at, updated_at, sync_status, local_updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'synced', ?)
+       claimed_by_name, is_additional, additional_received_at, additional_seen_at,
+       created_at, updated_at, sync_status, local_updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'synced', ?)
      ON CONFLICT(id) DO UPDATE SET
        client_id = excluded.client_id, client_name = excluded.client_name, area = excluded.area,
        status = excluded.status, scheduled_for = excluded.scheduled_for, amount_due = excluded.amount_due,
@@ -395,6 +396,7 @@ export async function upsertSyncedCollectionVisit(
        gps_lng = excluded.gps_lng, remarks = excluded.remarks, rescheduled_to = excluded.rescheduled_to,
        visited_at = excluded.visited_at, claimed_by = excluded.claimed_by, claimed_at = excluded.claimed_at,
        claimed_by_name = excluded.claimed_by_name, is_additional = excluded.is_additional,
+       additional_received_at = excluded.additional_received_at, additional_seen_at = excluded.additional_seen_at,
        created_at = excluded.created_at,
        updated_at = excluded.updated_at, sync_status = 'synced', sync_error = NULL,
        local_updated_at = excluded.local_updated_at
@@ -423,6 +425,12 @@ export async function upsertSyncedCollectionVisit(
       // web's `is_additional` (Additional Collection contract). Absent until
       // web ships the column — defaults to 0, so pre-contract rows are normal.
       row.is_additional ? 1 : 0,
+      // web 068 ack timestamps — mirrored read-only; mobile only ever WRITES
+      // them via the RPCs (never here). `additional_seen_pending` is local-only
+      // and deliberately NOT in this upsert, so a sync-down never clears a
+      // still-unsynced "seen" intent.
+      (row.additional_received_at as string) ?? null,
+      (row.additional_seen_at as string) ?? null,
       (row.created_at as string) ?? null,
       (row.updated_at as string) ?? null,
       now,

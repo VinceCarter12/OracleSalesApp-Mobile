@@ -14,7 +14,17 @@
 // No SQLite/Supabase schema is deployed yet (043/044 unmerged), so these arrays
 // still stand in for local-DB reads — but now on the correct shapes.
 
-export type CollectionStoreStatus = 'pending' | 'collected' | 'rescheduled';
+export type CollectionStoreStatus = 'pending' | 'collected' | 'rescheduled' | 'partial';
+
+/** A store still owing money — pending (untouched) or partial (part-paid). Both stay on the list. */
+export function isOpenForCollection(status: CollectionStoreStatus): boolean {
+  return status === 'pending' || status === 'partial';
+}
+
+/** What's still owed on a store: original due minus what's been collected so far (never negative). */
+export function remainingBalance(store: Pick<CollectionStore, 'due' | 'amountCollected'>): number {
+  return Math.max(0, store.due - (store.amountCollected ?? 0));
+}
 /**
  * Collection payment methods — lowercase; 'counter' = paid at the store's own
  * counter, 'delivery_receipt' = documented by the delivery receipt only (no
@@ -56,6 +66,41 @@ export function formatShortDateTime(iso?: string | null): string {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return '';
   return `${SHORT_MONTHS[d.getMonth()]} ${d.getDate()} · ${formatClockTime(iso)}`;
+}
+
+/** Formats an ISO timestamp for the "Auto-captured" card — short date WITH year + wall-clock time, e.g. 'Jul 9, 2026 · 9:41 AM'. Empty for null/invalid. */
+export function formatCapturedTimestamp(iso?: string | null): string {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '';
+  return `${SHORT_MONTHS[d.getMonth()]} ${d.getDate()}, ${d.getFullYear()} · ${formatClockTime(iso)}`;
+}
+
+/** Local calendar day as `YYYY-MM-DD` (device timezone — Manila for this app). */
+function localDateStr(d: Date): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
+/**
+ * True if `scheduledFor` falls on the local calendar day `ref` (default: now).
+ * Handles both a date-only value ('2026-08-08', compared as-is) and a full ISO
+ * timestamp (compared by its LOCAL Y/M/D). Null/blank/unparseable → false, so a
+ * row with no schedule never counts as "today".
+ */
+export function isScheduledForToday(scheduledFor: string | null | undefined, ref: Date = new Date()): boolean {
+  if (!scheduledFor) return false;
+  const todayStr = localDateStr(ref);
+  // Date-only (no time component): a plain calendar date, compare directly and
+  // avoid the UTC-parse timezone shift that `new Date('2026-08-08')` introduces.
+  if (scheduledFor.length === 10 && /^\d{4}-\d{2}-\d{2}$/.test(scheduledFor)) {
+    return scheduledFor === todayStr;
+  }
+  const d = new Date(scheduledFor);
+  if (Number.isNaN(d.getTime())) return false;
+  return localDateStr(d) === todayStr;
 }
 
 /**
@@ -109,6 +154,24 @@ export interface CollectionStore {
    * until the web contract lands.
    */
   isAdditional?: boolean;
+  /**
+   * web 068 acknowledgment timestamps (Additional Collection). `additionalReceivedAt`
+   * = the row reached this phone ("Delivered ✓" on the admin board);
+   * `additionalSeenAt` = the collector opened it ("Viewed"). Both are stamped
+   * server-side (write-once) by the collector-only RPCs and mirrored down —
+   * mobile never writes them directly. See [[project_additional_collection]].
+   */
+  additionalReceivedAt?: string;
+  additionalSeenAt?: string;
+  /**
+   * Local mirror's `local_updated_at` — the wall-clock time this row was
+   * written into THIS device during sync-down (NOT a web column). Surfaces on
+   * Today's List as "when this list got into the app", and updates on
+   * pull-to-refresh. Undefined for the mock arrays (which never sync).
+   */
+  syncedAt?: string;
+  /** `scheduled_for` — the day this stop is planned for; used to scope the dashboard to TODAY. */
+  scheduledFor?: string;
 }
 
 export const COLLECTION_STORES: CollectionStore[] = [
@@ -165,6 +228,10 @@ export interface DeliveryPo {
   claimedBy?: string;
   /** Raw `claimed_by` profile id — compare to your own to tell mine vs someone else's. */
   claimedById?: string;
+  /** Local mirror's `local_updated_at` — when this PO landed on THIS device. See CollectionStore.syncedAt. */
+  syncedAt?: string;
+  /** `scheduled_for` — the delivery day; used to scope the dashboard to TODAY. */
+  scheduledFor?: string;
 }
 
 export const DELIVERY_POS: DeliveryPo[] = [
@@ -285,12 +352,18 @@ export function formatPesoCompact(n: number): string {
 
 export function getCollectionSummary(stores: CollectionStore[] = COLLECTION_STORES) {
   const collected = stores.filter((s) => s.status === 'collected');
-  const pending = stores.filter((s) => s.status === 'pending');
-  const collectedTotal = collected.reduce((sum, s) => sum + (s.amountCollected ?? s.due), 0);
+  // Still-to-collect = pending (untouched) + partial (part-paid, still owing).
+  const open = stores.filter((s) => isOpenForCollection(s.status));
+  // Cash on hand = every peso actually collected, INCLUDING partial payments —
+  // a partial store isn't 'collected' but its money is already in the bag.
+  const collectedTotal = stores.reduce(
+    (sum, s) => sum + (s.status === 'collected' ? (s.amountCollected ?? s.due) : (s.amountCollected ?? 0)),
+    0,
+  );
   return {
     total: stores.length,
     visitedCount: collected.length,
-    pendingCount: pending.length,
+    pendingCount: open.length,
     collectedTotal,
     // First draft: everything collected today is still on-hand (nothing
     // remitted yet in the mock dataset).

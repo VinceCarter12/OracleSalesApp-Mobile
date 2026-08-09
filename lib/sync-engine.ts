@@ -6,9 +6,11 @@ import { isNetworkConnectivityError } from './network-error';
 import { isEntityTableName } from './sync/entity-registry';
 import { pruneSyncedOutboxRows, recoverStuckSyncingRows, type OutboxStatus } from './sync/outbox-status';
 import { setLastSyncAt } from './sync/last-sync';
-import { pushDueOutboxRows, type OutboxRow, type OutboxSyncResult } from './sync/push-batch';
+import { healStuckFieldRoleConflicts, pushDueOutboxRows, type OutboxRow, type OutboxSyncResult } from './sync/push-batch';
 import { AUDIT_OUTBOX_TABLE_NAME } from './sync/audit-log';
 import { processPendingUploads, recoverStuckPendingUploads } from './sync/photo-uploads';
+import { reconcileAdditionalAcks } from './sync/additional-acks';
+import { processCollectionPayments } from './sync/collection-payments';
 import { uploadPendingAvatar } from './profile-avatar';
 import { retryFailedPendingUpload, type PendingUploadStatus } from './sync/pending-upload-status';
 import { createCoalescingRunner } from './sync/coalescing-runner';
@@ -164,6 +166,15 @@ async function runSyncOnce(agentId: string, teamId?: string | null): Promise<Syn
   if (!hasRecoveredStuckRows) {
     await recoverStuckSyncingRows(db);
     await recoverStuckPendingUploads(db);
+    // F-007: retire any field-role day-list rows a pre-fix build left frozen in
+    // 'conflict' (see healStuckFieldRoleConflicts). Best-effort — a heal failure
+    // must never fail or delay the sync pass; the inline auto-resolve still
+    // handles every conflict from here on.
+    try {
+      await healStuckFieldRoleConflicts(db, agentId);
+    } catch (err) {
+      console.error('healStuckFieldRoleConflicts failed', err);
+    }
     // ADR-026 P2 item 7: unlike the two recovery calls above (correctness-
     // critical — a real problem there should surface), a prune failure
     // must never fail or delay a sync pass, so it gets its own try/catch.
@@ -195,7 +206,19 @@ async function runSyncOnce(agentId: string, teamId?: string | null): Promise<Syn
   await syncPendingAvatarUpload();
   const photoPatchResult =
     uploadResult.synced > 0 ? await processOutbox(agentId) : { synced: 0, failed: 0, conflicted: 0 };
+  // F-007 Partial payment (web 070): upload each queued payment's proof photos
+  // then INSERT it (collector RLS is insert-only, so URLs ride in the insert).
+  // Runs BEFORE syncDown so the server trigger's roll-up onto the visit
+  // (amount_collected + partial/collected status) is pulled back this same pass.
+  const paymentResult = await processCollectionPayments(db, agentId);
   await syncDown(agentId, teamId);
+  // F-007 Additional Collection (web 068/069): acknowledge additional stores
+  // back to the server via the collector-only RPCs — received (just pulled) and
+  // seen (collector opened it offline earlier). Best-effort: it manages its own
+  // errors and must never fail the pass, so a throw here is swallowed.
+  await reconcileAdditionalAcks(db).catch((err: unknown) => {
+    console.error('reconcileAdditionalAcks failed', err);
+  });
   // ADR-026 P2 item 6: stamped unconditionally once the pass gets this far
   // — even if some rows dead-lettered along the way (Vince confirmed: do
   // NOT gate on `failed === 0`). This naturally excludes the offline-
@@ -205,8 +228,14 @@ async function runSyncOnce(agentId: string, teamId?: string | null): Promise<Syn
     console.error('setLastSyncAt failed', err);
   });
   return {
-    synced: outboxResult.synced + photoPatchResult.synced,
-    failed: outboxResult.failed + outboxResult.conflicted + uploadResult.failed + photoPatchResult.failed + photoPatchResult.conflicted,
+    synced: outboxResult.synced + photoPatchResult.synced + paymentResult.synced,
+    failed:
+      outboxResult.failed +
+      outboxResult.conflicted +
+      uploadResult.failed +
+      photoPatchResult.failed +
+      photoPatchResult.conflicted +
+      paymentResult.failed,
     connectivity,
   };
 }

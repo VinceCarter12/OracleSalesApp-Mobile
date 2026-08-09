@@ -2,7 +2,7 @@ import { useRef, useState } from 'react';
 import { Alert, Pressable, ScrollView, TextInput } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router, useLocalSearchParams } from 'expo-router';
-import { Banknote, Check, FileCheck, Footprints, Lock, PackageX, Smartphone } from 'lucide-react-native';
+import { Banknote, Check, FileCheck, Footprints, Lightbulb, Lock, PackageX, Smartphone } from 'lucide-react-native';
 import { useSQLiteContext } from 'expo-sqlite';
 import { Text, XStack, YStack } from 'tamagui';
 import { useBizlinkColors, BIZLINK_FONTS, BIZLINK_ON_INK, COLORS } from '../../lib/theme';
@@ -14,8 +14,10 @@ import { BizSectionHeader } from '../../components/bizlink/BizSectionHeader';
 import { BizButton } from '../../components/bizlink/BizButton';
 import { PhotoSlot } from '../../components/collection-delivery/PhotoSlot';
 import { SignaturePad, type SignaturePadHandle } from '../../components/collection-delivery/SignaturePad';
-import { formatPeso, type CodMethod } from '../../lib/collection-delivery-data';
+import { formatCapturedTimestamp, formatPeso, type CodMethod } from '../../lib/collection-delivery-data';
+import { useNow } from '../../lib/use-now';
 import { claimStop, deliverPo, failPo, releaseStop } from '../../lib/collection-delivery-write';
+import { runSync } from '../../lib/sync-engine';
 import { useDeliveryPo } from '../../lib/use-collection-delivery';
 
 /**
@@ -110,7 +112,7 @@ export default function DeliverPoScreen() {
 
   const poId = String(id ?? '');
   const db = useSQLiteContext();
-  const { profileId, fullName } = useSession();
+  const { profileId, fullName, teamId } = useSession();
   // Real record from the local mirror for display; the deliver/fail/claim WRITE
   // goes through collection-delivery-write.ts (local update + outbox push).
   const { po, loading, refresh } = useDeliveryPo(poId);
@@ -127,16 +129,40 @@ export default function DeliverPoScreen() {
   const [codMode, setCodMode] = useState<CodMode>('cash');
   const [codPhotoUri, setCodPhotoUri] = useState<string | null>(null);
   const [codAmount, setCodAmount] = useState('');
+  // Flips true once the driver leaves the amount field — early red flag before
+  // they even tap Delivered (mirrors the Collection screen's amountTouched).
+  const [codAmountTouched, setCodAmountTouched] = useState(false);
+  // Flips true when the driver taps Delivered while something required is still
+  // missing — reveals the red state on every skipped field at once.
+  const [attempted, setAttempted] = useState(false);
   const [backloadUri, setBackloadUri] = useState<string | null>(null);
   // GPS captured when the proof (or backload) photo is taken — rides with it.
   const [gps, setGps] = useState<GpsFix | null>(null);
+  // Live wall-clock preview for the Auto-captured card — the real timestamp is
+  // stamped at submit (deliverPo/failPo use their own `now`); this just shows
+  // the driver the current date/time instead of a frozen literal.
+  const nowIso = useNow();
 
   const isCod = !!po?.cod;
+  const codDue = po?.codDue ?? 0;
   const codAmountValue = parseFloat((codAmount || '').replace(/[^\d.]/g, ''));
-  const codOk = !isCod || (codAmountValue > 0 && !!codPhotoUri);
+  const codAmountValid = codAmountValue > 0;
+  const codOk = !isCod || (codAmountValid && !!codPhotoUri);
+  const plateValid = plate.trim().length > 0;
   const claimedByMe = !!po?.claimedById && po.claimedById === profileId;
   const claimedByOther = !!po?.claimedById && !claimedByMe;
-  const canDeliver = plate.trim().length > 0 && !!proofUri && codOk && !claimedByOther;
+  const canDeliver = plateValid && !!proofUri && codOk && !claimedByOther;
+
+  // Red "required" flags — mirror the Collection screen. The amount lights up on
+  // blur (early) or on a submit attempt; the plate/photos light up on a submit
+  // attempt (no blur event). A captured/valid field never shows red.
+  const showPlateError = attempted && !plateValid;
+  const showProofError = attempted && !proofUri;
+  const showCodPhotoError = attempted && isCod && !codPhotoUri;
+  const showCodAmountError = isCod && !codAmountValid && (codAmountTouched || attempted);
+  // Soft over-payment check: an amount above the COD due is still ALLOWED (real
+  // overpayments happen) — just flagged so a typo gets a second look.
+  const overCod = isCod && codAmountValid && codDue > 0 && codAmountValue > codDue;
 
   function codIconColor(mode: CodMode) {
     return codMode === mode ? BIZLINK_ON_INK.solid : BIZLINK_COLORS.muted;
@@ -155,6 +181,24 @@ export default function DeliverPoScreen() {
     if (!profileId) return;
     await claimStop(db, 'purchase_orders', poId, profileId, fullName ?? 'Driver');
     refresh();
+    // A claim rides the outbox and can be REJECTED at flush by the server's
+    // one-active-claim rule (23505, `purchase_orders_one_active_claim`): another
+    // driver beat us to this stop, or we already hold a different one. On
+    // rejection the row snaps back to pending (server-wins), so await a pass
+    // when online and tell the driver why — a silent revert reads as "claim is
+    // broken". Offline, the optimistic claim stands until the next flush.
+    const result = await runSync(profileId, teamId);
+    if (result?.connectivity !== 'online') return;
+    const row = await db.getFirstAsync<{ claimed_by: string | null }>(
+      'SELECT claimed_by FROM purchase_orders WHERE id = ?',
+      [poId],
+    );
+    if (row && row.claimed_by !== profileId) {
+      Alert.alert(
+        'Claim didn’t stick',
+        'Another driver already took this stop, or you’re still holding a different one. Finish or release your current stop before claiming a new one.',
+      );
+    }
   }
 
   async function release(): Promise<void> {
@@ -177,6 +221,12 @@ export default function DeliverPoScreen() {
 
   async function confirmDeliver(): Promise<void> {
     if (!profileId) return;
+    // Tapped with something required still missing — reveal the red flags and
+    // stop, instead of silently doing nothing (mirrors the Collection screen).
+    if (!canDeliver) {
+      setAttempted(true);
+      return;
+    }
     const fix = await resolveGps();
     // Render the drawn signature to a JPEG (null if the customer didn't sign —
     // it's optional). It rides the deferred upload lane to receiver_signature_url.
@@ -290,7 +340,7 @@ export default function DeliverPoScreen() {
           <XStack alignItems="center" gap="$2">
             <Text fontSize={12.5} fontFamily={BIZLINK_FONTS.semibold} color="#8FD7B4">✓</Text>
             <Text fontSize={12.5} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_ON_INK.solid}>Date &amp; time</Text>
-            <Text fontSize={11} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_ON_INK.textMuted}>Jul 9, 2026 · 9:41 AM</Text>
+            <Text fontSize={11} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_ON_INK.textMuted}>{formatCapturedTimestamp(nowIso)}</Text>
           </XStack>
           <XStack alignItems="center" gap="$2">
             <Text fontSize={12.5} fontFamily={BIZLINK_FONTS.semibold} color={gps ? '#8FD7B4' : BIZLINK_ON_INK.textMuted}>{gps ? '✓' : '…'}</Text>
@@ -316,11 +366,18 @@ export default function DeliverPoScreen() {
             borderRadius: 16,
             paddingHorizontal: 16,
             backgroundColor: BIZLINK_COLORS.card,
+            borderWidth: showPlateError ? 1.5 : 0,
+            borderColor: showPlateError ? COLORS.ledgeRed : 'transparent',
             fontFamily: BIZLINK_FONTS.medium,
             fontSize: 14.5,
             color: BIZLINK_COLORS.text,
           }}
         />
+        {showPlateError ? (
+          <Text fontSize={11.5} fontFamily={BIZLINK_FONTS.medium} color={COLORS.ledgeRed} marginTop={6}>
+            Enter the truck plate number — this field is required.
+          </Text>
+        ) : null}
         <Text fontSize={12.5} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} marginTop={4} lineHeight={18}>
           Per-trip reference, shown with the customer name on the trip ticket.
         </Text>
@@ -332,7 +389,13 @@ export default function DeliverPoScreen() {
           subtitle="Compressed ≤3MB · saved on your phone"
           uri={proofUri}
           onCaptured={(uri) => captureWithGps(setProofUri, uri)}
+          error={showProofError}
         />
+        {showProofError ? (
+          <Text fontSize={11.5} fontFamily={BIZLINK_FONTS.medium} color={COLORS.ledgeRed} marginTop={6}>
+            A proof-of-delivery photo is required.
+          </Text>
+        ) : null}
 
         {/* Receiver signature (optional) */}
         <BizSectionHeader title="Receiver signature" helper="· optional" />
@@ -364,7 +427,7 @@ export default function DeliverPoScreen() {
         {/* COD payment step — only for COD POs */}
         {isCod ? (
           <>
-            <BizSectionHeader title="Payment Method" helper={`· ${formatPeso(po.codDue ?? 0)} due`} />
+            <BizSectionHeader title="Payment Method" helper={`· ${formatPeso(codDue)} COD`} />
             <XStack gap="$2" flexWrap="wrap">
               <PayTile icon={<Banknote size={14} color={codIconColor('cash')} strokeWidth={1.75} />} label="Cash" selected={codMode === 'cash'} onPress={() => setCodMode('cash')} />
               <PayTile icon={<FileCheck size={14} color={codIconColor('check')} strokeWidth={1.75} />} label="Check" selected={codMode === 'check'} onPress={() => setCodMode('check')} />
@@ -377,12 +440,27 @@ export default function DeliverPoScreen() {
               subtitle="Compressed ≤3MB · saved on your phone"
               uri={codPhotoUri}
               onCaptured={setCodPhotoUri}
+              error={showCodPhotoError}
             />
+            {showCodPhotoError ? (
+              <Text fontSize={11.5} fontFamily={BIZLINK_FONTS.medium} color={COLORS.ledgeRed} marginTop={6}>
+                A payment photo is required.
+              </Text>
+            ) : null}
 
             <BizSectionHeader title="Amount collected *" />
+            {/* Due surfaced right by the input (parity with the Collection screen)
+                so the driver can compare the COD owed to what they're entering. */}
+            <YStack backgroundColor={BIZLINK_COLORS.tintA} borderRadius={14} paddingHorizontal={14} paddingVertical={10} marginBottom={8}>
+              <XStack alignItems="center" justifyContent="space-between">
+                <Text fontSize={12.5} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted}>Amount due (COD)</Text>
+                <Text fontSize={15} fontFamily={BIZLINK_FONTS.semibold} color={BIZLINK_COLORS.ink}>{formatPeso(codDue)}</Text>
+              </XStack>
+            </YStack>
             <TextInput
               value={codAmount}
               onChangeText={setCodAmount}
+              onBlur={() => setCodAmountTouched(true)}
               keyboardType="numeric"
               placeholder="₱ 0.00"
               placeholderTextColor={BIZLINK_COLORS.muted}
@@ -391,15 +469,39 @@ export default function DeliverPoScreen() {
                 borderRadius: 16,
                 paddingHorizontal: 16,
                 backgroundColor: BIZLINK_COLORS.card,
+                borderWidth: showCodAmountError ? 1.5 : 0,
+                borderColor: showCodAmountError ? COLORS.ledgeRed : 'transparent',
                 fontFamily: BIZLINK_FONTS.semibold,
                 fontSize: 20,
                 letterSpacing: -0.5,
                 color: BIZLINK_COLORS.text,
               }}
             />
-            <Text fontSize={12.5} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} marginTop={6} lineHeight={18}>
-              Same payment step as the Collection module — reused for COD deliveries.
-            </Text>
+            {showCodAmountError ? (
+              <XStack backgroundColor={COLORS.redSoft} borderRadius={14} paddingHorizontal={13} paddingVertical={9} marginTop={8}>
+                <Text fontSize={11.5} fontFamily={BIZLINK_FONTS.medium} color={COLORS.ledgeRed}>
+                  Enter the amount collected — this field is required.
+                </Text>
+              </XStack>
+            ) : overCod ? (
+              <XStack backgroundColor={COLORS.amberSoft} borderRadius={14} paddingHorizontal={13} paddingVertical={9} marginTop={8}>
+                <Text fontSize={11.5} fontFamily={BIZLINK_FONTS.medium} color={COLORS.orange}>
+                  This is more than the {formatPeso(codDue)} COD due — double-check the amount. You can still proceed.
+                </Text>
+              </XStack>
+            ) : codAmountValid ? (
+              <XStack backgroundColor={COLORS.greenSoft} borderRadius={14} paddingHorizontal={13} paddingVertical={9} marginTop={8}>
+                <Text fontSize={11.5} fontFamily={BIZLINK_FONTS.medium} color={COLORS.ledgeGreen}>
+                  ✓ Recorded — this amount will go to the COD remittance.
+                </Text>
+              </XStack>
+            ) : null}
+            <XStack gap="$1.5" marginTop={8} paddingRight={8}>
+              <Lightbulb size={14} color={COLORS.orange} strokeWidth={1.75} />
+              <Text flex={1} fontSize={12.5} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} lineHeight={18}>
+                Type the exact amount received for this COD — it’s what gets matched against the COD remittance.
+              </Text>
+            </XStack>
           </>
         ) : null}
 
@@ -427,7 +529,7 @@ export default function DeliverPoScreen() {
           label="Delivered"
           variant="brand"
           onPress={confirmDeliver}
-          disabled={!canDeliver}
+          disabled={claimedByOther}
           icon={<Check size={17} color={BIZLINK_ON_INK.solid} strokeWidth={2} />}
           style={{ marginTop: 20 }}
         />

@@ -14,6 +14,7 @@
 import { enqueueOutboxRow } from './sync/entity-registry';
 import { enqueuePendingUpload } from './sync/photo-uploads';
 import { buildPhotoStoragePath, type PhotoKind, type PhotoParentTable } from './sync/photo-upload-registry';
+import { enqueueCollectionPayment } from './sync/collection-payments';
 import { runSync } from './sync-engine';
 import { uuidv4 } from './uuid';
 import type { SQLiteDatabase } from 'expo-sqlite';
@@ -63,7 +64,15 @@ async function enqueueUpdate(
   });
 }
 
-/** Collect Payment (wireframe c-visit → cConfirmCollect). Writes the collected outcome. */
+/**
+ * Collect Payment (wireframe c-visit → cConfirmCollect). F-007 Partial payment
+ * (web 070): records ONE payment against the visit — full or partial — by
+ * queueing a `collection_payments` row (offline; uploaded-then-inserted by
+ * lib/sync/collection-payments.ts, since collector RLS is insert-only). The
+ * visit's real amount_collected/status roll-up is owned by the server trigger;
+ * we mirror it optimistically on the local row so the collector sees the new
+ * balance + Partial/Collected immediately (offline too).
+ */
 export async function collectPayment(
   db: SQLiteDatabase,
   id: string,
@@ -77,11 +86,9 @@ export async function collectPayment(
     receiptPhotoUri?: string;
     /**
      * Customer acknowledgment signature (JPEG). Captured for every payment
-     * method, but NOT yet persisted: `collection_visits` has no signature
-     * column (web 043) and the upload registry has no collection-signature kind.
-     * Wiring it requires a web `signature_url` column + a local column + a
-     * registry entry — a cross-repo follow-up. Accepted here so the screen's
-     * plumbing is complete and this becomes a one-line queuePhoto once ready.
+     * method, but NOT yet persisted: `collection_payments` (web 070) has no
+     * signature column and the upload registry has no collection-signature kind.
+     * Wiring it needs a web column + a registry entry — a cross-repo follow-up.
      */
     signatureUri?: string;
   },
@@ -91,28 +98,42 @@ export async function collectPayment(
   const gpsLng = args.gps?.lng ?? null;
   const remarks = args.remarks?.trim() || null;
 
+  // Mirror the server roll-up (web 070): add this payment to the running total,
+  // flip to 'collected' once it reaches the due, else 'partial' (still owing).
+  const visit = await db.getFirstAsync<{ amount_due: number | null; amount_collected: number | null }>(
+    'SELECT amount_due, amount_collected FROM collection_visits WHERE id = ?',
+    [id],
+  );
+  const due = visit?.amount_due ?? 0;
+  const newCollected = (visit?.amount_collected ?? 0) + args.amount;
+  const newStatus = due > 0 && newCollected < due ? 'partial' : 'collected';
+
+  await enqueueCollectionPayment(db, {
+    id: uuidv4(),
+    visitId: id,
+    collectorId,
+    amount: args.amount,
+    paymentMethod: args.method,
+    paymentPhotoUri: args.paymentPhotoUri ?? null,
+    receiptPhotoUri: args.receiptPhotoUri ?? null,
+    gpsLat,
+    gpsLng,
+    remarks,
+    paidAt: now,
+  });
+
+  // Optimistic local roll-up. Deliberately leaves sync_status untouched (this is
+  // NOT a visit outbox update — the payment insert + server trigger are the real
+  // write); the next sync-down overwrites these with the authoritative totals.
   await db.runAsync(
     `UPDATE collection_visits
-       SET status='collected', collector_id=?, amount_collected=?, payment_method=?, visited_at=?,
-           gps_lat=?, gps_lng=?, remarks=?, sync_status='pending', local_updated_at=?
+       SET status=?, collector_id=?, amount_collected=?, payment_method=?, visited_at=?,
+           gps_lat=?, gps_lng=?, local_updated_at=?
      WHERE id=?`,
-    [collectorId, args.amount, args.method, now, gpsLat, gpsLng, remarks, now, id],
+    [newStatus, collectorId, newCollected, args.method, now, gpsLat, gpsLng, now, id],
   );
-  await enqueueUpdate(db, 'collection_visits', id, {
-    status: 'collected',
-    collector_id: collectorId,
-    amount_collected: args.amount,
-    payment_method: args.method,
-    visited_at: now,
-    gps_lat: gpsLat,
-    gps_lng: gpsLng,
-    remarks,
-  }, now);
 
-  await queuePhoto(db, 'collection_visits', id, collectorId, 'payment', args.paymentPhotoUri);
-  await queuePhoto(db, 'collection_visits', id, collectorId, 'delivery_receipt', args.receiptPhotoUri);
-
-  runSync(collectorId).catch((err) => console.error('[collection-delivery-write] collect sync failed:', err));
+  runSync(collectorId).catch((err) => console.error('[collection-delivery-write] payment sync failed:', err));
 }
 
 /**
@@ -153,6 +174,28 @@ export async function releaseStop(
   );
   await enqueueUpdate(db, table, id, { claimed_by: null, claimed_at: null, claimed_by_name: null }, now);
   runSync(profileId).catch((err) => console.error('[collection-delivery-write] release sync failed:', err));
+}
+
+/**
+ * F-007 Additional Collection (web 068/069): the collector opened an additional
+ * store's screen — flag the local "seen" intent so the ack reconciler
+ * (lib/sync/additional-acks.ts) stamps `additional_seen_at` via the
+ * collector-only RPC on the next online pass. Local-only + idempotent: the
+ * guard makes a second open, or an already-seen row, a no-op — and it kicks a
+ * best-effort sync so an online collector reports "Viewed" right away.
+ * NOTE: never sets sync_status='pending' — the ack is an RPC, not an outbox
+ * upsert, and must not block sync-down from refreshing the row.
+ */
+export async function markAdditionalSeen(db: SQLiteDatabase, id: string, profileId: string): Promise<void> {
+  const result = await db.runAsync(
+    `UPDATE collection_visits
+       SET additional_seen_pending = 1
+     WHERE id = ? AND is_additional = 1 AND additional_seen_at IS NULL AND additional_seen_pending = 0`,
+    [id],
+  );
+  if (result.changes > 0) {
+    runSync(profileId).catch((err) => console.error('[collection-delivery-write] seen sync failed:', err));
+  }
 }
 
 /** Reschedule a pending visit to a new day (wireframe cCloseResched). */

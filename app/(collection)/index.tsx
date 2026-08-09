@@ -2,7 +2,7 @@ import { useCallback, useState } from 'react';
 import { Pressable, RefreshControl, ScrollView } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router, useFocusEffect } from 'expo-router';
-import { Bell, ClipboardList, History, Hourglass, User, Vault } from 'lucide-react-native';
+import { Bell, ClipboardList, Footprints, History, Hourglass, User, Vault } from 'lucide-react-native';
 import { Text, View, XStack, YStack } from 'tamagui';
 import { useBizlinkColors, BIZLINK_FONTS, BIZLINK_ON_INK, COLORS } from '../../lib/theme';
 import { useSession } from '../../lib/session-store';
@@ -18,11 +18,16 @@ import { SyncCenterSheet } from '../../components/sync/SyncCenterSheet';
 import {
   formatPeso,
   formatPesoCompact,
+  formatShortDateTime,
   getCollectionSummary,
+  isOpenForCollection,
+  isScheduledForToday,
+  remainingBalance,
   sortAdditionalFirst,
   type CollectionStore,
 } from '../../lib/collection-delivery-data';
 import { useCollectionStores } from '../../lib/use-collection-delivery';
+import { useSyncRefresh } from '../../lib/use-sync-refresh';
 
 /**
  * F-007 first draft (2026-07-25): Collector dashboard — wireframe `c-home`
@@ -76,6 +81,9 @@ function StoreBadge({ store }: { store: CollectionStore }) {
   if (store.status === 'rescheduled') {
     return <StatusBadge label={`Moved to ${store.reschedTo}`} background={COLORS.amberSoft} color={COLORS.orange} />;
   }
+  if (store.status === 'partial') {
+    return <StatusBadge label="Partial" background={COLORS.purpleSoft} color={COLORS.purple} />;
+  }
   if (store.onTheWay) {
     return <StatusBadge label="On the way" background={COLORS.amberSoft} color={COLORS.orange} />;
   }
@@ -103,8 +111,21 @@ function RoutePreviewRow({ store, onPress }: { store: CollectionStore; onPress: 
             ) : null}
           </XStack>
           <Text fontSize={11.5} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted}>
-            {store.area} · Due {formatPeso(store.due)}
+            {store.area} · {store.status === 'partial' ? `Balance ${formatPeso(remainingBalance(store))}` : `Due ${formatPeso(store.due)}`}
           </Text>
+          {store.onTheWay && store.claimedBy ? (
+            <XStack alignItems="center" gap="$1.5">
+              <Footprints size={12} color={COLORS.orange} strokeWidth={1.75} />
+              <Text fontSize={10.5} fontFamily={BIZLINK_FONTS.semibold} color={COLORS.orange}>
+                {store.claimedBy} is collecting it
+              </Text>
+            </XStack>
+          ) : null}
+          {store.syncedAt ? (
+            <Text fontSize={10.5} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted}>
+              Received {formatShortDateTime(store.syncedAt)}
+            </Text>
+          ) : null}
         </YStack>
         <StoreBadge store={store} />
         <Text color={BIZLINK_COLORS.muted} fontSize={16}>›</Text>
@@ -124,14 +145,16 @@ export default function CollectionDashboardScreen() {
   // Re-read on focus so a just-published list / completed stop shows on return.
   const { stores, refresh } = useCollectionStores();
   useFocusEffect(useCallback(() => { refresh(); }, [refresh]));
-  // Pull-to-refresh spinner must be bound to a user-gesture-only flag, not
-  // the hook's own `loading` — see app/(tabs)/index.tsx's twin.
-  const [isRefreshing, setIsRefreshing] = useState(false);
+  // Pull-to-refresh: fetch the day's lists now instead of waiting for the 30s
+  // timer. runSync's sync-complete re-reads the mirror; refresh() is belt-and-braces.
+  const { refreshing, onRefresh } = useSyncRefresh(refresh);
 
-  const summary = getCollectionSummary(stores);
+  // Dashboard shows only TODAY's list — the mirror holds past days too.
+  const todayStores = stores.filter((s) => isScheduledForToday(s.scheduledFor));
+  const summary = getCollectionSummary(todayStores);
   // Additional (admin added mid-day) stores float to the front so the 3-row
   // route preview surfaces an urgent late addition instead of burying it.
-  const pendingStores = sortAdditionalFirst(stores.filter((s) => s.status === 'pending'));
+  const pendingStores = sortAdditionalFirst(todayStores.filter((s) => isOpenForCollection(s.status)));
   const routePreview = pendingStores.slice(0, 3);
   const greetingName = firstName(fullName) || 'Collector';
 
@@ -159,15 +182,10 @@ export default function CollectionDashboardScreen() {
         contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 40 }}
         refreshControl={
           <RefreshControl
-            refreshing={isRefreshing}
-            onRefresh={async () => {
-              setIsRefreshing(true);
-              try {
-                await refresh();
-              } finally {
-                setIsRefreshing(false);
-              }
-            }}
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor={BIZLINK_COLORS.brand}
+            colors={[BIZLINK_COLORS.brand]}
           />
         }
       >

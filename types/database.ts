@@ -71,7 +71,9 @@ export type RemoteApprovalRequestKind = 'po_confirmation' | 'tag_along' | 'clien
 // F-007 Collection & Delivery (web migrations 043/044/045/046, deployed
 // 2026-07-28). Lowercase remote value sets — mobile's display casing
 // ('Cash'/etc.) is applied at render time (lib/collection-delivery-data.ts).
-export type RemoteCollectionStatus = 'collected' | 'rescheduled' | 'pending';
+// 'partial' (web 070): a collection with at least one payment but the running
+// total still below `amount_due` — stays open and re-lists until fully paid.
+export type RemoteCollectionStatus = 'collected' | 'rescheduled' | 'pending' | 'partial';
 // NOTE (F-007): 'delivery_receipt' requires the web DB `payment_method` CHECK
 // constraint to be widened to accept it — otherwise the outbox push is rejected.
 export type RemotePaymentMethod = 'cash' | 'check' | 'gcash' | 'counter' | 'delivery_receipt';
@@ -481,9 +483,39 @@ export type Database = {
           claimed_by: string | null;
           claimed_at: string | null;
           claimed_by_name: string | null;
+          // 068 — Additional Collection: a store added to an already-published
+          // day list. `is_additional` badges + floats it; the two ack timestamps
+          // are stamped write-once via the RPCs below (mobile can't UPDATE them
+          // directly — RLS rejects it, migration 069).
+          is_additional: boolean;
+          additional_received_at: string | null;
+          additional_seen_at: string | null;
         };
         Insert: Partial<Database['public']['Tables']['collection_visits']['Row']>;
         Update: Partial<Database['public']['Tables']['collection_visits']['Row']>;
+        Relationships: [];
+      };
+      // F-007 Partial payment (web migration 070): one row per cash handover
+      // against a visit. Collector RLS is INSERT + SELECT own only (no UPDATE),
+      // so proof URLs go IN the insert; a roll-up trigger sums these onto the
+      // parent visit's amount_collected/status.
+      collection_payments: {
+        Row: {
+          id: string;
+          visit_id: string;
+          collector_id: string;
+          amount: number;
+          payment_method: RemotePaymentMethod;
+          payment_photo_url: string | null;
+          delivery_receipt_photo_url: string | null;
+          gps_lat: number | null;
+          gps_lng: number | null;
+          remarks: string | null;
+          paid_at: string;
+          created_at: string;
+        };
+        Insert: Partial<Database['public']['Tables']['collection_payments']['Row']>;
+        Update: Partial<Database['public']['Tables']['collection_payments']['Row']>;
         Relationships: [];
       };
       // F-007 Delivery module — migrations 044 (base) + 045 (client_name) + 046
@@ -579,6 +611,20 @@ export type Database = {
       is_company_name_available: {
         Args: { p_name: string; p_city: string | null };
         Returns: boolean;
+      };
+      // Migration 069 — Additional Collection acknowledgment write-path.
+      // Collector-only (42501 for any other role); write-once via COALESCE, so
+      // idempotent — a retry / re-sync / second open is a harmless no-op.
+      // Returns the stamped timestamptz, or null if the row wasn't additional.
+      // A direct UPDATE on the columns is rejected by RLS (deliberate) — these
+      // RPCs are the ONLY sanctioned write path.
+      mark_additional_received: {
+        Args: { p_visit_id: string };
+        Returns: string | null;
+      };
+      mark_additional_seen: {
+        Args: { p_visit_id: string };
+        Returns: string | null;
       };
       get_company_directory: {
         Args: Record<string, never>;
