@@ -3,7 +3,6 @@ import { Stack } from 'expo-router';
 export default function ManagerMoreStackLayout() {
   return (
     <Stack screenOptions={{ headerShown: false }}>
-      <Stack.Screen name="index" />
       <Stack.Screen name="sync-history" />
       <Stack.Screen name="sync-record/[id]" />
       <Stack.Screen name="clients/index" />

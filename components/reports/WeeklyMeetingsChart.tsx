@@ -5,6 +5,16 @@ import { Text, XStack, YStack } from 'tamagui';
 import { useBizlinkColors, BIZLINK_FONTS } from '../../lib/theme';
 import type { Meeting } from '../../types';
 
+/** Both local Sales meetings and live Manager team meetings carry one of
+ * these date fields. Keeping the chart generic avoids a second aggregation
+ * implementation for the Manager report. */
+type WeeklyChartMeeting = Pick<Meeting, 'logged_at'> | { meetingDateIso?: string };
+
+function meetingDateOf(meeting: WeeklyChartMeeting): Date | null {
+  const iso = 'logged_at' in meeting ? meeting.logged_at : meeting.meetingDateIso;
+  return iso ? new Date(iso) : null;
+}
+
 const WEEKDAY_LABELS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'];
 
 /** Monday 00:00 of the ISO week containing `date` — kept simple per scope (Mon–Fri only, no timezone edge-case handling). */
@@ -22,21 +32,27 @@ function isSameDay(a: Date, b: Date): boolean {
 }
 
 /** Client-side aggregation over the agent's own already-loaded meetings — Mon–Fri counts for the current ISO week. */
-function countMeetingsThisWeekByDay(meetings: Meeting[]): number[] {
+function countMeetingsThisWeekByDay<T extends WeeklyChartMeeting>(meetings: T[]): number[] {
   const monday = startOfIsoWeek(new Date());
   return Array.from({ length: 5 }, (_, i) => {
     const day = new Date(monday);
     day.setDate(monday.getDate() + i);
-    return meetings.filter((m) => isSameDay(new Date(m.logged_at), day)).length;
+    return meetings.filter((m) => {
+      const meetingDate = meetingDateOf(m);
+      return meetingDate ? isSameDay(meetingDate, day) : false;
+    }).length;
   });
 }
 
 /** Exported for the Reports screen's drill-down panel — same week math as the chart above uses to render the curve. */
-export function meetingsForWeekday(meetings: Meeting[], dayIndex: number): Meeting[] {
+export function meetingsForWeekday<T extends WeeklyChartMeeting>(meetings: T[], dayIndex: number): T[] {
   const monday = startOfIsoWeek(new Date());
   const day = new Date(monday);
   day.setDate(monday.getDate() + dayIndex);
-  return meetings.filter((m) => isSameDay(new Date(m.logged_at), day));
+  return meetings.filter((m) => {
+    const meetingDate = meetingDateOf(m);
+    return meetingDate ? isSameDay(meetingDate, day) : false;
+  });
 }
 
 export { WEEKDAY_LABELS };
@@ -143,14 +159,17 @@ const AnimatedRect = Animated.createAnimatedComponent(Rect);
  * it), so this stays a drill-down trigger for the results panel elsewhere
  * on the Reports screen, not just a static illustration.
  */
-export function WeeklyMeetingsChart({
+export function WeeklyMeetingsChart<T extends WeeklyChartMeeting>({
   meetings,
   selectedDay,
   onSelectDay,
+  title = 'Meetings this week',
 }: {
-  meetings: Meeting[];
+  meetings: T[];
   selectedDay: number | null;
   onSelectDay: (dayIndex: number) => void;
+  /** Manager reports name the same aggregation explicitly as team-wide. */
+  title?: string;
 }) {
   const BIZLINK_COLORS = useBizlinkColors();
   const counts = countMeetingsThisWeekByDay(meetings);
@@ -180,7 +199,7 @@ export function WeeklyMeetingsChart({
   return (
     <YStack backgroundColor={BIZLINK_COLORS.card} borderRadius={24} padding={18} marginTop={12}>
       <Text fontSize={13.5} fontFamily={BIZLINK_FONTS.semibold} color={BIZLINK_COLORS.text}>
-        Meetings this week
+        {title}
       </Text>
       <Text fontSize={11} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} marginTop={2}>
         {selectedDay !== null && selectedCount !== null

@@ -3,6 +3,7 @@ import { ScrollView, TextInput } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { Spinner, Text, XStack, YStack } from 'tamagui';
+import { ChevronRight } from 'lucide-react-native';
 import { BIZLINK_COLORS, BIZLINK_FONTS } from '../../../../lib/theme';
 import { useSession } from '../../../../lib/session-store';
 import { useTeamOverview } from '../../../../lib/use-team-overview';
@@ -166,6 +167,9 @@ export default function ReassignClientScreen() {
                 backgroundColor={selected ? BIZLINK_COLORS.tintA : BIZLINK_COLORS.card}
                 borderRadius={20}
                 padding={14}
+                minHeight={56}
+                borderWidth={selected ? 2 : 0}
+                borderColor={selected ? BIZLINK_COLORS.brand : 'transparent'}
                 marginBottom={10}
                 onPress={() => setSelectedAgentId(a.id)}
               >
@@ -174,13 +178,10 @@ export default function ReassignClientScreen() {
                   <Text fontFamily={BIZLINK_FONTS.semibold} fontSize={14} color={BIZLINK_COLORS.text}>{a.fullName}</Text>
                   <Text fontSize={10.5} fontFamily={BIZLINK_FONTS.semibold} color={BIZLINK_COLORS.muted}>{a.activeClients} clients</Text>
                 </YStack>
-                <YStack
-                  width={20}
-                  height={20}
-                  borderRadius={10}
-                  borderWidth={2}
-                  borderColor={selected ? BIZLINK_COLORS.brand : BIZLINK_COLORS.line}
-                  backgroundColor={selected ? BIZLINK_COLORS.brand : 'transparent'}
+                <ChevronRight
+                  size={20}
+                  color={selected ? BIZLINK_COLORS.brand : BIZLINK_COLORS.muted}
+                  strokeWidth={1.75}
                 />
               </XStack>
             );

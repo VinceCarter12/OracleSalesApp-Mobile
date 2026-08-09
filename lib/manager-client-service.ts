@@ -122,22 +122,9 @@ export async function reassignClient(input: ReassignClientInput): Promise<void> 
 // signature — adds manager/team-scope authorization on top of Migration
 // 038's original CAS + reason check.
 //
-// ⚠️ NOT wired into `app/(manager)/more/clients/reassign.tsx` yet. A
-// pre-implementation wireframe check (hard project rule) found
-// `Wireframe-Manager-BizLink.html`'s `#s-reassign` screen (lines 629-640) has
-// NO reason-capture control at all — agent selection flows straight into
-// `<button ... onclick="confirmReassign()">Confirm Reassignment</button>`,
-// no text field, no textarea. The RPC now hard-requires a non-empty
-// `p_reason` (`reason_required` otherwise), so wiring this in requires
-// either a new UI control the wireframe doesn't show, or a wireframe update
-// — flagged to Vince rather than inventing a form, per this batch's explicit
-// instruction. ADR-043 itself anticipated this ("Mobile's manager
-// reassignment UI (when built) must capture and submit the `reason`
-// parameter") but the actual wireframe file was never updated to match.
-//
-// This function is pure I/O, safe to call the moment a reason-capture
-// control is approved and added to the screen — same "ready but unwired"
-// convention as lib/po-confirmation-manager-service.ts::getManagerApprovalFeed.
+// The Manager BizLink `s-reassign` screen now captures the required reason and
+// calls this RPC after agent selection. The server remains authoritative for
+// team eligibility, CAS ownership, and the atomic reassignment audit event.
 // ══════════════════════════════════════════════════════════════════════════
 
 export interface ReassignTeamClientInput {

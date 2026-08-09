@@ -20,6 +20,8 @@ import { BizFilterSheet } from '../../../../components/bizlink/BizFilterSheet';
 import { BizFilterSheetRow } from '../../../../components/bizlink/BizFilterSheetRow';
 import { StatusBadge } from '../../../../components/ui/StatusBadge';
 import { Avatar } from '../../../../components/ui/Avatar';
+import { BizFloatingPager } from '../../../../components/bizlink/BizFloatingPager';
+import { usePagination } from '../../../../lib/use-pagination';
 import { type ClientStatus, type TeamAgent, type TeamClient, type TeamMeeting } from '../../../../types';
 
 type StatusFilter = ClientStatus | 'all';
@@ -41,13 +43,7 @@ export default function ManagerClientsScreen() {
   const [search, setSearch] = useState('');
   const [agentFilter, setAgentFilter] = useState<string | 'all'>('all');
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
-  const [lastScope, setLastScope] = useState(scope);
   const [filterOpen, setFilterOpen] = useState(false);
-
-  if (scope !== lastScope) {
-    setLastScope(scope);
-    setAgentFilter('all');
-  }
 
   const clients = overview?.clients ?? [];
   const meetings = overview?.meetings ?? [];
@@ -56,20 +52,26 @@ export default function ManagerClientsScreen() {
     scope !== 'team' && profileId && fullName
       ? [...teamAgents, { id: profileId, name: fullName, initials: initialsFromName(fullName), meetingsThisMonth: 0, activeClients: 0, successRate: 0 }]
       : teamAgents;
+  // Scope changes invalidate an agent selection from the previous view. Keep
+  // the state stable (avoids cascading setState effects) and derive the
+  // effective filter as All until the user picks an agent in the new scope.
+  const effectiveAgentFilter = agents.some((agent) => agent.id === agentFilter) ? agentFilter : 'all';
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
     return clients.filter((c) => {
-      if (agentFilter !== 'all' && c.agentId !== agentFilter) return false;
+      if (effectiveAgentFilter !== 'all' && c.agentId !== effectiveAgentFilter) return false;
       if (statusFilter !== 'all' && c.status !== statusFilter) return false;
       if (q && !c.name.toLowerCase().includes(q)) return false;
       return true;
     });
-  }, [clients, search, agentFilter, statusFilter]);
+  }, [clients, search, effectiveAgentFilter, statusFilter]);
+  const resetKey = `${scope}:${search.trim().toLowerCase()}:${effectiveAgentFilter}:${statusFilter}`;
+  const { page, totalPages, pageItems, setPage } = usePagination(filtered, resetKey);
 
-  const agentLabel = agentFilter === 'all' ? 'All' : agents.find((a) => a.id === agentFilter)?.name.split(' ')[0] ?? 'All';
+  const agentLabel = effectiveAgentFilter === 'all' ? 'All' : agents.find((a) => a.id === effectiveAgentFilter)?.name.split(' ')[0] ?? 'All';
   const statusLabel = statusFilter === 'all' ? 'All' : CLIENT_STATUS_BADGES[statusFilter].label;
-  const filtersActive = agentFilter !== 'all' || statusFilter !== 'all';
+  const filtersActive = effectiveAgentFilter !== 'all' || statusFilter !== 'all';
 
   function resetFilters(): void {
     setAgentFilter('all');
@@ -80,7 +82,7 @@ export default function ManagerClientsScreen() {
     <YStack flex={1} backgroundColor={BIZLINK_COLORS.canvas} paddingTop={insets.top}>
       <BizTopBar
         title="Clients"
-        fallbackHref="/(manager)/more"
+        fallbackHref="/(manager)"
         right={
           <BizButton
             small
@@ -129,9 +131,9 @@ export default function ManagerClientsScreen() {
         {scope !== 'mine' ? (
           <BizFilterSheetRow label="Agent" value={agentLabel}>
             <XStack gap="$2" flexWrap="wrap">
-              <BizChip label="All" selected={agentFilter === 'all'} onPress={() => setAgentFilter('all')} />
+              <BizChip label="All" selected={effectiveAgentFilter === 'all'} onPress={() => setAgentFilter('all')} />
               {agents.map((a) => (
-                <BizChip key={a.id} label={a.name.split(' ')[0]} selected={agentFilter === a.id} onPress={() => setAgentFilter(a.id)} />
+                <BizChip key={a.id} label={a.name.split(' ')[0]} selected={effectiveAgentFilter === a.id} onPress={() => setAgentFilter(a.id)} />
               ))}
             </XStack>
           </BizFilterSheetRow>
@@ -157,7 +159,7 @@ export default function ManagerClientsScreen() {
         </YStack>
       ) : (
         <FlatList
-          data={filtered}
+          data={pageItems}
           keyExtractor={(item) => item.id}
           contentContainerStyle={{ paddingHorizontal: 16, paddingTop: 8, paddingBottom: 16 }}
           renderItem={({ item }) => <ClientRow client={item} agents={agents} meetings={meetings} />}
@@ -173,6 +175,7 @@ export default function ManagerClientsScreen() {
           }
         />
       )}
+      {filtered.length > 0 ? <BizFloatingPager page={page} totalPages={totalPages} onPageChange={setPage} bottomOffset={insets.bottom + 16} /> : null}
     </YStack>
   );
 }

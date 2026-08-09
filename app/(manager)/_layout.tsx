@@ -1,6 +1,6 @@
 import { Pressable } from 'react-native';
 import { Tabs } from 'expo-router';
-import { Building2, House, MoreHorizontal, Users } from 'lucide-react-native';
+import { Building2, House, Users } from 'lucide-react-native';
 import { BIZLINK_COLORS, BIZLINK_FONTS } from '../../lib/theme';
 import { ManagerStoreProvider } from '../../lib/manager-store';
 import { ManagerScopeProvider } from '../../lib/manager-scope-store';
@@ -56,7 +56,7 @@ function ManagerTabs() {
           <Pressable {...props} android_ripple={{ color: 'transparent', borderless: false }} style={props.style} />
         ),
         // Vince direct instruction (2026-08-09): bottom tab bar removed
-        // entirely for Manager, no replacement — Home/Team/Clients/More stay
+        // entirely for Manager, no replacement — Home/Team/Clients stay
         // reachable via Home's Quick Actions + in-screen navigation
         // (router.push), same underlying Tabs.Screen routes, just no visible
         // bar. `display: 'none'` (not deleting the screens) keeps every
@@ -79,19 +79,16 @@ function ManagerTabs() {
           tabBarIcon: ({ focused }) => <TabIcon focused={focused} Icon={Building2} />,
         }}
       />
-      <Tabs.Screen
-        name="more"
-        options={{ title: 'More', tabBarIcon: ({ focused }) => <TabIcon focused={focused} Icon={MoreHorizontal} /> }}
-      />
-      <Tabs.Screen name="tag-along" options={{ href: null }} />
       {/* Batch 6 PR B (ADR-052, F-205 reversal): the Manager Approvals inbox
           re-appears as a hidden route (reachable from Home's Quick Actions
-          and the More menu, same as `tag-along` above) rather than a 5th
-          visible tab — Wireframe-Manager-BizLink.html's own 3-button
-          `<nav class="tabbar">` markup (~line 857-861) is dead demo markup
+          and dashboard actions) rather than a 4th visible tab —
+          Wireframe-Manager-BizLink.html's own 3-button `<nav class="tabbar">`
+          markup (~line 857-861) is dead demo markup
           (`.tabbar{display:none!important}`, line 213), never the app's real
-          navigation source; the real tab set (Home/Team/Clients/More) has
-          already diverged from it. */}
+          navigation source; the real tab set (Home/Team/Clients) has
+          already diverged from it. `tag-along` was retired 2026-08-10 —
+          merged into this same route (design-only merge, see
+          `lib/manager-request-feed-service.ts`). */}
       <Tabs.Screen name="approvals" options={{ href: null }} />
     </Tabs>
   );
