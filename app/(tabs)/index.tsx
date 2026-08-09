@@ -17,21 +17,18 @@ import {
   Plus,
   RotateCcw,
   ShieldCheck,
-  Users,
 } from 'lucide-react-native';
 import { Text, View, XStack, YStack } from 'tamagui';
 import { useBizlinkColors, BIZLINK_FONTS } from '../../lib/theme';
 import { useClients } from '../../lib/useClients';
 import { useMeetings } from '../../lib/useMeetings';
 import { getClientStatus } from '../../lib/client-status';
-import { getClientIdsWithPendingManagerTagAlong, getMyCompanionRequests, companionRequestDisplayStatus } from '../../lib/tag-along-service';
-import { countCreatedSince } from '../../lib/team-remote-mappers';
+import { getClientIdsWithPendingManagerTagAlong } from '../../lib/tag-along-service';
 import { useActiveMeetingDrafts } from '../../lib/use-active-meeting-drafts';
 import { useMyRequestStatuses } from '../../lib/use-my-request-statuses';
 import { useUnreadNotificationCount } from '../../lib/use-unread-notification-count';
 import { Avatar } from '../../components/ui/Avatar';
 import { StatusBadge } from '../../components/ui/StatusBadge';
-import { BizStatCard } from '../../components/bizlink/BizStatCard';
 import { BizHeroCard } from '../../components/bizlink/BizHeroCard';
 import { BizSectionHeader } from '../../components/bizlink/BizSectionHeader';
 import { BizDashboardAlert } from '../../components/bizlink/BizDashboardAlert';
@@ -129,7 +126,6 @@ export default function AgentHomeScreen() {
 
   // Notification badge counts (2026-08-04 Full Badge Implementation)
   const { rows: myRequestRows } = useMyRequestStatuses();
-  const [companionRequests, setCompanionRequests] = useState<Awaited<ReturnType<typeof getMyCompanionRequests>>>([]);
 
   // Badge count calculations. Notifications-Page-Handoff-2026-08-08 Task 1:
   // the dashboard bell + More-tile "Notifications" badge now reflect the
@@ -147,12 +143,6 @@ export default function AgentHomeScreen() {
     () => myRequestRows.filter((r) => r.status === 'pending').length,
     [myRequestRows]
   );
-  const tagAlongBadgeCount = useMemo(() => {
-    return companionRequests.filter((r) => {
-      const displayStatus = companionRequestDisplayStatus(r);
-      return displayStatus === 'pending_offline' || displayStatus === 'pending_synced';
-    }).length;
-  }, [companionRequests]);
 
   // Bug fix: Home was only fetching clients/meetings once on mount (its
   // hooks' own useEffect), unlike clients/index.tsx and meetings/index.tsx
@@ -172,15 +162,10 @@ export default function AgentHomeScreen() {
       getClientIdsWithPendingManagerTagAlong(profileId)
         .then(setWaitingManagerApprovalIds)
         .catch((err) => console.error('[Home] pending manager tag-along lookup failed:', err instanceof Error ? err.message : String(err)));
-      // Load companion requests for tag-along badge count
-      getMyCompanionRequests(profileId)
-        .then(setCompanionRequests)
-        .catch((err) => console.error('[Home] companion requests lookup failed:', err instanceof Error ? err.message : String(err)));
     }, [profileId])
   );
 
   const prospects = clients.filter((c) => getClientStatus(c) === 'prospect');
-  const nonProspects = clients.filter((c) => getClientStatus(c) !== 'prospect');
   // F-204: intersected with `prospects`, not the raw Set size — the Set can
   // include non-prospect clients once Migration 023 lands (a `new`-status
   // client with a still-pending tag-along), so this keeps the "n prospects
@@ -188,12 +173,6 @@ export default function AgentHomeScreen() {
   // invariant that only prospects can start a tag-along.
   const waitingManagerApprovalProspects = prospects.filter((c) => waitingManagerApprovalIds.has(c.id));
   const now = new Date();
-  // B-063: real "this week" delta (same countCreatedSince helper used by
-  // lib/manager-team-service.ts's newProspectsThisWeek) instead of a
-  // hardcoded "+1 this week" literal. Omit the caption entirely when there's
-  // nothing meaningful to show, rather than displaying "+0 this week".
-  const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-  const newProspectsThisWeek = countCreatedSince(prospects, weekAgo);
   const thisMonth = meetings.filter((m) => {
     const d = new Date(m.logged_at);
     return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
@@ -220,30 +199,6 @@ export default function AgentHomeScreen() {
           />
         }
       >
-        <XStack gap={10} marginTop={6}>
-          <YStack flex={1}>
-            <BizStatCard
-              tone="tintA"
-              value={prospects.length}
-              label="Prospects ko"
-              caption={newProspectsThisWeek > 0 ? `+${newProspectsThisWeek} this week` : undefined}
-              onPress={() => router.push('/(tabs)/clients')}
-            />
-          </YStack>
-          <YStack flex={1}>
-            <BizStatCard
-              tone="white"
-              value={nonProspects.length}
-              label="Clients ko"
-              // ADR-042: `nonProspects` is everything !== 'prospect', which
-              // now also includes 'in_progress' — caption updated so it
-              // stays accurate rather than silently going stale.
-              caption="in progress + new + existing"
-              onPress={() => router.push('/(tabs)/clients')}
-            />
-          </YStack>
-        </XStack>
-
         <BizHeroCard
           value={thisMonth.length}
           unit="meetings"
@@ -251,6 +206,18 @@ export default function AgentHomeScreen() {
           caption={`${successful.length} successful`}
           onPress={() => router.push('/(tabs)/meetings')}
         />
+
+{/* 2026-08-09 (Vince direction): the "Prospects ko / Clients ko" stat
+            grid was REMOVED from Home — My Performance (`/(tabs)/more/reports`)
+            and the Clients tab already surface those counts, and the grid's
+            caption math (`countCreatedSince`/`nonProspects`) was only consumed
+            there. Home now opens directly with the This-month meeting card. */}
+
+        {/* 2026-08-09 (Vince direction): the cutoff quota card sits directly
+            under the This-month meeting card, above the action sections. */}
+        {isCutoffQuotaRole ? (
+          <CutoffQuotaCard agentId={profileId} role={role === 'rsr' ? 'rsr' : 'sales_specialist'} />
+        ) : null}
 
         {/* Wireframe-Sales-BizLink.html#a-home "Mga Gawain" — two dominant
             wide action cards (2026-08-03 visual-parity redesign, replaces
@@ -292,7 +259,6 @@ export default function AgentHomeScreen() {
               <BizQuickAction key="meeting-details" icon={<CalendarDays size={20} color={BIZLINK_COLORS.ink} strokeWidth={1.75} />} label="Meeting Details" onPress={() => router.push('/(tabs)/meetings')} />,
               <BizQuickAction key="notifications" icon={<Bell size={20} color={BIZLINK_COLORS.ink} strokeWidth={1.75} />} label="Notifications" badgeCount={notificationBadgeCount} onPress={() => router.push('/(tabs)/more/notifications')} />,
               <BizQuickAction key="clock-in-out" icon={<Clock size={20} color={BIZLINK_COLORS.ink} strokeWidth={1.75} />} label="Clock In/Out" onPress={() => router.push('/(tabs)/more/clock-in-out')} />,
-              <BizQuickAction key="tag-along" icon={<Users size={20} color={BIZLINK_COLORS.ink} strokeWidth={1.75} />} label="Tag-Along Status" badgeCount={tagAlongBadgeCount} onPress={() => router.push(getDashboardActionHref('tag-along', role))} />,
               <BizQuickAction key="my-requests" icon={<ClipboardCheck size={20} color={BIZLINK_COLORS.ink} strokeWidth={1.75} />} label="My Requests" badgeCount={myRequestsBadgeCount} onPress={() => router.push('/(tabs)/more/my-requests')} />,
               <BizQuickAction key="sync-history" icon={<History size={20} color={BIZLINK_COLORS.ink} strokeWidth={1.75} />} label="Sync History" onPress={() => router.push('/(tabs)/more/sync-history')} />,
               <BizQuickAction key="performance" icon={<BarChart3 size={20} color={BIZLINK_COLORS.ink} strokeWidth={1.75} />} label="Performance" onPress={() => router.push('/(tabs)/more/reports')} />,
@@ -307,14 +273,11 @@ export default function AgentHomeScreen() {
                 {row}
               </XStack>
             ));
-          })()}
+})()}
         </YStack>
 
-        {isCutoffQuotaRole ? (
-          <CutoffQuotaCard agentId={profileId} role={role === 'rsr' ? 'rsr' : 'sales_specialist'} />
-        ) : null}
-
-        {/* T-014 Phase 1 (ADR-024): shared, BizLink-styled — same worst-state-wins logic/copy as before. */}
+        {/* T-014 Phase 1 (ADR-024): shared, BizLink-styled — same worst-state-wins logic/copy as before.
+            2026-08-09 (Vince direction): sits below "Iba pang gawain", above the alert banners. */}
         <SyncStatusChip key={syncChipKey} onPress={() => setSyncSheetOpen(true)} />
 
         {/* Topmost — most time-sensitive item; see component's doc comment. */}

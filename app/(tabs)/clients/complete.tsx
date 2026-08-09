@@ -146,6 +146,7 @@ export default function CompleteInfoScreen() {
     }
   }
 
+
   const canSubmit = !saving && pendingRequest === null && channel !== null && contactNumberValid;
 
   return (

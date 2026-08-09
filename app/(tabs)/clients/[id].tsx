@@ -257,7 +257,8 @@ export default function ClientDetailScreen() {
             !aClientInfoComplete(c)`, matches ADR-046 point 2: In Progress
             meetings start only from My Meetings -> Select Client).
             `a-officePinBtn` (line 605) is the Office Location button, gated
-            `c.status==='new'||c.status==='existing'` (line 1846), label
+            for completed client stages (`new`, `existing`, and now
+            `in_progress`), label
             flips "Set"/"Update office location" on pin existence (line
             1848) — Batch 4 (2026-07-29). Manager gets full parity on this
             shared screen (decision 2, [[Sprint#Batch 4 - Office Location
@@ -286,10 +287,10 @@ export default function ClientDetailScreen() {
               />
             </YStack>
           ) : null}
-          {status === 'new' || status === 'existing' ? (
+          {status === 'in_progress' || status === 'new' || status === 'existing' ? (
             <YStack flex={1} minWidth={140}>
               <BizButton
-                label={hasOfficePin(client.office_lat, client.office_lng) ? 'Update office location' : 'Set office location'}
+                label={hasOfficePin(client.office_lat, client.office_lng) ? 'Update pin' : 'Set pin'}
                 variant="white"
                 icon={<MapPin size={15} color={BIZLINK_COLORS.text} strokeWidth={1.75} />}
                 onPress={() => router.push(routes.officeLocation(client.id))}

@@ -33,4 +33,30 @@ describe('isQualifyingLocalMeeting', () => {
       })
     ).toBe(true);
   });
+
+  it.each(['new', 'existing'] as const)('counts a completed %s fast-path visit without an outcome or start photo', (client_status_at_meeting) => {
+    expect(
+      isQualifyingLocalMeeting({
+        ...baseMeeting,
+        client_status_at_meeting,
+        outcome: null,
+        agendas: JSON.stringify(['Introduction']),
+        start_photo_url: null,
+        end_photo_url: 'file:///meeting-end.jpg',
+        po_confirmation_status: null,
+      })
+    ).toBe(true);
+  });
+
+  it('does not count an incomplete new/existing fast-path visit without the end photo', () => {
+    expect(
+      isQualifyingLocalMeeting({
+        ...baseMeeting,
+        client_status_at_meeting: 'new',
+        outcome: null,
+        start_photo_url: null,
+        end_photo_url: null,
+      })
+    ).toBe(false);
+  });
 });

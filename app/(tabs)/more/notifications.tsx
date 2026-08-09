@@ -67,6 +67,8 @@ export default function NotificationsScreen() {
 
   function hrefForItem(item: NotificationFeedItem): Href | undefined {
     if (item.category === 'sync') return syncHistoryHref;
+    if (item.category === 'po' && item.meetingId) return clientFlowRoutes.meetingDetail(item.meetingId);
+    if (item.category === 'tagalong') return '/(tabs)/more/my-requests' as Href;
     if (item.clientId) return clientFlowRoutes.clientDetail(item.clientId);
     return undefined;
   }

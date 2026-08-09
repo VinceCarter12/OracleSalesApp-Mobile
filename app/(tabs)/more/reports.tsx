@@ -84,7 +84,7 @@ export default function MyPerformanceScreen() {
   const resultClients = filter?.kind === 'newClients' ? newClientsThisMonth : null;
   const panelTitle = filter
     ? filter.kind === 'day'
-      ? `${WEEKDAY_LABELS[filter.dayIndex]} — meetings`
+      ? `${WEEKDAY_LABELS[filter.dayIndex]} — ${resultMeetings?.length ?? 0} meetings`
       : FILTER_TITLES[filter.kind]
     : null;
   // Replays FadeInPanel's entrance whenever the selection actually changes (not on every re-render).

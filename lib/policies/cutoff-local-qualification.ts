@@ -19,6 +19,16 @@ const SUBMITTED_PO_CONFIRMATION_STATUSES = new Set(['pending', 'approved', 'reje
 
 /** Returns true only when all local evidence required for quota is present. */
 export function isQualifyingLocalMeeting(row: MeetingCandidateRow): boolean {
+  // New/Existing customer visits use the fast path: they intentionally have
+  // no outcome or start photo (the Start button captures GPS/time only), and
+  // the end photo is the completion evidence. They still consume the agent's
+  // cutoff quota once the local meeting is complete. Keep this branch before
+  // the full-form outcome/evidence checks so the fast-path shape is not
+  // mistaken for an incomplete meeting.
+  if (row.client_status_at_meeting === 'new' || row.client_status_at_meeting === 'existing') {
+    return Boolean(row.start_captured_at && row.end_photo_url);
+  }
+
   if (!row.outcome || !COUNTABLE_OUTCOMES.has(row.outcome)) return false;
   if (!row.start_captured_at || !row.start_photo_url || !row.end_photo_url) return false;
 

@@ -160,6 +160,11 @@ export interface Meeting {
   start_captured_at?: string | null;
   end_photo_url?: string | null;
   end_captured_at?: string | null;
+  end_gps_lat?: number | null;
+  end_gps_lng?: number | null;
+  selfie_captured_at?: string | null;
+  selfie_gps_lat?: number | null;
+  selfie_gps_lng?: number | null;
   logged_at: string;
   created_at: string;
   // 2026-07-21: were write-only to Supabase until this date — local SQLite

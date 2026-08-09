@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { ScrollView } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
-import { CalendarX, CircleAlert, Handshake } from 'lucide-react-native';
+import { Building2, CalendarX, CircleAlert, Handshake, Map, MapPin, User } from 'lucide-react-native';
 import { Spinner, Text, XStack, YStack } from 'tamagui';
 import { BIZLINK_COLORS, BIZLINK_FONTS } from '../../../../lib/theme';
 import { useLostOpportunityDetail } from '../../../../lib/use-lost-opportunities';
@@ -26,8 +26,9 @@ function formatDate(iso: string | null): string {
 /**
  * Wireframe `a-lostoppdetail` (Wireframe-Sales-BizLink.html ~line 1003,
  * `aOpenLostOpportunity()`/`aClaimLostOpportunity()` ~line 1372-1380): lost
- * date + reason, client contact/address/office-pin, last activity, then a
- * "Claim this opportunity" button. Claim is online-only (same pattern as
+ * date + reason and safe client profile fields, then a "Claim this
+ * opportunity" button. Prior activity/history is intentionally not shown to
+ * Sales/RSR. Claim is online-only (same pattern as
  * `app/(manager)/approvals/[id].tsx`'s Approve/Reject) — the server RPC is
  * the single source of truth (former-owner exclusion, cooldown, role,
  * already-claimed), this screen only relays its response code and never
@@ -147,6 +148,13 @@ export default function LostOpportunityDetailScreen() {
             </Text>
           </XStack>
         </BizCard>
+
+        <BizSectionHeader title="Client information" />
+        <BizCard gap="$2.5">
+          <XStack alignItems="center" gap="$2.5"><User size={16} color={BIZLINK_COLORS.navy} strokeWidth={1.75} /><Text fontSize={13} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.text}>Contact: {item.contactPerson ?? '—'}{item.contactPosition ? ` · ${item.contactPosition}` : ''}</Text></XStack>
+          <XStack alignItems="center" gap="$2.5"><Building2 size={16} color={BIZLINK_COLORS.navy} strokeWidth={1.75} /><Text fontSize={13} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.text}>Address: {item.officeAddress ?? '—'}</Text></XStack>
+        </BizCard>
+        {item.officeLat != null && item.officeLng != null ? <BizCard gap="$1" marginTop="$3"><XStack alignItems="center" gap="$2.5"><Map size={16} color={BIZLINK_COLORS.navy} strokeWidth={1.75} /><Text fontSize={13} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.text}>Office pin: {item.officeLat}, {item.officeLng}</Text><MapPin size={16} color={BIZLINK_COLORS.muted} strokeWidth={1.75} /></XStack></BizCard> : null}
 
         {canClaim ? (
           <>

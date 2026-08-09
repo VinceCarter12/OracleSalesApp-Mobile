@@ -26,6 +26,7 @@ import { SyncStatusChip } from '../../components/sync/SyncStatusChip';
 import { SyncCenterSheet } from '../../components/sync/SyncCenterSheet';
 import { ManagerHomeActionsSection } from '../../components/manager/ManagerHomeActionsSection';
 import { ManagerHomeTeamSection } from '../../components/manager/ManagerHomeTeamSection';
+import { ActiveMeetingDashboardAlert } from '../../components/meetings/ActiveMeetingDashboardAlert';
 import type { ManagerScope } from '../../lib/manager-scope';
 
 // Wireframe-Manager-BizLink.html renderManagerScope() (~line 1123/1127-1132):
@@ -258,6 +259,10 @@ export default function ManagerDashboardScreen() {
             (`summary.pendingSyncRecords`, always 0 per ADR-021) is replaced by
             this real per-device chip. */}
         <SyncStatusChip key={syncChipKey} onPress={() => setSyncSheetOpen(true)} />
+
+        {/* Topmost — reused as-is from Sales Home; a Manager also records
+            their own meetings (F-205 reuse of record.tsx), full-form only. */}
+        <ActiveMeetingDashboardAlert activeMeetingDrafts={activeMeetingDrafts} />
 
         {summary.deadlineWarningCount > 0 ? (
           <XStack

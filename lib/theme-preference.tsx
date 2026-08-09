@@ -45,7 +45,10 @@ export function ThemePreferenceProvider({ children }: { children: ReactNode }) {
     );
   }, []);
 
-  const resolvedTheme: ResolvedTheme = preference === 'system' ? (systemScheme === 'dark' ? 'dark' : 'light') : preference;
+  // 2026-08-09: Appearance temporarily disabled — forced to light regardless
+  // of stored preference/system scheme until dark mode is re-enabled. Chip
+  // selection in Account & Security is also disabled (see account.tsx).
+  const resolvedTheme: ResolvedTheme = 'light';
 
   const value = useMemo(
     () => ({ preference, resolvedTheme, setPreference }),

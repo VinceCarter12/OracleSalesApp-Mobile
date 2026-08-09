@@ -37,6 +37,7 @@
       "bundler": "metro"
     },
     "plugins": [
+      "./plugins/withNetworkInspectorDisabled",
       "expo-router",
       "expo-status-bar",
       "expo-secure-store",

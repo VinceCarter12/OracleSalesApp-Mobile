@@ -9,6 +9,8 @@ describe('parseFreshProspectId', () => {
       city: 'Manila',
       status: 'active',
       customer_type: 'prospect',
+      contact_person: 'New contact',
+      office_address: 'Address',
     })).toBe('fresh-client');
   });
 
@@ -17,7 +19,7 @@ describe('parseFreshProspectId', () => {
       id: 'old-client',
       status: 'active',
       customer_type: 'prospect',
-      contact_person: 'Former contact',
+      lost_at: '2026-01-01',
     })).toBeNull();
   });
 
@@ -27,8 +29,13 @@ describe('parseFreshProspectId', () => {
   });
 
   it('rejects unknown payload keys and malformed RPC roots', () => {
-    expect(parseFreshProspectId({ id: 'x', company_name: 'A', city: 'M', status: 'active', customer_type: 'prospect', contact_person: 'leak' })).toBeNull();
+    expect(parseFreshProspectId({ id: 'x', company_name: 'A', city: 'M', status: 'active', customer_type: 'prospect', lost_at: 'leak' })).toBeNull();
     expect(() => decodeClaimRpcResult(null)).toThrow();
     expect(() => decodeClaimRpcResult({ code: 'unknown' })).toThrow();
+  });
+
+  it('rejects malformed safe profile field types', () => {
+    expect(parseFreshProspectId({ id: 'x', company_name: 'A', city: 'M', status: 'active', customer_type: 'prospect', contact_person: 7 })).toBeNull();
+    expect(parseFreshProspectId({ id: 'x', company_name: 'A', city: 'M', status: 'active', customer_type: 'prospect', office_lat: '15.1' })).toBeNull();
   });
 });

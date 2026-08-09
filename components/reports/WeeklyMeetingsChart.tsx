@@ -52,6 +52,10 @@ const PAD_TOP = 36;
 const PAD_BOTTOM = 16;
 const PLOT_HEIGHT = VB_HEIGHT - PAD_TOP - PAD_BOTTOM;
 const BASELINE_Y = PAD_TOP + PLOT_HEIGHT;
+const bubbleWidth = 40;
+const bubbleHeight = 22;
+const BUBBLE_GAP = 8;
+const CHART_EDGE_INSET = 4;
 
 interface Point {
   x: number;
@@ -97,9 +101,32 @@ function smoothAreaPath(points: Point[]): string {
   return `${line} L ${last.x},${BASELINE_Y} L ${first.x},${BASELINE_Y} Z`;
 }
 
+/**
+ * Keep the selected value callout close to its point instead of pinning it to
+ * the top of the SVG. The preferred position is above the point; when the
+ * point is near the top edge, place it below instead. Both positions are
+ * clamped against the chart's available logical height so the callout remains
+ * visible when the card is rendered at a different device width/height.
+ */
+export function bubbleYForPoint(pointY: number, chartHeight = VB_HEIGHT): number {
+  const top = CHART_EDGE_INSET;
+  const bottom = Math.max(top, chartHeight - bubbleHeight - CHART_EDGE_INSET);
+  const above = pointY - bubbleHeight - BUBBLE_GAP;
+  if (above >= top) return Math.min(above, bottom);
+
+  const below = pointY + BUBBLE_GAP;
+  if (below <= bottom) return Math.max(below, top);
+
+  return Math.min(Math.max(above, top), bottom);
+}
+
 const AnimatedCircle = Animated.createAnimatedComponent(Circle);
 const AnimatedRect = Animated.createAnimatedComponent(Rect);
-const AnimatedSvgText = Animated.createAnimatedComponent(SvgText);
+// NOTE: deliberately NOT Animated.createAnimatedComponent(SvgText) — react-
+// native-svg's animated Text reliably fails to paint its glyphs (the pill
+// and dot animate fine since those are plain shapes), so the count number
+// never showed up inside the bubble. Plain SvgText + a static opacity keyed
+// off `selected` sidesteps the bug while keeping the pill/dot pop-in.
 
 /**
  * 2026-08-08 full redesign (Vince, with a smart-home energy widget as the
@@ -146,9 +173,8 @@ export function WeeklyMeetingsChart({
 
   const selected = selectedDay !== null ? points[selectedDay] : null;
   const selectedCount = selectedDay !== null ? counts[selectedDay] : null;
-  const bubbleWidth = 40;
-  const bubbleHeight = 22;
   const bubbleX = selected ? Math.min(Math.max(selected.x - bubbleWidth / 2, PAD_X - 8), VB_WIDTH - PAD_X - bubbleWidth + 8) : 0;
+  const bubbleY = selected ? bubbleYForPoint(selected.y) : 0;
   const dotRadius = pop.interpolate({ inputRange: [0, 1], outputRange: [0, 5] });
 
   return (
@@ -157,7 +183,9 @@ export function WeeklyMeetingsChart({
         Meetings this week
       </Text>
       <Text fontSize={11} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} marginTop={2}>
-        I-tap ang isang araw para makita ang mga meeting nito
+        {selectedDay !== null && selectedCount !== null
+          ? `${WEEKDAY_LABELS[selectedDay]} — meetings this week`
+          : 'I-tap ang isang araw para makita ang mga meeting nito'}
       </Text>
 
       <View style={{ position: 'relative', marginTop: 12 }}>
@@ -190,24 +218,23 @@ export function WeeklyMeetingsChart({
                 <AnimatedCircle cx={selected.x} cy={selected.y} r={dotRadius} fill={BIZLINK_COLORS.card} stroke={BIZLINK_COLORS.brand} strokeWidth={2.5} />
                 <AnimatedRect
                   x={bubbleX}
-                  y={4}
+                  y={bubbleY}
                   width={bubbleWidth}
                   height={bubbleHeight}
                   rx={11}
-                  fill={BIZLINK_COLORS.ink}
+                  fill={BIZLINK_COLORS.brand}
                   opacity={pop}
                 />
-                <AnimatedSvgText
+                <SvgText
                   x={bubbleX + bubbleWidth / 2}
-                  y={4 + bubbleHeight / 2 + 4}
+                  y={bubbleY + bubbleHeight / 2 + 4}
                   fontSize={12}
-                  fontFamily={BIZLINK_FONTS.semibold}
+                  fontWeight="700"
                   fill="#FFFFFF"
                   textAnchor="middle"
-                  opacity={pop}
                 >
                   {selectedCount}
-                </AnimatedSvgText>
+                </SvgText>
               </>
             ) : null}
           </Svg>
