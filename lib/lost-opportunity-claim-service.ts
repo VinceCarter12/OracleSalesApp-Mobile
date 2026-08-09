@@ -2,6 +2,8 @@ import { supabase } from './supabase';
 import { withTimeout } from './with-timeout';
 import { isLikelyOnline } from './sync/connectivity';
 import type { LostOpportunityClaimCode } from './policies/lost-opportunity-claim-policy';
+import { decodeClaimRpcResult, parseFreshProspectId } from './lost-opportunity-claim-payload';
+export { parseFreshProspectId } from './lost-opportunity-claim-payload';
 
 // ADR-041 (Migration 037, Batch 3 Slice 6b): claimant-side RPC call for
 // `claim_lost_opportunity()`.
@@ -27,7 +29,10 @@ export const CLAIM_LOST_OPPORTUNITY_TIMEOUT_MS = 15000;
 
 export interface ClaimLostOpportunityResult {
   code: LostOpportunityClaimCode;
+  /** The fresh prospect returned by the replacement RPC (if successful). */
+  clientId: string | null;
 }
+
 
 /**
  * Calls `claim_lost_opportunity()` (Migration 037). Every claimability
@@ -53,5 +58,12 @@ export async function claimLostOpportunity(clientId: string): Promise<ClaimLostO
   );
 
   if (error) throw error;
-  return { code: data.code as LostOpportunityClaimCode };
+  const decoded = decodeClaimRpcResult(data);
+  const code = decoded.code as LostOpportunityClaimCode;
+  if (code !== 'claimed') return { code, clientId: null };
+  const freshClientId = parseFreshProspectId(decoded.client);
+  if (!freshClientId) {
+    throw new Error('Hindi ma-claim ang opportunity: kailangan ng bagong prospect record mula sa server.');
+  }
+  return { code, clientId: freshClientId };
 }
