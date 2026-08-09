@@ -21,7 +21,7 @@ import { StatusBadge } from '../../../components/ui/StatusBadge';
 import { BizFloatingPager } from '../../../components/bizlink/BizFloatingPager';
 
 type FilterTab = 'pending' | 'accepted' | 'history';
-const ITEMS_PER_PAGE = 5;
+const ITEMS_PER_PAGE = 10;
 
 /**
  * "Tag-Along Status" (ADR-030 Pass 2.5, full rewrite from the old mock

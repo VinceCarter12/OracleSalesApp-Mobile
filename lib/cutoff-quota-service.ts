@@ -1,6 +1,7 @@
 import { getDb } from './db';
 import type { CutoffQuotaRole } from './policies/cutoff-policy';
 import { isDateWithinInclusiveRange, manilaCalendarDate } from './manila-calendar';
+import { isQualifyingLocalMeeting, type MeetingCandidateRow } from './policies/cutoff-local-qualification';
 
 // Batch 7C (ADR-053): read-only local access to the LIVE cutoff/quota
 // snapshot mirrors (lib/db.ts SQLite v23), populated by
@@ -37,23 +38,6 @@ interface RoleUsageRow {
   confirmed_count: number | null;
 }
 
-interface MeetingCandidateRow {
-  outcome: string | null;
-  start_photo_url: string | null;
-  end_photo_url: string | null;
-  start_captured_at: string | null;
-}
-
-/** Mirrors lib/policies/cutoff-policy.ts's countable-outcome rule (ADR-053 point 12), applied to the raw local `meetings` row shape. */
-const COUNTABLE_OUTCOMES = new Set(['Successful', 'Follow-up Required']);
-
-function isQualifyingLocalMeeting(row: MeetingCandidateRow): boolean {
-  if (!row.outcome || !COUNTABLE_OUTCOMES.has(row.outcome)) return false;
-  if (!row.start_captured_at) return false;
-  // Photo evidence is the closest local proxy for "required evidence
-  // attached" available without duplicating server-side validity logic.
-  return Boolean(row.start_photo_url) && Boolean(row.end_photo_url);
-}
 
 /**
  * Counts this agent's not-yet-synced (`sync_status != 'synced'`) qualifying
@@ -61,7 +45,9 @@ function isQualifyingLocalMeeting(row: MeetingCandidateRow): boolean {
  * local half of the confirmed/pending split (O-8). The server-confirmed
  * `confirmed_count` from `get_my_cutoff_usage_summary()` already reflects
  * everything that's synced; this only covers what the phone hasn't pushed
- * yet, so the two numbers are never double-counted.
+ * yet, so the two numbers are never double-counted. In Progress Close deal
+ * meetings additionally require a PO confirmation that has been submitted;
+ * its Manager approval/rejection status does not affect this local count.
  */
 async function countPendingQualifyingMeetings(
   agentId: string,
@@ -70,11 +56,17 @@ async function countPendingQualifyingMeetings(
 ): Promise<number> {
   const db = await getDb();
   const rows = await db.getAllAsync<MeetingCandidateRow>(
-    `SELECT outcome, start_photo_url, end_photo_url, start_captured_at
-     FROM meetings
-     WHERE agent_id = ?
-       AND sync_status != 'synced'
-       AND start_captured_at IS NOT NULL`,
+    `SELECT m.id, m.outcome, m.agendas, m.client_status_at_meeting,
+            m.start_photo_url, m.end_photo_url, m.start_captured_at,
+            (SELECT p.status
+               FROM po_confirmation_requests p
+              WHERE p.meeting_id = m.id
+              ORDER BY p.created_at DESC
+              LIMIT 1) AS po_confirmation_status
+     FROM meetings m
+     WHERE m.agent_id = ?
+       AND m.sync_status != 'synced'
+       AND m.start_captured_at IS NOT NULL`,
     [agentId]
   );
   return rows.filter((row) => {

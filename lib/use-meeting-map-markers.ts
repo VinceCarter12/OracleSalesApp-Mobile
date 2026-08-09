@@ -4,6 +4,7 @@ import { useFocusEffect } from 'expo-router';
 import { useSession } from './session-store';
 import { subscribeSyncComplete } from './sync/sync-events';
 import { classifyMeetingMarkerType, type MeetingMarkerType } from './policies/meeting-marker-type';
+import type { ClientStatus } from '../types';
 
 // Batch 8 Maps extension (2026-08-04): Sales/RSR Maps screen's second marker
 // source (meeting GPS), alongside `lib/use-office-pins.ts`'s permanent
@@ -24,6 +25,8 @@ export interface MeetingMapMarker {
   markerType: MeetingMarkerType;
   /** Free-text place typed on `MeetingLocationPicker`'s "Others" field (e.g. "Starbucks Alabang") — only ever set when `markerType === 'others'`; null for Client Office/Online or pre-migration rows. */
   locationName: string | null;
+  /** Client's lifecycle status AT THE TIME of this meeting (B-095 pattern, see lib/client-status.ts#getMeetingLifecycleStatus) — null for legacy pre-migration rows or client-less meetings. Drives the map pin color. */
+  clientStatusAtMeeting: ClientStatus | null;
 }
 
 interface MeetingMapMarkerRow {
@@ -36,6 +39,7 @@ interface MeetingMapMarkerRow {
   meeting_mode: string | null;
   location_type: string | null;
   location_name: string | null;
+  client_status_at_meeting: ClientStatus | null;
 }
 
 export interface UseMeetingMapMarkers {
@@ -44,9 +48,16 @@ export interface UseMeetingMapMarkers {
   refresh: () => Promise<void>;
 }
 
-export function useMeetingMapMarkers(): UseMeetingMapMarkers {
+export interface MeetingMapDateWindow {
+  startAt?: string;
+  endAtExclusive?: string;
+}
+
+export function useMeetingMapMarkers(dateWindow?: MeetingMapDateWindow): UseMeetingMapMarkers {
   const db = useSQLiteContext();
   const { profileId } = useSession();
+  const startAt = dateWindow?.startAt;
+  const endAtExclusive = dateWindow?.endAtExclusive;
   const [markers, setMarkers] = useState<MeetingMapMarker[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -61,14 +72,25 @@ export function useMeetingMapMarkers(): UseMeetingMapMarkers {
     // captured together at the start of the visit) — the same pair used by
     // the rest of the app (e.g. lib/cutoff-quota-service.ts) as the meeting's
     // "when" for GPS-adjacent purposes.
+    const clauses = [
+      'm.agent_id = ?',
+      'm.gps_lat IS NOT NULL',
+      'm.gps_lng IS NOT NULL',
+      'm.start_captured_at IS NOT NULL',
+      ...(startAt ? ['m.start_captured_at >= ?'] : []),
+      ...(endAtExclusive ? ['m.start_captured_at < ?'] : []),
+    ];
+    const args: string[] = [profileId];
+    if (startAt) args.push(startAt);
+    if (endAtExclusive) args.push(endAtExclusive);
     const rows = await db.getAllAsync<MeetingMapMarkerRow>(
       `SELECT m.id, m.client_id, c.company_name as client_name, m.gps_lat, m.gps_lng,
-              m.start_captured_at, m.meeting_mode, m.location_type, m.location_name
+              m.start_captured_at, m.meeting_mode, m.location_type, m.location_name,
+              m.client_status_at_meeting
          FROM meetings m LEFT JOIN clients c ON c.id = m.client_id
-        WHERE m.agent_id = ? AND m.gps_lat IS NOT NULL AND m.gps_lng IS NOT NULL
-          AND m.start_captured_at IS NOT NULL
+        WHERE ${clauses.join(' AND ')}
         ORDER BY m.start_captured_at DESC`,
-      [profileId]
+      args
     );
     setMarkers(
       rows.map((row) => ({
@@ -80,12 +102,15 @@ export function useMeetingMapMarkers(): UseMeetingMapMarkers {
         startCapturedAt: row.start_captured_at,
         markerType: classifyMeetingMarkerType(row.meeting_mode, row.location_type),
         locationName: row.location_name,
+        clientStatusAtMeeting: row.client_status_at_meeting ?? null,
       }))
     );
     setLoading(false);
-  }, [db, profileId]);
+  }, [db, profileId, startAt, endAtExclusive]);
 
   useEffect(() => {
+    // SQLite fetch synchronizes local state when the query window changes.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     fetch();
   }, [fetch]);
 

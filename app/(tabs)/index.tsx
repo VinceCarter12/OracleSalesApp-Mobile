@@ -1,6 +1,6 @@
 import { useCallback, useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
-import { Pressable, ScrollView, useWindowDimensions } from 'react-native';
+import { Pressable, RefreshControl, ScrollView, useWindowDimensions } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router, useFocusEffect } from 'expo-router';
 import {
@@ -27,8 +27,8 @@ import { getClientStatus } from '../../lib/client-status';
 import { getClientIdsWithPendingManagerTagAlong, getMyCompanionRequests, companionRequestDisplayStatus } from '../../lib/tag-along-service';
 import { countCreatedSince } from '../../lib/team-remote-mappers';
 import { useActiveMeetingDrafts } from '../../lib/use-active-meeting-drafts';
-import { useSync } from '../../lib/use-sync';
 import { useMyRequestStatuses } from '../../lib/use-my-request-statuses';
+import { useUnreadNotificationCount } from '../../lib/use-unread-notification-count';
 import { Avatar } from '../../components/ui/Avatar';
 import { StatusBadge } from '../../components/ui/StatusBadge';
 import { BizStatCard } from '../../components/bizlink/BizStatCard';
@@ -102,6 +102,10 @@ export default function AgentHomeScreen() {
   const quickActionColumns = computeQuickActionColumns(windowWidth, 16);
   const { clients, refresh: refreshClients } = useClients();
   const { meetings, refresh: refreshMeetings } = useMeetings();
+  // Pull-to-refresh spinner must be bound to a user-gesture-only flag, not
+  // the hooks' own `loading` (which also flips on mount/refocus/background
+  // sync completion and would pop the spinner uncommanded).
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const { role, fullName, profileId } = useSession();
   const { activeMeetingDrafts } = useActiveMeetingDrafts(profileId);
   const isRsr = role === 'rsr';
@@ -124,15 +128,21 @@ export default function AgentHomeScreen() {
   const [waitingManagerApprovalIds, setWaitingManagerApprovalIds] = useState<Set<string>>(new Set());
 
   // Notification badge counts (2026-08-04 Full Badge Implementation)
-  const { outboxCounts } = useSync(profileId, null);
   const { rows: myRequestRows } = useMyRequestStatuses();
   const [companionRequests, setCompanionRequests] = useState<Awaited<ReturnType<typeof getMyCompanionRequests>>>([]);
 
-  // Badge count calculations
-  const notificationBadgeCount = useMemo(
-    () => outboxCounts.failed + outboxCounts.conflict + outboxCounts.pending,
-    [outboxCounts]
-  );
+  // Badge count calculations. Notifications-Page-Handoff-2026-08-08 Task 1:
+  // the dashboard bell + More-tile "Notifications" badge now reflect the
+  // real unread-notification count (lib/notification-unread.ts), not the
+  // raw outbox counts this used to be. The separate `SyncStatusChip` below
+  // still self-fetches `getOutboxCounts()` on its own focus effect (it's
+  // called here with no `counts` prop) — same source, no drift, per this
+  // handoff's "sync counts must stay consistent with the Home screen chip"
+  // rule. The dedicated `useSync(profileId, null)` call this replaced was
+  // otherwise unused here (root-level scheduling already runs once via
+  // `app/_layout.tsx`'s own `useSync` call) — removed rather than left as
+  // a second redundant scheduler instance.
+  const notificationBadgeCount = useUnreadNotificationCount(profileId);
   const myRequestsBadgeCount = useMemo(
     () => myRequestRows.filter((r) => r.status === 'pending').length,
     [myRequestRows]
@@ -194,7 +204,22 @@ export default function AgentHomeScreen() {
     <YStack flex={1} backgroundColor={BIZLINK_COLORS.canvas} paddingTop={insets.top}>
       <AgentHomeHeader greetingName={greetingName} isRsr={isRsr} fullName={fullName} notificationCount={notificationBadgeCount} />
 
-      <ScrollView contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 24 + insets.bottom }}>
+      <ScrollView
+        contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 24 + insets.bottom }}
+        refreshControl={
+          <RefreshControl
+            refreshing={isRefreshing}
+            onRefresh={async () => {
+              setIsRefreshing(true);
+              try {
+                await Promise.all([refreshClients(), refreshMeetings()]);
+              } finally {
+                setIsRefreshing(false);
+              }
+            }}
+          />
+        }
+      >
         <XStack gap={10} marginTop={6}>
           <YStack flex={1}>
             <BizStatCard
@@ -245,6 +270,7 @@ export default function AgentHomeScreen() {
             title="I-record ang meeting"
             subtitle="Pumili muna ng client"
             onPress={() => router.push(getDashboardActionHref('record-meeting', role))}
+            active={activeMeetingDrafts.length > 0}
           />
         </XStack>
 

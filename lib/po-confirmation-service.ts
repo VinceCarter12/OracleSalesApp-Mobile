@@ -154,6 +154,42 @@ async function uploadPoEvidencePhoto(localUri: string, storagePath: string): Pro
   return data.publicUrl;
 }
 
+/**
+ * B-095 follow-up (2026-08-09, found via Vince's on-device console error):
+ * `uploadPoEvidencePhoto()`'s Storage call can ALSO be rejected by RLS —
+ * `storage.objects` is RLS-protected the same way `po_confirmation_requests`
+ * is (Migration 034's folder policy), and Postgres/PostgREST report both
+ * kinds of rejection with the identical message "new row violates row-level
+ * security policy", just for a different underlying table. Before this fix,
+ * ONLY the table-insert step below checked for this (via `error.code ===
+ * RLS_PERMISSION_DENIED_CODE`) and terminated the row as `'superseded'` — a
+ * Storage-side RLS rejection fell straight to the generic catch below,
+ * leaving the row stuck `'draft'` and silently retried forever
+ * (`retryDraftPoConfirmations()` runs on every Notifications-screen visit)
+ * with no indication it would never succeed. The Supabase Storage JS client
+ * doesn't reliably surface the Postgres SQLSTATE on its error object the way
+ * `supabase-js`'s Postgrest client does (no guaranteed `.code`), so this
+ * checks BOTH the code (covers the table-insert path) and the message text
+ * (covers the Storage path, and is a safety net for the insert path too).
+ */
+function isRlsPermissionDenied(err: unknown): boolean {
+  if (err && typeof err === 'object' && 'code' in err && (err as { code?: unknown }).code === RLS_PERMISSION_DENIED_CODE) {
+    return true;
+  }
+  const message = err instanceof Error ? err.message : typeof err === 'string' ? err : '';
+  return message.toLowerCase().includes('row-level security policy');
+}
+
+/** Shared terminal-state write for a permanently RLS-rejected request — see `isRlsPermissionDenied()`'s doc comment for why this now covers both the Storage upload and the table insert. */
+async function markPoConfirmationSuperseded(db: SQLiteDatabase, requestId: string, reason: string): Promise<void> {
+  const now = new Date().toISOString();
+  await db.runAsync(
+    `UPDATE po_confirmation_requests SET status = 'superseded', updated_at = ? WHERE id = ?`,
+    [now, requestId]
+  );
+  console.error('[po-confirmation-service] submission permanently rejected (RLS) — marked superseded:', reason);
+}
+
 export type SubmitPoConfirmationResult = 'submitted' | 'skipped_not_draft' | 'offline' | 'failed' | 'superseded';
 
 /** B-088: the meeting a request references may still be mid-push (`meetings.sync_status` set by push-batch.ts's `recordSynced()`) — same check the entity registry's `isBlockedByDependency` does for outbox rows, applied here since `po_confirmation_requests` isn't itself outbox-queued (ADR-044 decision 5). */
@@ -254,12 +290,7 @@ export async function submitPoConfirmation(
     // (2026-08-04, SQLite v24 `'superseded'`) so retryDraftPoConfirmations()
     // stops resubmitting it on every Notifications-screen visit.
     if (error && error.code === RLS_PERMISSION_DENIED_CODE) {
-      const now = new Date().toISOString();
-      await db.runAsync(
-        `UPDATE po_confirmation_requests SET status = 'superseded', updated_at = ? WHERE id = ?`,
-        [now, requestId]
-      );
-      console.error('[po-confirmation-service] submission permanently rejected (RLS) — marked superseded:', error.message);
+      await markPoConfirmationSuperseded(db, requestId, error.message);
       return 'superseded';
     }
     if (error && error.code !== UNIQUE_VIOLATION_CODE) throw error;
@@ -283,6 +314,15 @@ export async function submitPoConfirmation(
               return String(err);
             }
           })();
+    // B-095 follow-up: catches the Storage-upload RLS case that used to fall
+    // through here silently as a generic 'failed' — see
+    // isRlsPermissionDenied()'s doc comment. Anything else (network blip,
+    // timeout, transient Storage error) still returns 'failed' as before,
+    // leaving the row 'draft' for a legitimate retry.
+    if (isRlsPermissionDenied(err)) {
+      await markPoConfirmationSuperseded(db, requestId, details);
+      return 'superseded';
+    }
     console.error('[po-confirmation-service] submission failed:', details);
     return 'failed';
   }

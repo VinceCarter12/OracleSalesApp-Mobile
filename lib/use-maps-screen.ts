@@ -1,9 +1,9 @@
 import { useMemo, useState } from 'react';
 import { useOfficePins, type OfficePinClient } from './use-office-pins';
-import { useMeetingMapMarkers, type MeetingMapMarker } from './use-meeting-map-markers';
-import { isSameCalendarDay } from './local-day';
+import { useMeetingMapMarkers, type MeetingMapMarker, type MeetingMapDateWindow } from './use-meeting-map-markers';
 import type { MeetingMarkerType } from './policies/meeting-marker-type';
-import { BIZLINK_COLORS } from './theme';
+import { MAP_OFFICE_PIN_COLOR, meetingStatusMarkerColor } from './map-marker-colors';
+import type { ClientStatus } from '../types';
 import type { LeafletMapMarker } from '../components/maps/LeafletWebViewMap';
 
 // Batch 8 Maps extension (2026-08-04): business logic (filtering, marker
@@ -13,13 +13,14 @@ import type { LeafletMapMarker } from '../components/maps/LeafletWebViewMap';
 
 export type PinFilterValue = 'all' | 'verified' | 'unverified';
 export type MeetingTypeFilterValue = MeetingMarkerType | 'all';
+export type MeetingStatusFilterValue = ClientStatus | 'all';
 
 function buildOfficeMapMarkers(pins: OfficePinClient[]): LeafletMapMarker[] {
   return pins.map((pin) => ({
     id: `office:${pin.id}`,
     lat: pin.officeLat,
     lng: pin.officeLng,
-    colorHex: pin.verified ? BIZLINK_COLORS.brand : BIZLINK_COLORS.orange,
+    colorHex: MAP_OFFICE_PIN_COLOR,
     radius: 11,
     label: pin.companyName,
   }));
@@ -36,7 +37,7 @@ function buildMeetingMapMarkers(markers: MeetingMapMarker[], typeLabel: Record<M
     id: `meeting:${marker.id}`,
     lat: marker.gpsLat,
     lng: marker.gpsLng,
-    colorHex: BIZLINK_COLORS.navy,
+    colorHex: meetingStatusMarkerColor(marker.clientStatusAtMeeting),
     radius: 8,
     label: `${marker.clientName} · ${meetingLocationLabel(marker, typeLabel)}`,
   }));
@@ -50,29 +51,41 @@ export interface MapsScreenState {
   filteredMeetingMarkers: MeetingMapMarker[];
   meetingTypeFilter: MeetingTypeFilterValue;
   setMeetingTypeFilter: (value: MeetingTypeFilterValue) => void;
-  selectedDate: Date;
-  setSelectedDate: (date: Date) => void;
+  meetingStatusFilter: MeetingStatusFilterValue;
+  setMeetingStatusFilter: (value: MeetingStatusFilterValue) => void;
   mapMarkers: LeafletMapMarker[];
   loading: boolean;
 }
 
-/** @param typeLabel `MEETING_MARKER_TYPE_LABEL` — passed in rather than imported to keep this hook's own import surface small. */
-export function useMapsScreen(typeLabel: Record<MeetingMarkerType, string>): MapsScreenState {
+/**
+ * @param typeLabel `MEETING_MARKER_TYPE_LABEL` — passed in rather than imported to keep this hook's own import surface small.
+ * @param dateFilter Screen-owned date filter (maps.tsx's `dateFilterEnabled`/`selectedDate`) — passed in so the
+ * map markers and the meeting card list stay in sync instead of each narrowing independently.
+ */
+export function useMapsScreen(
+  typeLabel: Record<MeetingMarkerType, string>,
+  dateWindow?: MeetingMapDateWindow,
+  officeSearch = ''
+): MapsScreenState {
   const { pins, loading: pinsLoading } = useOfficePins();
-  const { markers: meetingMarkers, loading: meetingsLoading } = useMeetingMapMarkers();
+  const { markers: meetingMarkers, loading: meetingsLoading } = useMeetingMapMarkers(dateWindow);
   const [pinFilter, setPinFilter] = useState<PinFilterValue>('all');
   const [meetingTypeFilter, setMeetingTypeFilter] = useState<MeetingTypeFilterValue>('all');
-  const [selectedDate, setSelectedDate] = useState(() => new Date());
+  const [meetingStatusFilter, setMeetingStatusFilter] = useState<MeetingStatusFilterValue>('all');
 
-  const filteredPins = pins.filter((pin) => pinFilter === 'all' || (pinFilter === 'verified') === pin.verified);
+  const search = officeSearch.trim().toLocaleLowerCase();
+  const filteredPins = pins.filter((pin) =>
+    (pinFilter === 'all' || (pinFilter === 'verified') === pin.verified) &&
+    (!search || pin.companyName.toLocaleLowerCase().includes(search))
+  );
 
   const filteredMeetingMarkers = useMemo(
     () =>
       meetingMarkers.filter((marker) => {
-        if (!isSameCalendarDay(marker.startCapturedAt, selectedDate.toISOString())) return false;
-        return meetingTypeFilter === 'all' || marker.markerType === meetingTypeFilter;
+        if (meetingTypeFilter !== 'all' && marker.markerType !== meetingTypeFilter) return false;
+        return meetingStatusFilter === 'all' || marker.clientStatusAtMeeting === meetingStatusFilter;
       }),
-    [meetingMarkers, selectedDate, meetingTypeFilter]
+    [meetingMarkers, meetingTypeFilter, meetingStatusFilter]
   );
 
   const mapMarkers = useMemo<LeafletMapMarker[]>(
@@ -88,8 +101,8 @@ export function useMapsScreen(typeLabel: Record<MeetingMarkerType, string>): Map
     filteredMeetingMarkers,
     meetingTypeFilter,
     setMeetingTypeFilter,
-    selectedDate,
-    setSelectedDate,
+    meetingStatusFilter,
+    setMeetingStatusFilter,
     mapMarkers,
     loading: pinsLoading || meetingsLoading,
   };

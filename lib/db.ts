@@ -12,7 +12,7 @@ export const DATABASE_NAME = 'oracle-sales-app.db';
 
 // Bump this and add a new `case` below whenever the schema changes — never
 // edit an already-shipped case, since devices may have already run it.
-const LATEST_SCHEMA_VERSION = 27;
+const LATEST_SCHEMA_VERSION = 28;
 
 /**
  * Idempotent `ADD COLUMN` — only adds `column` if the table doesn't already
@@ -1108,6 +1108,24 @@ export async function migrateDbIfNeeded(db: SQLiteDatabase): Promise<void> {
     currentVersion = 25;
   }
 
+  // B-095 fix (2026-08-08): meeting cards on the two list screens (My
+  // Meetings, Manager Meetings) used to show the CLIENT's live status —
+  // every card for the same client showed the same, constantly-changing
+  // badge (e.g. an old meeting retroactively flipping to "IN PROGRESS" once
+  // a later meeting promoted the client). This freezes what the client's
+  // status actually was at the moment each meeting was recorded — set once
+  // in lib/meeting-service.ts::createMeeting(), never recomputed. Nullable:
+  // legacy meetings recorded before this migration have no such record and
+  // intentionally show no badge (Vince-approved, 2026-08-08) rather than
+  // guessing. Mirrored to Supabase (`meetings.client_status_at_meeting`) via
+  // a companion migration in the web repo — see Bugs.md.
+  if (currentVersion === 25) {
+    await db.execAsync(`
+      ALTER TABLE meetings ADD COLUMN client_status_at_meeting TEXT;
+    `);
+    currentVersion = 26;
+  }
+
   // F-007 Additional Collection Phase B (web migrations 068/069, 2026-08-08):
   // the acknowledgment write-back. `additional_received_at` / `additional_seen_at`
   // MIRROR the two web columns (stamped write-once, server-side, via the
@@ -1119,11 +1137,11 @@ export async function migrateDbIfNeeded(db: SQLiteDatabase): Promise<void> {
   // online pass and clears it. Received needs no local flag — the reconciler
   // drives off `additional_received_at IS NULL`. All additive; a normal row is
   // untouched (received/seen stay NULL, pending 0).
-  if (currentVersion === 25) {
+  if (currentVersion === 26) {
     await addColumnIfMissing(db, 'collection_visits', 'additional_received_at', 'TEXT');
     await addColumnIfMissing(db, 'collection_visits', 'additional_seen_at', 'TEXT');
     await addColumnIfMissing(db, 'collection_visits', 'additional_seen_pending', 'INTEGER NOT NULL DEFAULT 0');
-    currentVersion = 26;
+    currentVersion = 27;
   }
 
   // F-007 Partial payment (web migration 070, 2026-08-09): a LOCAL-ONLY outgoing
@@ -1136,7 +1154,7 @@ export async function migrateDbIfNeeded(db: SQLiteDatabase): Promise<void> {
   // table (never pulled/upserted through the generic pipeline). The remote
   // `collection_visits.status='partial'` roll-up (server trigger) is what the
   // UI reads back on the next sync-down — no local partial mirror table needed.
-  if (currentVersion === 26) {
+  if (currentVersion === 27) {
     await db.execAsync(`
       CREATE TABLE IF NOT EXISTS collection_payments (
         id TEXT PRIMARY KEY NOT NULL,
@@ -1161,7 +1179,7 @@ export async function migrateDbIfNeeded(db: SQLiteDatabase): Promise<void> {
       CREATE INDEX IF NOT EXISTS idx_collection_payments_status ON collection_payments (status);
       CREATE INDEX IF NOT EXISTS idx_collection_payments_visit ON collection_payments (visit_id);
     `);
-    currentVersion = 27;
+    currentVersion = 28;
   }
 
   await db.execAsync(`PRAGMA user_version = ${currentVersion}`);

@@ -46,3 +46,39 @@ export async function withTransactionRetry(db: SQLiteDatabase, callback: () => P
   }
   throw lastErr;
 }
+
+/**
+ * Same dual-connection lock-contention retry as `withTransactionRetry`
+ * above, but for a transaction whose body is a non-idempotent single INSERT
+ * (a client-generated-UUID row) — a blind retry there risks a confusing
+ * UNIQUE-constraint error if BEGIN/INSERT actually succeeded and only the
+ * trailing COMMIT (or the error path's ROLLBACK) got confused by the other
+ * connection holding the writer lock (2026-08-09, PO-evidence "Advance Deal"
+ * save crash — see Bugs.md).
+ *
+ * On a transient error, `verifyCommitted()` checks whether the row is
+ * already there. If so, the failure was spurious — this returns normally
+ * without retrying or throwing. Only retries the whole transaction when the
+ * row genuinely isn't present yet (BEGIN never took effect, so nothing was
+ * written and a retry is safe).
+ */
+export async function withInsertTransactionRetry(
+  db: SQLiteDatabase,
+  callback: () => Promise<void>,
+  verifyCommitted: () => Promise<boolean>
+): Promise<void> {
+  let lastErr: unknown;
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    try {
+      await db.withTransactionAsync(callback);
+      return;
+    } catch (err) {
+      lastErr = err;
+      if (!isTransientTransactionError(err)) throw err;
+      if (await verifyCommitted()) return;
+      if (attempt === MAX_ATTEMPTS) throw err;
+      await delay(RETRY_BASE_DELAY_MS * attempt);
+    }
+  }
+  throw lastErr;
+}

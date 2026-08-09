@@ -2,6 +2,7 @@ import { TextInput } from 'react-native';
 import { TriangleAlert } from 'lucide-react-native';
 import { Text, XStack, YStack } from 'tamagui';
 import { useBizlinkColors, BIZLINK_FONTS } from '../../lib/theme';
+import { OTHER_LOCATION_MAX_LENGTH } from '../../lib/field-validation';
 import { BizSectionHeader } from '../bizlink/BizSectionHeader';
 import { BizChip } from '../bizlink/BizChip';
 
@@ -52,6 +53,7 @@ export function MeetingLocationPicker({ value, onChange, otherLocation, onOtherL
             onChangeText={onOtherLocationChange}
             placeholder="e.g. Starbucks Alabang"
             placeholderTextColor={BIZLINK_COLORS.muted}
+            maxLength={OTHER_LOCATION_MAX_LENGTH}
             style={{
               height: 52,
               borderRadius: 16,

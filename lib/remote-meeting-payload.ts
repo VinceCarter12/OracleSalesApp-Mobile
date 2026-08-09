@@ -1,5 +1,6 @@
 import { toRemoteLocationType, toRemoteMeetingType, toRemoteOutcome } from './remote-meeting-mapping';
 import type { NewMeetingRecord } from './meeting-service';
+import type { ClientStatus } from '../types';
 
 /**
  * ADR-026 P1 (interim offline-save fix): a screen falls back to the local
@@ -23,12 +24,20 @@ function remoteMediaUrl(url: string | null | undefined): string | null {
 export function buildRemoteMeetingPayload(
   id: string,
   record: NewMeetingRecord,
-  agendaIds: readonly string[]
+  agendaIds: readonly string[],
+  /**
+   * B-095 fix (2026-08-08): the client's status read from SQLite immediately
+   * before this meeting's INSERT (lib/meeting-service.ts::createMeeting()) —
+   * frozen at creation time, never recomputed. Null when `record.client_id`
+   * is unset. See lib/client-status.ts::getMeetingLifecycleStatus().
+   */
+  clientStatusAtMeeting: ClientStatus | null
 ): Record<string, unknown> {
   return {
     id,
     client_id: record.client_id,
     agent_id: record.agent_id,
+    client_status_at_meeting: clientStatusAtMeeting,
     // Tag-along (F-004) and online-meeting (ADR-012) columns — not collected
     // by either mobile flow yet, left null rather than guessed at.
     recorded_by: null,

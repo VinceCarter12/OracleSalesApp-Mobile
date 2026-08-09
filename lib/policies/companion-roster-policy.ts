@@ -23,10 +23,14 @@ export function inviteeKindForRole(role: TeamRosterEntry['role']): 'manager' | '
  * (explicitly out-of-scope per ADR-046 #4) multi-manager-per-team edge case,
  * matching the wireframe's `managerRenderCompanions` (Wireframe-Manager-
  * BizLink.html), which only ever renders teammate tiles for a Manager's own
- * recording flow. A non-manager viewer's roster is returned unfiltered —
- * their own manager remains a valid companion option.
+ * recording flow.
+ *
+ * A non-manager (Sales/RSR) viewer's roster is filtered down to Managers
+ * only — the teammate-as-companion option was removed 2026-08-09 (Vince):
+ * Sales/RSR agents may only tag along their manager, never a peer.
  */
 export function getCompanionRosterForViewer(roster: TeamRosterEntry[], viewerRole: UserRole | null): TeamRosterEntry[] {
-  if (viewerRole !== 'sales_manager') return roster;
-  return roster.filter((entry) => entry.role !== 'sales_manager');
+  if (viewerRole === null) return roster;
+  if (viewerRole === 'sales_manager') return roster.filter((entry) => entry.role !== 'sales_manager');
+  return roster.filter((entry) => entry.role === 'sales_manager');
 }

@@ -1,7 +1,6 @@
 import { useMemo, useRef, useState, useEffect } from 'react';
 import { Pressable, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import WebView, { type WebViewMessageEvent } from 'react-native-webview';
-import { XStack, YStack } from 'tamagui';
 import { BIZLINK_COLORS, BIZLINK_FONTS } from '../../lib/theme';
 
 // Batch 8 Maps extension (2026-08-04): Vince's direct instruction — "Kung
@@ -24,6 +23,13 @@ const TILE_URLS: Record<MapTileType, string> = {
   terrain: 'https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png',
 };
 
+/** OpenTopoMap only serves tiles up to z17 — capping past that showed blank/gray tiles. CARTO light/dark serve up to z20. */
+const TILE_MAX_ZOOM: Record<MapTileType, number> = {
+  light: 19,
+  dark: 19,
+  terrain: 17,
+};
+
 const CARTO_ATTRIBUTION =
   '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>';
 /** Metro Manila — same default center as the web app's map-constants.ts. */
@@ -34,12 +40,19 @@ export interface LeafletMapMarker {
   id: string;
   lat: number;
   lng: number;
-  /** Fill color — office pins use brand/orange (verified/unverified), meeting markers use navy. */
+  /** Fill color — office pins use brand/green, meeting markers use status colors. */
   colorHex: string;
   /** Marker radius in px — used to give office pins and meeting markers a distinct silhouette, not just color. */
   radius: number;
   /** Short popup label shown on tap, before navigation. */
   label: string;
+  /**
+   * Optional "you/current user" marker (Vince 2026-08-08): instead of a plain
+   * color dot, render a round chip with the user's profile picture (avatar) or,
+   * when there's no avatar, the first letter of their first name. Only the
+   * user-marker uses this — office/meeting markers stay circleMarkers.
+   */
+  icon?: { kind: 'user'; imageUrl: string | null; text: string };
 }
 
 interface LeafletWebViewMapProps {
@@ -58,6 +71,7 @@ interface LeafletWebViewMapWithControlsProps {
   onTileTypeChange: (type: MapTileType) => void;
   onExpandPress?: () => void;
   expanded?: boolean;
+  onMarkerPress?: (id: string) => void;
 }
 
 function buildMapHtml(markers: LeafletMapMarker[], tileType: MapTileType, focusedMarkerId?: string | null): string {
@@ -69,6 +83,7 @@ function buildMapHtml(markers: LeafletMapMarker[], tileType: MapTileType, focuse
   // innerHTML) below, so this is defense in depth, not the only guard.
   const markersJson = JSON.stringify(markers).replace(/</g, '\\u003c');
   const tileUrl = TILE_URLS[tileType];
+  const tileMaxZoom = TILE_MAX_ZOOM[tileType];
   const focusedMarker = focusedMarkerId ? markers.find((m) => m.id === focusedMarkerId) : null;
   
   return `<!DOCTYPE html>
@@ -76,7 +91,9 @@ function buildMapHtml(markers: LeafletMapMarker[], tileType: MapTileType, focuse
 <head>
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-  <style>html,body,#map{height:100%;margin:0;padding:0;background:${BIZLINK_COLORS.canvas};}</style>
+  <style>html,body,#map{height:100%;margin:0;padding:0;background:${BIZLINK_COLORS.canvas};}
+    .user-marker{width:40px;height:40px;border-radius:50%;background:#0B2545;border:3px solid #FFFFFF;box-shadow:0 2px 6px rgba(0,0,0,0.35);overflow:hidden;display:flex;align-items:center;justify-content:center;color:#FFFFFF;font-family:Arial,Helvetica,sans-serif;font-weight:700;font-size:16px;}
+    .user-avatar{width:100%;height:100%;object-fit:cover;display:block;}</style>
 </head>
 <body>
   <div id="map"></div>
@@ -84,8 +101,8 @@ function buildMapHtml(markers: LeafletMapMarker[], tileType: MapTileType, focuse
   <script>
     var markers = ${markersJson};
     var focusedMarkerId = ${focusedMarker ? `"${focusedMarkerId}"` : 'null'};
-    var map = L.map('map', { zoomControl: true, attributionControl: false });
-    L.tileLayer('${tileUrl}', { attribution: '${CARTO_ATTRIBUTION}', maxZoom: 19 }).addTo(map);
+    var map = L.map('map', { zoomControl: true, attributionControl: false, maxZoom: ${tileMaxZoom} });
+    L.tileLayer('${tileUrl}', { attribution: '${CARTO_ATTRIBUTION}', maxZoom: ${tileMaxZoom} }).addTo(map);
 
     if (focusedMarkerId) {
       var focused = markers.find(function (m) { return m.id === focusedMarkerId; });
@@ -93,20 +110,49 @@ function buildMapHtml(markers: LeafletMapMarker[], tileType: MapTileType, focuse
         map.setView([focused.lat, focused.lng], 16);
       }
     } else if (markers.length > 0) {
-      var bounds = L.latLngBounds(markers.map(function (m) { return [m.lat, m.lng]; }));
-      map.fitBounds(bounds, { padding: [32, 32], maxZoom: 16 });
+      var pinMarkers = markers.filter(function (m) { return !(m.icon && m.icon.kind === 'user'); });
+      if (pinMarkers.length > 0) {
+        var bounds = L.latLngBounds(pinMarkers.map(function (m) { return [m.lat, m.lng]; }));
+        map.fitBounds(bounds, { padding: [32, 32], maxZoom: 16 });
+      } else {
+        map.setView([markers[0].lat, markers[0].lng], ${DEFAULT_ZOOM});
+      }
     } else {
       map.setView([${DEFAULT_CENTER[0]}, ${DEFAULT_CENTER[1]}], ${DEFAULT_ZOOM});
     }
 
     markers.forEach(function (m) {
-      var marker = L.circleMarker([m.lat, m.lng], {
-        radius: m.radius,
-        color: '#FFFFFF',
-        weight: 2,
-        fillColor: m.colorHex,
-        fillOpacity: 1,
-      }).addTo(map);
+      var marker;
+      if (m.icon && m.icon.kind === 'user') {
+        // "You are here" marker — profile picture (avatar) or the first
+        // letter of the user's first name when there's no avatar. Built as a
+        // divIcon so a real image/letter is shown instead of a plain dot.
+        var chip = document.createElement('div');
+        chip.className = 'user-marker';
+        if (m.icon.imageUrl) {
+          var img = document.createElement('img');
+          img.className = 'user-avatar';
+          img.alt = '';
+          img.src = m.icon.imageUrl;
+          img.onerror = function () {
+            chip.textContent = m.icon.text;
+          };
+          chip.appendChild(img);
+        } else {
+          chip.textContent = m.icon.text;
+        }
+        marker = L.marker([m.lat, m.lng], {
+          icon: L.divIcon({ className: '', html: chip, iconSize: [40, 40], iconAnchor: [20, 20] }),
+        }).addTo(map);
+      } else {
+        marker = L.circleMarker([m.lat, m.lng], {
+          radius: m.radius,
+          color: '#FFFFFF',
+          weight: 2,
+          fillColor: m.colorHex,
+          fillOpacity: 1,
+        }).addTo(map);
+      }
       // Set via textContent (never innerHTML/a raw string) so a company or
       // "Others" free-text location name can never be interpreted as HTML —
       // Leaflet's bindPopup(string) treats a plain string as HTML with no
@@ -243,6 +289,7 @@ export function LeafletWebViewMapWithControls({
   onTileTypeChange,
   onExpandPress,
   expanded = false,
+  onMarkerPress,
 }: LeafletWebViewMapWithControlsProps) {
   const [loadFailed, setLoadFailed] = useState(false);
   const webViewRef = useRef<WebView>(null);
@@ -269,6 +316,16 @@ export function LeafletWebViewMapWithControls({
     webViewRef.current?.reload();
   }
 
+  function handleMessage(event: WebViewMessageEvent): void {
+    if (!onMarkerPress) return;
+    try {
+      const payload = JSON.parse(event.nativeEvent.data) as { id?: string };
+      if (payload.id) onMarkerPress(payload.id);
+    } catch {
+      // Ignore malformed WebView bridge payloads.
+    }
+  }
+
   const containerStyle = expanded
     ? { flex: 1 }
     : [styles.wrapper, { height }];
@@ -281,6 +338,7 @@ export function LeafletWebViewMapWithControls({
         style={styles.webview}
         onError={() => setLoadFailed(true)}
         onHttpError={() => setLoadFailed(true)}
+        onMessage={handleMessage}
         originWhitelist={['*']}
         javaScriptEnabled
         domStorageEnabled={false}

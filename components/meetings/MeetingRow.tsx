@@ -3,7 +3,7 @@ import { router } from 'expo-router';
 import { Users } from 'lucide-react-native';
 import { Text, XStack, YStack } from 'tamagui';
 import { OUTCOME_BADGE_STYLES, useBizlinkColors, BIZLINK_FONTS } from '../../lib/theme';
-import { getClientStatus, SALES_CLIENT_STATUS_BADGES } from '../../lib/client-status';
+import { getMeetingLifecycleStatus, SALES_CLIENT_STATUS_BADGES } from '../../lib/client-status';
 import { getClientJourneyProgress } from '../../lib/client-progress';
 import { formatMeetingLocation } from '../../lib/format-meeting-location';
 import { StatusBadge } from '../ui/StatusBadge';
@@ -42,7 +42,10 @@ export function MeetingRow({
     location,
   ].filter(Boolean);
 
-  const status = client ? getClientStatus(client) : null;
+  // B-095 fix (2026-08-08): frozen per-meeting status, not the client's live
+  // status — see lib/client-status.ts::getMeetingLifecycleStatus(). `null`
+  // (legacy meeting recorded before Migration v26) means no badge, by design.
+  const status = getMeetingLifecycleStatus(meeting);
   const statusBadge = status ? SALES_CLIENT_STATUS_BADGES[status] : null;
   const journeyProgress = client ? getClientJourneyProgress(client, meetings) : null;
 

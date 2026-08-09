@@ -1,121 +1,61 @@
 import { useCallback, useMemo, useState } from 'react';
-import { FlatList, Pressable, RefreshControl } from 'react-native';
+import { FlatList, Pressable, RefreshControl, TextInput } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { router, useFocusEffect } from 'expo-router';
+import { useFocusEffect } from 'expo-router';
+import { SlidersHorizontal } from 'lucide-react-native';
 import { Spinner, Text, XStack, YStack } from 'tamagui';
-import { useBizlinkColors, BIZLINK_FONTS } from '../../../lib/theme';
+import { useBizlinkColors, BIZLINK_FONTS, BIZLINK_ON_INK } from '../../../lib/theme';
 import { useClients } from '../../../lib/useClients';
-import { SALES_CLIENT_STATUS_BADGES, getClientStatus, isFastPathEligible } from '../../../lib/client-status';
-import { useClientFlowRoutes, type ClientFlowRoutes } from '../../../lib/use-role-routes';
+import { getClientStatus } from '../../../lib/client-status';
+import { useActiveMeetingDrafts } from '../../../lib/use-active-meeting-drafts';
+import { useSession } from '../../../lib/session-store';
 import { BizTopBar } from '../../../components/bizlink/BizTopBar';
-import { StatusBadge } from '../../../components/ui/StatusBadge';
+import { BizFloatingPager } from '../../../components/bizlink/BizFloatingPager';
+import { BizFilterScroll } from '../../../components/bizlink/BizFilterScroll';
+import { BizFilterSheet } from '../../../components/bizlink/BizFilterSheet';
+import { BizFilterSheetRow } from '../../../components/bizlink/BizFilterSheetRow';
 import { BizChip } from '../../../components/bizlink/BizChip';
-import type { Client, ClientStatus } from '../../../types';
+import { DateRangeFilterRow } from '../../../components/bizlink/DateRangeFilterRow';
+import type { DateRange } from '../../../components/bizlink/DateRangePickerModal';
+import { RecordPickerRow, RECORD_PICKER_FILTERS, type RecordPickerFilter } from '../../../components/meetings/RecordPickerRow';
+import { PAGINATION_PAGE_SIZE, usePagination } from '../../../lib/use-pagination';
 
-// Record-picker status filter (Wireframe-Sales-BizLink.html #a-record,
-// aRecordPickerFilter/aRenderRecordPicker). Pure UI filter/hint over the
-// already-loaded client list.
-//
-// ADR-042 follow-up (2026-07-28, verified against the wireframe directly):
-// `openRecordFlow`/`ClientRow`'s hint below route via `isFastPathEligible`
-// (new/existing whitelist), matching `Wireframe-Sales-BizLink.html:1590`
-// exactly — an in_progress client reached via the 'all' filter now
-// correctly gets the full form instead of being misrouted to the fast path.
-// The filter chip list and default now also match the wireframe's own
-// `aRecordPickerFilter` initial value (`var aRecordPickerFilter='all'`,
-// line 1549) and its `statuses` array (line 1574: `[['all','All'],
-// ['prospect','Prospect'],['in_progress','In Progress'],['new','New'],
-// ['existing','Existing']]`) — 'existing' was both the wrong default and
-// missing the 'in_progress' chip before this fix.
-type RecordPickerFilter = ClientStatus | 'all';
-const RECORD_PICKER_FILTERS: Array<{ value: RecordPickerFilter; label: string }> = [
-  { value: 'all', label: 'All' },
-  { value: 'prospect', label: 'Prospect' },
-  { value: 'in_progress', label: 'In Progress' },
-  { value: 'new', label: 'New' },
-  { value: 'existing', label: 'Existing' },
-];
+// Same "no city selected" sentinel as My Clients' `ALL_CITIES`
+// (app/(tabs)/clients/index.tsx) — kept local since each screen owns its
+// own filter state, but the value/shape is identical by convention.
+const ALL_CITIES = 'all';
 
-// Wireframe-Sales-BizLink.html:1581 —
-// `var hint = c.status==='prospect' ? 'Qualify Opportunity' :
-// (c.status==='in_progress' ? 'Advance Deal' : (c.status==='new' ?
-// 'New Customer Visit' : 'Existing Customer Visit'));` — four distinct
-// per-status strings, not a binary fast-path/full-form label.
-function recordPickerHint(status: ClientStatus): string {
-  switch (status) {
-    case 'prospect':
-      return 'Qualify Opportunity';
-    case 'in_progress':
-      return 'Advance Deal';
-    case 'new':
-      return 'New Customer Visit';
-    case 'existing':
-    default:
-      return 'Existing Customer Visit';
-  }
-}
-
-/**
- * Record Meeting entry point (ADR-015, revised 2026-07-21; ADR-042 fix
- * 2026-07-28). The branch happens HERE, at client selection — customer type
- * is derived from the record, never asked:
- *   new / existing         → photo-only fast path (record-visit)
- *   prospect / in_progress → full form (record)
- * A 'new' client already has its info completed (ADR-027's auto-promotion
- * requires it) — there's nothing left to re-ask, so it gets the same fast
- * path as 'existing'. Meeting-first (quick-create inline on the record form)
- * was removed 2026-07-15 — a brand-new company is created via Create Client
- * first, then shows up here under Prospect.
- *
- * Matches `Wireframe-Sales-BizLink.html:1592`'s
- * `if(c.status!=='prospect' && c.status!=='in_progress'){ aOpenRecordVisit(id);
- * return; }` — the wireframe whitelists fast-path eligibility to
- * new/existing rather than blacklisting just 'prospect', so a future fifth
- * stage doesn't silently fall into the fast path. `isFastPathEligible`
- * (lib/client-status.ts) already encodes that same new/existing whitelist —
- * reused here instead of re-deriving the condition.
- */
-function openRecordFlow(client: Client, routes: ClientFlowRoutes): void {
-  if (isFastPathEligible(client)) {
-    router.push(routes.recordVisit(client.id));
-  } else {
-    router.push(routes.recordMeeting(client.id));
-  }
-}
-
-function ClientRow({ client }: { client: Client }) {
-  const BIZLINK_COLORS = useBizlinkColors();
-  const routes = useClientFlowRoutes();
-  const status = getClientStatus(client);
-  const badge = SALES_CLIENT_STATUS_BADGES[status];
-  const hint = recordPickerHint(status);
-  return (
-    <Pressable onPress={() => openRecordFlow(client, routes)}>
-      <XStack
-        alignItems="center"
-        justifyContent="space-between"
-        backgroundColor={BIZLINK_COLORS.card}
-        borderRadius={20}
-        padding={16}
-        marginBottom={10}
-      >
-        <YStack gap="$0.5" flex={1}>
-          <Text fontFamily={BIZLINK_FONTS.semibold} fontSize={14} color={BIZLINK_COLORS.text}>{client.company_name}</Text>
-          <Text fontSize={11.5} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted}>{hint}</Text>
-        </YStack>
-        <StatusBadge {...badge} />
-      </XStack>
-    </Pressable>
-  );
+// Same helper duplicated locally in My Clients and My Meetings
+// (isWithinDateRange) — each screen owns its own filter state, so per that
+// existing convention this stays local rather than a one-off shared import.
+function isWithinDateRange(date: Date, range: DateRange | null): boolean {
+  if (!range) return true;
+  const t = date.getTime();
+  const start = new Date(range.start.getFullYear(), range.start.getMonth(), range.start.getDate()).getTime();
+  const end = new Date(range.end.getFullYear(), range.end.getMonth(), range.end.getDate(), 23, 59, 59, 999).getTime();
+  return t >= start && t <= end;
 }
 
 export default function SelectClientScreen() {
   const insets = useSafeAreaInsets();
   const BIZLINK_COLORS = useBizlinkColors();
   const { clients, loading, refresh } = useClients();
+  const { profileId } = useSession();
+  // 2026-08-09 (Vince direct instruction): distinguishes "this row's client
+  // has a meeting actually running right now" from the `status` lifecycle
+  // badge — re-fetched on focus by the hook itself, same source that
+  // already powers the Home dashboard alert/tile glow.
+  const { activeMeetingClientIds } = useActiveMeetingDrafts(profileId);
   // Wireframe-Sales-BizLink.html:1549 — `var aRecordSelectedClientId = null,
   // aRecordPickerFilter = 'all';` — default filter is 'all', not 'existing'.
   const [statusFilter, setStatusFilter] = useState<RecordPickerFilter>('all');
+  const [search, setSearch] = useState('');
+  // Advanced filter housed behind the "Filters" button, same split as My
+  // Clients (app/(tabs)/clients/index.tsx): the primary status dimension
+  // stays as always-visible chips, secondary dimensions live in the sheet.
+  const [filterOpen, setFilterOpen] = useState(false);
+  const [cityFilter, setCityFilter] = useState<string>(ALL_CITIES);
+  const [dateRange, setDateRange] = useState<DateRange | null>(null);
 
   // Without this, a client created via Create Client (or completed via
   // Complete Info) never shows up here until a manual pull-to-refresh or app
@@ -123,10 +63,39 @@ export default function SelectClientScreen() {
   // stay mounted across navigations.
   useFocusEffect(useCallback(() => { refresh(); }, [refresh]));
 
-  const filtered = useMemo(
-    () => (statusFilter === 'all' ? clients : clients.filter((c) => getClientStatus(c) === statusFilter)),
-    [clients, statusFilter]
-  );
+  // Real distinct cities from the local snapshot, same approach as My
+  // Clients — never a hardcoded list.
+  const cityOptions = useMemo(() => {
+    const set = new Set<string>();
+    clients.forEach((c) => { if (c.city) set.add(c.city); });
+    return Array.from(set).sort((a, b) => a.localeCompare(b));
+  }, [clients]);
+
+  // Wireframe-Sales-BizLink.html:1759-1764 (`aRenderRecordPicker`) — search
+  // by company name or city, case-insensitive, applied after the status
+  // filter, same order as the My Clients / Lost Opportunities pickers.
+  const filtered = useMemo(() => {
+    const query = search.trim().toLowerCase();
+    return clients.filter((c) => {
+      if (statusFilter !== 'all' && getClientStatus(c) !== statusFilter) return false;
+      if (cityFilter !== ALL_CITIES && c.city !== cityFilter) return false;
+      if (!isWithinDateRange(new Date(c.created_at), dateRange)) return false;
+      if (query) {
+        const matchesName = c.company_name.toLowerCase().includes(query);
+        const matchesCity = (c.city ?? '').toLowerCase().includes(query);
+        if (!matchesName && !matchesCity) return false;
+      }
+      return true;
+    });
+  }, [clients, statusFilter, cityFilter, dateRange, search]);
+
+  // Wireframe-Sales-BizLink.html:1765-1773 (`aRenderPager`, page size 10) —
+  // reuses the same `usePagination` hook as My Clients/Lost Opportunities;
+  // resets to page 1 on any filter/search change via the resetKey.
+  const resetKey = `${statusFilter}:${cityFilter}:${dateRange ? `${dateRange.start.getTime()}-${dateRange.end.getTime()}` : 'all'}:${search.trim().toLowerCase()}`;
+  const { page, totalPages, pageItems, setPage } = usePagination(filtered, resetKey);
+  const filtersActive = cityFilter !== ALL_CITIES || dateRange !== null;
+  const resetFilters = (): void => { setCityFilter(ALL_CITIES); setDateRange(null); };
 
   return (
     <YStack flex={1} backgroundColor={BIZLINK_COLORS.canvas} paddingTop={insets.top}>
@@ -137,16 +106,70 @@ export default function SelectClientScreen() {
         </Text>
       </YStack>
 
-      <XStack paddingHorizontal="$4" gap="$2" flexWrap="wrap" marginBottom="$2.5">
-        {RECORD_PICKER_FILTERS.map((f) => (
-          <BizChip
-            key={f.value}
-            label={f.label}
-            selected={statusFilter === f.value}
-            onPress={() => setStatusFilter(f.value)}
+      <YStack paddingHorizontal="$4" marginBottom="$2.5" gap="$2.5">
+        <XStack gap="$2" alignItems="center">
+          <TextInput
+            value={search}
+            onChangeText={setSearch}
+            placeholder="Search company or city…"
+            placeholderTextColor={BIZLINK_COLORS.muted}
+            style={{
+              flex: 1,
+              height: 52,
+              borderRadius: 16,
+              paddingHorizontal: 16,
+              fontFamily: BIZLINK_FONTS.medium,
+              fontSize: 14.5,
+              color: BIZLINK_COLORS.text,
+              backgroundColor: BIZLINK_COLORS.card,
+              borderWidth: 1,
+              borderColor: BIZLINK_COLORS.line,
+            }}
           />
-        ))}
-      </XStack>
+          <Pressable
+            accessibilityLabel="Toggle filters"
+            onPress={() => setFilterOpen((open) => !open)}
+            style={{
+              flexDirection: 'row',
+              alignItems: 'center',
+              gap: 6,
+              backgroundColor: filterOpen || filtersActive ? BIZLINK_COLORS.ink : BIZLINK_COLORS.card,
+              borderRadius: 16,
+              paddingHorizontal: 14,
+              height: 52,
+              borderWidth: 1,
+              borderColor: filterOpen || filtersActive ? BIZLINK_COLORS.ink : BIZLINK_COLORS.line,
+            }}
+          >
+            <SlidersHorizontal
+              size={16}
+              color={filterOpen || filtersActive ? BIZLINK_ON_INK.solid : BIZLINK_COLORS.muted}
+              strokeWidth={1.75}
+            />
+            <Text
+              fontSize={11.5}
+              fontFamily={BIZLINK_FONTS.medium}
+              color={filterOpen || filtersActive ? BIZLINK_ON_INK.solid : BIZLINK_COLORS.muted}
+            >
+              Filters
+            </Text>
+          </Pressable>
+        </XStack>
+        <BizFilterScroll options={RECORD_PICKER_FILTERS} value={statusFilter} onChange={setStatusFilter} />
+      </YStack>
+
+      <BizFilterSheet visible={filterOpen} onClose={() => setFilterOpen(false)} filtersActive={filtersActive} onReset={resetFilters}>
+        <DateRangeFilterRow range={dateRange} onApply={setDateRange} />
+
+        <BizFilterSheetRow label="City" value={cityFilter === ALL_CITIES ? 'All cities' : cityFilter}>
+          <XStack gap="$2" flexWrap="wrap">
+            <BizChip label="All cities" selected={cityFilter === ALL_CITIES} onPress={() => setCityFilter(ALL_CITIES)} />
+            {cityOptions.map((city) => (
+              <BizChip key={city} label={city} selected={cityFilter === city} onPress={() => setCityFilter(city)} />
+            ))}
+          </XStack>
+        </BizFilterSheetRow>
+      </BizFilterSheet>
 
       {loading && !clients.length ? (
         <YStack flex={1} justifyContent="center" alignItems="center">
@@ -154,10 +177,16 @@ export default function SelectClientScreen() {
         </YStack>
       ) : (
         <FlatList
-          data={filtered}
+          data={pageItems}
           keyExtractor={(item) => item.id}
-          contentContainerStyle={{ paddingHorizontal: 16 }}
-          renderItem={({ item }) => <ClientRow client={item} />}
+          contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 120 + insets.bottom }}
+          renderItem={({ item, index }) => (
+            <RecordPickerRow
+              client={item}
+              rowNumber={(page - 1) * PAGINATION_PAGE_SIZE + index + 1}
+              isMeetingActive={activeMeetingClientIds.has(item.id)}
+            />
+          )}
           refreshControl={<RefreshControl refreshing={loading} onRefresh={refresh} />}
           ListEmptyComponent={
             <YStack flex={1} justifyContent="center" alignItems="center" padding="$8">
@@ -168,6 +197,10 @@ export default function SelectClientScreen() {
           }
         />
       )}
+
+      {filtered.length > 0 ? (
+        <BizFloatingPager page={page} totalPages={totalPages} onPageChange={setPage} bottomOffset={insets.bottom + 16} />
+      ) : null}
     </YStack>
   );
 }

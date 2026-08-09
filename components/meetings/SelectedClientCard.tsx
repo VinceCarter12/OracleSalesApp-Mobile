@@ -1,5 +1,6 @@
 import { Pressable } from 'react-native';
 import { router } from 'expo-router';
+import type { Href } from 'expo-router';
 import { ChartNoAxesCombined } from 'lucide-react-native';
 import { Text, XStack, YStack } from 'tamagui';
 import { useBizlinkColors, BIZLINK_FONTS } from '../../lib/theme';
@@ -13,8 +14,18 @@ import type { ClientJourneyProgress } from '../../lib/client-progress';
 interface SelectedClientCardProps {
   clientName: string | null;
   status: ClientStatus | null;
-  /** Defaults to router.back() — both flows push this screen from the client picker. Ignored when `progress` is set (read-only mode). */
+  /** Defaults to router.back() — both flows normally push this screen from the client picker. Ignored when `progress` is set (read-only mode). */
   onChange?: () => void;
+  /**
+   * 2026-08-09 (Vince bug report — console error "The action 'GO_BACK' was
+   * not handled by any navigator"): the default handler used to call
+   * `router.back()` unconditionally, which throws when this screen is the
+   * first entry in its stack (e.g. cold-start rehydration/deep-link landing
+   * directly on Record Meeting — no picker screen underneath to pop to).
+   * Callers pass their own `routes.home()` here so the default handler has
+   * somewhere safe to go when there's genuinely nothing to go back to.
+   */
+  fallbackHref?: Href;
   /**
    * Meeting Detail / Client Journey's read-only composition (2026-08-04
    * handoff): when set, this card hides the "Palitan" change action (there
@@ -38,9 +49,16 @@ interface SelectedClientCardProps {
  * Parity Audit 2026-08-03 item 3. Extracted so record.tsx (already near the
  * 300-line file cap) stays under it.
  */
-export function SelectedClientCard({ clientName, status, onChange, progress }: SelectedClientCardProps) {
+export function SelectedClientCard({ clientName, status, onChange, progress, fallbackHref }: SelectedClientCardProps) {
   const BIZLINK_COLORS = useBizlinkColors();
   const badge = status ? SALES_CLIENT_STATUS_BADGES[status] : null;
+  function defaultOnChange(): void {
+    if (router.canGoBack()) {
+      router.back();
+    } else if (fallbackHref) {
+      router.replace(fallbackHref);
+    }
+  }
   return (
     <YStack backgroundColor={BIZLINK_COLORS.card} borderRadius={24} padding={16} marginBottom="$3.5">
       <XStack alignItems="center" gap="$3">
@@ -58,7 +76,7 @@ export function SelectedClientCard({ clientName, status, onChange, progress }: S
         </YStack>
         {progress ? null : (
           <Pressable
-            onPress={onChange ?? (() => router.back())}
+            onPress={onChange ?? defaultOnChange}
             style={{ minHeight: 44, minWidth: 44, alignItems: 'center', justifyContent: 'center' }}
             hitSlop={8}
           >

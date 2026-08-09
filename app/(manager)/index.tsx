@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useState } from 'react';
-import { Pressable, ScrollView } from 'react-native';
+import { Pressable, RefreshControl, ScrollView } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router, useFocusEffect } from 'expo-router';
 import { Bell, Building2, Ellipsis, History, Hourglass, PenLine, Users } from 'lucide-react-native';
@@ -18,6 +18,7 @@ import { BizStatCard } from '../../components/bizlink/BizStatCard';
 import { BizHeroCard } from '../../components/bizlink/BizHeroCard';
 import { BizSectionHeader } from '../../components/bizlink/BizSectionHeader';
 import { BizQuickAction } from '../../components/bizlink/BizQuickAction';
+import { BizButton } from '../../components/bizlink/BizButton';
 import { BizScopeFilter } from '../../components/bizlink/BizScopeFilter';
 import { AvatarStatusRing } from '../../components/bizlink/AvatarStatusRing';
 import { SyncStatusChip } from '../../components/sync/SyncStatusChip';
@@ -81,11 +82,16 @@ export default function ManagerDashboardScreen() {
   // scope selection, closing the divergence between this screen's aggregates
   // and Team Overview's.
   const { scope } = useManagerScope();
-  const { summary, loading } = useManagerDashboard(scope);
+  const { summary, error, refresh: refreshDashboard } = useManagerDashboard(scope);
   // B-054 Phase 1 item 6: real "this week" trend numbers for the two stat
   // captions below.
-  const { overview } = useTeamOverview(scope);
+  const { overview, reload: refreshOverview } = useTeamOverview(scope);
   const { fullName, profileId, role } = useSession();
+  // Pull-to-refresh spinner must be bound to a user-gesture-only flag, not
+  // either hook's own `loading`/`overviewLoading` (both also flip on
+  // mount/refocus, since each hook independently re-fetches on
+  // useFocusEffect) — see app/(tabs)/index.tsx's twin.
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const [syncSheetOpen, setSyncSheetOpen] = useState(false);
   // B-023: see app/(tabs)/index.tsx's twin — remounts the chip on sheet-close.
   const [syncChipKey, setSyncChipKey] = useState(0);
@@ -111,10 +117,23 @@ export default function ManagerDashboardScreen() {
 
   useFocusEffect(useCallback(() => { loadPendingTagAlong(); }, [loadPendingTagAlong]));
 
-  if (loading || !summary) {
+  // Only show the full-screen spinner on the true initial load (no data
+  // yet) — a pull-to-refresh also sets `loading` true, and that must show
+  // the RefreshControl's own spinner over existing content, not blank the
+  // whole screen.
+  if (!summary) {
     return (
       <YStack flex={1} justifyContent="center" alignItems="center" backgroundColor={BIZLINK_COLORS.canvas}>
         <Spinner size="large" color={BIZLINK_COLORS.brand} />
+      </YStack>
+    );
+  }
+
+  if (error) {
+    return (
+      <YStack flex={1} justifyContent="center" alignItems="center" backgroundColor={BIZLINK_COLORS.canvas} gap="$3" paddingHorizontal="$5">
+        <Text fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} textAlign="center">{error}</Text>
+        <BizButton small label="Ulitin" variant="white" onPress={refreshDashboard} />
       </YStack>
     );
   }
@@ -146,7 +165,22 @@ export default function ManagerDashboardScreen() {
         </Pressable>
       </XStack>
 
-      <ScrollView contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 96 }}>
+      <ScrollView
+        contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 96 }}
+        refreshControl={
+          <RefreshControl
+            refreshing={isRefreshing}
+            onRefresh={async () => {
+              setIsRefreshing(true);
+              try {
+                await Promise.all([refreshDashboard(), refreshOverview()]);
+              } finally {
+                setIsRefreshing(false);
+              }
+            }}
+          />
+        }
+      >
         <BizScopeFilter />
 
         <XStack gap={10} marginTop={6}>

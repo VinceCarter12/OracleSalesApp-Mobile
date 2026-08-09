@@ -2,7 +2,7 @@ import { useCallback, useMemo, useState } from 'react';
 import { FlatList, Pressable, RefreshControl, ScrollView, TextInput } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router, useFocusEffect } from 'expo-router';
-import { Calendar, ChevronLeft, ChevronRight, Handshake, Plus, SlidersHorizontal } from 'lucide-react-native';
+import { Handshake, Plus, SlidersHorizontal } from 'lucide-react-native';
 import { Spinner, Text, XStack, YStack } from 'tamagui';
 import { useBizlinkColors, BIZLINK_FONTS, BIZLINK_ON_INK } from '../../../lib/theme';
 import { useMeetings } from '../../../lib/useMeetings';
@@ -11,15 +11,12 @@ import { useSession } from '../../../lib/session-store';
 import { getMyCompanionRequests } from '../../../lib/tag-along-service';
 import { formatMeetingLocation } from '../../../lib/format-meeting-location';
 import { MeetingRow } from '../../../components/meetings/MeetingRow';
-import {
-  MeetingFilterPanel,
-  ALL_LOCATIONS,
-  ALL_AGENDAS,
-  type LocationFilter,
-  type AgendaFilter,
-  type MeetingSortOption,
-} from '../../../components/meetings/MeetingFilterPanel';
+import { MeetingFilterPanel, ALL_LOCATIONS, ALL_AGENDAS, type LocationFilter, type AgendaFilter, type MeetingSortOption, type ClientStatusFilter } from '../../../components/meetings/MeetingFilterPanel';
+import { getClientStatus } from '../../../lib/client-status';
 import { BizChip } from '../../../components/bizlink/BizChip';
+import { BizFilterSheet } from '../../../components/bizlink/BizFilterSheet';
+import { DateRangeFilterRow } from '../../../components/bizlink/DateRangeFilterRow';
+import type { DateRange } from '../../../components/bizlink/DateRangePickerModal';
 import { BizFloatingPager } from '../../../components/bizlink/BizFloatingPager';
 import { BizTopBar } from '../../../components/bizlink/BizTopBar';
 import { PAGINATION_PAGE_SIZE, usePagination } from '../../../lib/use-pagination';
@@ -55,20 +52,13 @@ const OUTCOME_FILTERS: Array<{ value: OutcomeFilter; label: string }> = [
   })),
 ];
 
-/** `YYYY-MM` key for a Date, used by the month selector and filter matching. */
-function monthKey(date: Date): string {
-  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
-}
-
-function shiftMonthKey(key: string, delta: number): string {
-  const [year, month] = key.split('-').map(Number);
-  const shifted = new Date(year, month - 1 + delta, 1);
-  return monthKey(shifted);
-}
-
-function formatMonthKey(key: string): string {
-  const [year, month] = key.split('-').map(Number);
-  return new Date(year, month - 1, 1).toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
+/** Inclusive day-level bounds check against a `DateRangeFilterRow` selection. */
+function isWithinDateRange(date: Date, range: DateRange | null): boolean {
+  if (!range) return true;
+  const t = date.getTime();
+  const start = new Date(range.start.getFullYear(), range.start.getMonth(), range.start.getDate()).getTime();
+  const end = new Date(range.end.getFullYear(), range.end.getMonth(), range.end.getDate(), 23, 59, 59, 999).getTime();
+  return t >= start && t <= end;
 }
 
 export default function MeetingsScreen() {
@@ -80,9 +70,10 @@ export default function MeetingsScreen() {
   useFocusEffect(useCallback(() => { refresh(); }, [refresh]));
   const [filter, setFilter] = useState<OutcomeFilter>('all');
   const [search, setSearch] = useState('');
-  const [monthFilter, setMonthFilter] = useState<string | null>(null);
+  const [dateRange, setDateRange] = useState<DateRange | null>(null);
   const [locationFilter, setLocationFilter] = useState<LocationFilter>(ALL_LOCATIONS);
   const [agendaFilter, setAgendaFilter] = useState<AgendaFilter>(ALL_AGENDAS);
+  const [clientStatusFilter, setClientStatusFilter] = useState<ClientStatusFilter>('all');
   const [sort, setSort] = useState<MeetingSortOption>('newest');
   const [filterOpen, setFilterOpen] = useState(false);
   const [tagAlongMeetingIds, setTagAlongMeetingIds] = useState<Set<string>>(new Set());
@@ -107,29 +98,39 @@ export default function MeetingsScreen() {
     return map;
   }, [clients]);
 
-  const currentMonthKeyValue = monthKey(new Date());
-
   const filtered = useMemo(() => {
     const query = search.trim().toLowerCase();
     const matched = meetings.filter((m) => {
       if (filter !== 'all' && m.outcome !== filter) return false;
-      if (monthFilter && monthKey(new Date(m.logged_at)) !== monthFilter) return false;
+      if (!isWithinDateRange(new Date(m.logged_at), dateRange)) return false;
       if (locationFilter !== ALL_LOCATIONS && m.location_type !== locationFilter) return false;
       if (agendaFilter !== ALL_AGENDAS && !m.agendas.includes(agendaFilter)) return false;
+      if (clientStatusFilter !== 'all') {
+        const client = m.client_id ? clientsById.get(m.client_id) : undefined;
+        if (!client || getClientStatus(client) !== clientStatusFilter) return false;
+      }
       if (!query) return true;
       const location = formatMeetingLocation(m) ?? '';
       return (m.client_name ?? '').toLowerCase().includes(query) || location.toLowerCase().includes(query);
     });
     return sortMeetings(matched, sort);
-  }, [meetings, filter, monthFilter, locationFilter, agendaFilter, search, sort]);
+  }, [meetings, filter, dateRange, locationFilter, agendaFilter, clientStatusFilter, clientsById, search, sort]);
 
   // Reset to page 1 whenever any filter/search input changes, matching the
   // wireframe's aFiltMeetings/aSearchMeetings/aSetMeetingMonth (each sets
   // aMeetingPage=1) — same pattern as My Clients (lib/use-pagination.ts).
-  const resetKey = `${filter}:${monthFilter ?? 'all'}:${locationFilter}:${agendaFilter}:${sort}:${search.trim().toLowerCase()}`;
+  const resetKey = `${filter}:${dateRange ? `${dateRange.start.getTime()}-${dateRange.end.getTime()}` : 'all'}:${locationFilter}:${agendaFilter}:${clientStatusFilter}:${sort}:${search.trim().toLowerCase()}`;
   const { page, totalPages, pageItems, setPage } = usePagination(filtered, resetKey);
 
-  const filtersActive = locationFilter !== ALL_LOCATIONS || agendaFilter !== ALL_AGENDAS || sort !== 'newest';
+  const filtersActive = dateRange !== null || locationFilter !== ALL_LOCATIONS || agendaFilter !== ALL_AGENDAS || clientStatusFilter !== 'all' || sort !== 'newest';
+
+  const resetFilters = (): void => {
+    setDateRange(null);
+    setLocationFilter(ALL_LOCATIONS);
+    setAgendaFilter(ALL_AGENDAS);
+    setClientStatusFilter('all');
+    setSort('newest');
+  };
 
   return (
     <YStack flex={1} backgroundColor={BIZLINK_COLORS.canvas} paddingTop={insets.top}>
@@ -156,92 +157,70 @@ export default function MeetingsScreen() {
         }
       />
 
-      <XStack paddingHorizontal="$4" gap="$2" alignItems="center">
-        <XStack alignItems="center" backgroundColor={BIZLINK_COLORS.card} borderRadius={999} paddingHorizontal={4} minHeight={44}>
+      <YStack paddingHorizontal="$4" gap="$2.5" marginTop="$2" marginBottom="$3">
+        <XStack gap="$2" alignItems="center">
+          <TextInput
+            value={search}
+            onChangeText={setSearch}
+            placeholder="Search company or location…"
+            placeholderTextColor={BIZLINK_COLORS.muted}
+            style={{
+              flex: 1,
+              height: 52,
+              borderRadius: 16,
+              paddingHorizontal: 16,
+              fontFamily: BIZLINK_FONTS.medium,
+              fontSize: 14.5,
+              color: BIZLINK_COLORS.text,
+              backgroundColor: BIZLINK_COLORS.card,
+              borderWidth: 1,
+              borderColor: BIZLINK_COLORS.line,
+            }}
+          />
           <Pressable
-            accessibilityLabel="Previous month"
-            onPress={() => setMonthFilter(shiftMonthKey(monthFilter ?? currentMonthKeyValue, -1))}
-            style={{ width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center' }}
+            accessibilityLabel="Toggle filters"
+            onPress={() => setFilterOpen((open) => !open)}
+            style={{
+              flexDirection: 'row',
+              alignItems: 'center',
+              gap: 6,
+              backgroundColor: filterOpen || filtersActive ? BIZLINK_COLORS.ink : BIZLINK_COLORS.card,
+              borderRadius: 16,
+              paddingHorizontal: 14,
+              height: 52,
+              borderWidth: 1,
+              borderColor: filterOpen || filtersActive ? BIZLINK_COLORS.ink : BIZLINK_COLORS.line,
+            }}
           >
-            <ChevronLeft size={13} color={BIZLINK_COLORS.muted} strokeWidth={1.75} />
-          </Pressable>
-          <Pressable
-            accessibilityLabel="Toggle month filter"
-            onPress={() => setMonthFilter(monthFilter ? null : currentMonthKeyValue)}
-            style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 4 }}
-          >
-            <Calendar size={12} color={BIZLINK_COLORS.muted} strokeWidth={1.75} />
-            <Text fontSize={11.5} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted}>
-              {monthFilter ? formatMonthKey(monthFilter) : 'All months'}
+            <SlidersHorizontal
+              size={16}
+              color={filterOpen || filtersActive ? BIZLINK_ON_INK.solid : BIZLINK_COLORS.muted}
+              strokeWidth={1.75}
+            />
+            <Text
+              fontSize={11.5}
+              fontFamily={BIZLINK_FONTS.medium}
+              color={filterOpen || filtersActive ? BIZLINK_ON_INK.solid : BIZLINK_COLORS.muted}
+            >
+              Filters
             </Text>
           </Pressable>
-          <Pressable
-            accessibilityLabel="Next month"
-            onPress={() => setMonthFilter(shiftMonthKey(monthFilter ?? currentMonthKeyValue, 1))}
-            style={{ width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center' }}
-          >
-            <ChevronRight size={13} color={BIZLINK_COLORS.muted} strokeWidth={1.75} />
-          </Pressable>
         </XStack>
-
-        <Pressable
-          onPress={() => setFilterOpen((open) => !open)}
-          style={{
-            flexDirection: 'row',
-            alignItems: 'center',
-            gap: 6,
-            backgroundColor: filterOpen || filtersActive ? BIZLINK_COLORS.ink : BIZLINK_COLORS.card,
-            borderRadius: 999,
-            paddingHorizontal: 13,
-            paddingVertical: 7,
-            minHeight: 44,
-          }}
-        >
-          <SlidersHorizontal
-            size={12}
-            color={filterOpen || filtersActive ? BIZLINK_ON_INK.solid : BIZLINK_COLORS.muted}
-            strokeWidth={1.75}
-          />
-          <Text
-            fontSize={11.5}
-            fontFamily={BIZLINK_FONTS.medium}
-            color={filterOpen || filtersActive ? BIZLINK_ON_INK.solid : BIZLINK_COLORS.muted}
-          >
-            Filters
-          </Text>
-        </Pressable>
-      </XStack>
-
-      <YStack paddingHorizontal="$4" gap="$2.5" marginTop="$2">
-        <TextInput
-          value={search}
-          onChangeText={setSearch}
-          placeholder="Search company or location…"
-          placeholderTextColor={BIZLINK_COLORS.muted}
-          style={{
-            height: 52,
-            borderRadius: 16,
-            paddingHorizontal: 16,
-            fontFamily: BIZLINK_FONTS.medium,
-            fontSize: 14.5,
-            color: BIZLINK_COLORS.text,
-            backgroundColor: BIZLINK_COLORS.card,
-            borderWidth: 1,
-            borderColor: BIZLINK_COLORS.line,
-          }}
-        />
-
-        {filterOpen ? (
-          <MeetingFilterPanel
-            locationFilter={locationFilter}
-            onLocationChange={setLocationFilter}
-            agendaFilter={agendaFilter}
-            onAgendaChange={setAgendaFilter}
-            sort={sort}
-            onSortChange={setSort}
-          />
-        ) : null}
       </YStack>
+
+      <BizFilterSheet visible={filterOpen} onClose={() => setFilterOpen(false)} filtersActive={filtersActive} onReset={resetFilters}>
+        <DateRangeFilterRow range={dateRange} onApply={setDateRange} />
+        <MeetingFilterPanel
+          locationFilter={locationFilter}
+          onLocationChange={setLocationFilter}
+          agendaFilter={agendaFilter}
+          onAgendaChange={setAgendaFilter}
+          clientStatusFilter={clientStatusFilter}
+          onClientStatusChange={setClientStatusFilter}
+          sort={sort}
+          onSortChange={setSort}
+        />
+      </BizFilterSheet>
 
       <ScrollView
         horizontal

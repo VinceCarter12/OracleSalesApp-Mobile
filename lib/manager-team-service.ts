@@ -61,7 +61,7 @@ async function fetchClientsAndMeetings(
     supabase
       .from('meetings')
       .select(
-        'id, client_id, agent_id, meeting_type, location_type, location_name, gps_lat, gps_lng, agenda, remarks, outcome, contact_person, contact_position, meeting_date, start_captured_at, end_captured_at, created_at'
+        'id, client_id, agent_id, meeting_type, location_type, location_name, gps_lat, gps_lng, agenda, remarks, outcome, contact_person, contact_position, meeting_date, start_captured_at, end_captured_at, created_at, client_status_at_meeting'
       )
       .in('agent_id', agentIds),
   ]);

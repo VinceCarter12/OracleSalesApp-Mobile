@@ -14,6 +14,7 @@ import { BizField } from '../../../components/bizlink/BizField';
 import { BizCard } from '../../../components/bizlink/BizCard';
 import { BizButton } from '../../../components/bizlink/BizButton';
 import { CityMunicipalitySelector } from '../../../components/bizlink/CityMunicipalitySelector';
+import { COMPANY_NAME_MAX_LENGTH } from '../../../lib/field-validation';
 import type { PsgcLocality } from '../../../lib/data/psgc-localities';
 
 // 'unknown' (offline, live check failed and nothing local matched) is
@@ -126,6 +127,7 @@ export default function CreateClientScreen() {
           value={companyName}
           onChangeText={setCompanyName}
           placeholder="e.g. Oracle Petroleum"
+          maxLength={COMPANY_NAME_MAX_LENGTH}
           hint={
             dupState === 'duplicate' ? (
               <Text

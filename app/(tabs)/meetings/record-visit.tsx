@@ -57,11 +57,20 @@ export default function RecordVisitScreen() {
     selectedCompanions, toggleCompanion, companionSelections, companionsPreAccepted,
     mode, setMode, start, starting, elapsedSeconds, startConfirmOpen,
     requestStartMeeting, cancelStartMeeting, confirmStartMeeting, updateDraftAgendas,
-    pendingDraft, resumeDraft, discardDraft, clearDraft,
+    autoResumedAgendas, pendingDraft, resumeDraft, discardDraft, clearDraft,
   } = controller;
 
   const [selectedAgendas, setSelectedAgendas] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
+
+  // Vince 2026-08-09: silent same-process resume path (see record.tsx's
+  // identical render-time adjustment) — the controller already restored
+  // mode/start/companions; agenda ticks are this screen's own state.
+  const [agendasAppliedFor, setAgendasAppliedFor] = useState<string[] | null>(null);
+  if (autoResumedAgendas && autoResumedAgendas !== agendasAppliedFor) {
+    setAgendasAppliedFor(autoResumedAgendas);
+    setSelectedAgendas(autoResumedAgendas);
+  }
 
   function toggleAgenda(agenda: string): void {
     const next = selectedAgendas.includes(agenda)
@@ -136,7 +145,11 @@ export default function RecordVisitScreen() {
     return (
       <YStack flex={1} justifyContent="center" alignItems="center" padding="$6" backgroundColor={BIZLINK_COLORS.canvas} gap="$3">
         <Text fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.text}>Client not found.</Text>
-        <BizButton label="Go back" variant="white" onPress={() => router.back()} />
+        <BizButton
+          label="Go back"
+          variant="white"
+          onPress={() => (router.canGoBack() ? router.back() : router.replace(routes.home()))}
+        />
       </YStack>
     );
   }
@@ -145,7 +158,11 @@ export default function RecordVisitScreen() {
     <YStack flex={1} backgroundColor={BIZLINK_COLORS.canvas} paddingTop={insets.top}>
       <BizTopBar title={`${visitActionName(getClientStatus(client))} — ${client.company_name}`} />
       <ScrollView contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 32 }}>
-        <SelectedClientCard clientName={client.company_name} status={getClientStatus(client)} />
+        <SelectedClientCard
+          clientName={client.company_name}
+          status={getClientStatus(client)}
+          fallbackHref={routes.home()}
+        />
 
         {pendingDraft ? (
           <DraftResumePrompt

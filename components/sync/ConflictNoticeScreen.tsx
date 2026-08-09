@@ -4,6 +4,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AlertCircle, ArrowLeft, GitBranch } from 'lucide-react-native';
 import { Text, View, XStack, YStack } from 'tamagui';
 import { BIZLINK_COLORS, BIZLINK_FONTS } from '../../lib/theme';
+import { COMPANY_NAME_MAX_LENGTH } from '../../lib/field-validation';
 
 // T-014 Phase 1 (ADR-022 §6 + ADR-024 Phase 1): the Conflict Notice screen was
 // only ever built in the wireframes (Wireframe-Sales-BizLink.html's
@@ -242,7 +243,7 @@ export function ConflictNoticeScreen({
                 justifyContent="center"
                 backgroundColor={BIZLINK_COLORS.canvas}
               >
-                <RenameTextInput value={renameValue} onChangeText={setRenameValue} placeholder={`${recordLabel} (2)`} />
+                <RenameTextInput value={renameValue} onChangeText={setRenameValue} placeholder={`${recordLabel} (2)`} maxLength={COMPANY_NAME_MAX_LENGTH} />
               </View>
               <Pressable
                 onPress={handleConfirmRename}
@@ -273,10 +274,12 @@ function RenameTextInput({
   value,
   onChangeText,
   placeholder,
+  maxLength,
 }: {
   value: string;
   onChangeText: (text: string) => void;
   placeholder: string;
+  maxLength: number;
 }) {
   return (
     <TextInput
@@ -284,6 +287,7 @@ function RenameTextInput({
       onChangeText={onChangeText}
       placeholder={placeholder}
       placeholderTextColor={BIZLINK_COLORS.muted}
+      maxLength={maxLength}
       style={{ fontSize: 14.5, fontFamily: BIZLINK_FONTS.medium, color: BIZLINK_COLORS.text }}
     />
   );

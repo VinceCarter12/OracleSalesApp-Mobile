@@ -30,13 +30,19 @@ describe('getCompanionRosterForViewer', () => {
     expect(result).toEqual([teammate]);
   });
 
-  it('returns the roster unfiltered for a non-manager viewer — their own manager stays a valid companion', () => {
+  it('strips every teammate tile for a non-manager viewer — only their manager stays a valid companion', () => {
     const result = getCompanionRosterForViewer([manager, teammate], 'sales_specialist');
-    expect(result).toEqual([manager, teammate]);
+    expect(result).toEqual([manager]);
+  });
+
+  it('strips every teammate tile for an RSR viewer too', () => {
+    const result = getCompanionRosterForViewer([manager, teammate], 'rsr');
+    expect(result).toEqual([manager]);
   });
 
   it('returns an empty array unchanged regardless of viewer role', () => {
     expect(getCompanionRosterForViewer([], 'sales_manager')).toEqual([]);
+    expect(getCompanionRosterForViewer([], 'sales_specialist')).toEqual([]);
   });
 
   it('returns the roster unfiltered when the viewer role is null (session not yet resolved)', () => {

@@ -14,6 +14,10 @@ interface BizFieldProps {
   showToggle?: boolean;
   keyboardType?: KeyboardTypeOptions;
   multiline?: boolean;
+  /** Character cap forwarded to the underlying TextInput (validation rules live in lib/field-validation.ts). */
+  maxLength?: number;
+  /** Blur callback, e.g. to reveal a field's inline validation hint after the user leaves it. */
+  onBlur?: () => void;
 }
 
 /**
@@ -33,6 +37,8 @@ export function BizField({
   showToggle = false,
   keyboardType,
   multiline = false,
+  maxLength,
+  onBlur,
 }: BizFieldProps) {
   const BIZLINK_COLORS = useBizlinkColors();
   const [revealed, setRevealed] = useState(false);
@@ -52,6 +58,8 @@ export function BizField({
           secureTextEntry={isSecure}
           keyboardType={keyboardType}
           multiline={multiline}
+          maxLength={maxLength}
+          onBlur={onBlur}
           style={{
             height: multiline ? 74 : 52,
             borderRadius: 16,

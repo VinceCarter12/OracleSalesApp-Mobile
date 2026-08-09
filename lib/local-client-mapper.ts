@@ -47,7 +47,7 @@ export function rowToClient(row: LocalClientRow): Client {
     contact_number: row.contact_number,
     office_address: row.office_address,
     customer_type: 'Dealer',
-    sales_channel: (row.sales_channel as SalesChannel | null) ?? 'Distributor',
+    sales_channel: row.sales_channel as SalesChannel | null,
     status: row.status as ClientStatus | null,
     agent_id: row.agent_id,
     created_at: row.created_at,

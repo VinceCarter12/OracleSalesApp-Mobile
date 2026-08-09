@@ -91,7 +91,7 @@ export default function RecordMeetingScreen() {
     selectedCompanions, toggleCompanion, companionSelections, companionsPreAccepted,
     mode, setMode, start, starting, elapsedSeconds, startConfirmOpen,
     requestStartMeeting, cancelStartMeeting, confirmStartMeeting, updateStartGps, updateDraftAgendas,
-    pendingDraft, resumeDraft, discardDraft, clearDraft,
+    autoResumedAgendas, pendingDraft, resumeDraft, discardDraft, clearDraft,
   } = controller;
 
   const [photoUri, setPhotoUri] = useState<string | null>(null);
@@ -149,6 +149,19 @@ export default function RecordMeetingScreen() {
       cancelled = true;
     };
   }, [db, client]);
+
+  // Vince 2026-08-09: mirrors the DraftResumePrompt's onResume handler
+  // below, but for the SILENT same-process resume path — the controller
+  // already restored mode/start/companions; agenda ticks live in this
+  // screen's own state, so this is the one thing it still has to restore
+  // itself. Adjusted during render (React's "derive state once when an
+  // input becomes ready" pattern), not a useEffect, since it only needs to
+  // run once per resumed draft rather than resubscribe to anything.
+  const [agendasAppliedFor, setAgendasAppliedFor] = useState<string[] | null>(null);
+  if (autoResumedAgendas && autoResumedAgendas !== agendasAppliedFor) {
+    setAgendasAppliedFor(autoResumedAgendas);
+    setSelectedAgendas(autoResumedAgendas);
+  }
 
   async function captureLocation(): Promise<void> {
     setLoadingLocation(true);
@@ -322,7 +335,11 @@ export default function RecordMeetingScreen() {
     <YStack flex={1} backgroundColor={BIZLINK_COLORS.canvas} paddingTop={insets.top}>
       <BizTopBar title={actionName} />
       <ScrollView contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 32 }}>
-        <SelectedClientCard clientName={client?.company_name ?? null} status={client ? getClientStatus(client) : null} />
+        <SelectedClientCard
+          clientName={client?.company_name ?? null}
+          status={client ? getClientStatus(client) : null}
+          fallbackHref={routes.home()}
+        />
 
         <CompanionPicker
           roster={visibleRoster}
@@ -418,22 +435,21 @@ export default function RecordMeetingScreen() {
                   onCapture={capturePoPhoto}
                 />
               }
-            />
-
-            {/* Meeting-Flow Wireframe Parity Audit 2026-08-03 item 6: the
-                selfie capture panel moved from mid-flow (right after Start)
-                to here — immediately before the final CTA, matching
-                Wireframe-Sales-BizLink.html:739-740's "End photo" block
-                placement (after Remarks/Outcome, right before
-                `aSaveMeeting()`). Same capture handler/GPS retry/preview —
-                only the position changed. */}
-            <AutoCapturedPanel
-              loadingLocation={loadingLocation}
-              location={{ lat: start.gpsLat, lng: start.gpsLng }}
-              photoUri={photoUri}
-              onOpenCamera={captureSelfie}
-              onPreviewPress={() => setSelfiePreviewOpen(true)}
-              onRetryLocation={captureLocation}
+              // Layout change (2026-08-09, Vince direct instruction): the
+              // Auto-captured GPS/date-time/selfie block now renders ABOVE
+              // Meeting outcome instead of at the end of the flow, and
+              // Remarks moved below Meeting outcome (directly above Save) —
+              // see MeetingWrapUpSection's own render order.
+              captureSection={
+                <AutoCapturedPanel
+                  loadingLocation={loadingLocation}
+                  location={{ lat: start.gpsLat, lng: start.gpsLng }}
+                  photoUri={photoUri}
+                  onOpenCamera={captureSelfie}
+                  onPreviewPress={() => setSelfiePreviewOpen(true)}
+                  onRetryLocation={captureLocation}
+                />
+              }
             />
 
             <YStack marginTop="$5">

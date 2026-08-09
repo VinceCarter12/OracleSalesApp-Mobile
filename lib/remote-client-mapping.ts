@@ -23,12 +23,16 @@ const SALES_CHANNEL_FROM_REMOTE: Record<RemoteSalesChannel, SalesChannel> = {
   private_label: 'Private Label',
 };
 
-export function toRemoteSalesChannel(channel: SalesChannel): RemoteSalesChannel {
-  return SALES_CHANNEL_TO_REMOTE[channel];
+export function toRemoteSalesChannel(channel: SalesChannel | null | undefined): RemoteSalesChannel | null {
+  return channel ? SALES_CHANNEL_TO_REMOTE[channel] : null;
 }
 
-export function fromRemoteSalesChannel(channel: RemoteSalesChannel | null): SalesChannel {
-  return channel ? SALES_CHANNEL_FROM_REMOTE[channel] : 'Distributor';
+// B-0xx fix (2026-08-09): no longer defaults to 'Distributor' — a client
+// with no channel set yet (new clients, until Complete Info) must read back
+// as null so the info-completion checklist (lib/client-progress.ts) can
+// correctly show it as not-done.
+export function fromRemoteSalesChannel(channel: RemoteSalesChannel | null): SalesChannel | null {
+  return channel ? SALES_CHANNEL_FROM_REMOTE[channel] : null;
 }
 
 /**

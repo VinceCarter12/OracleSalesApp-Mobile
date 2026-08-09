@@ -101,7 +101,11 @@ export interface Client {
   contact_number?: string | null;
   office_address?: string | null;
   customer_type: CustomerType;
-  sales_channel: SalesChannel;
+  // B-0xx fix (2026-08-09): no longer defaulted at creation time — null until
+  // the agent actually picks a channel in Complete Info (see
+  // lib/client-service.ts::createClient() and Bugs.md). The info-completion
+  // checklist (lib/client-progress.ts) relies on this being genuinely unset.
+  sales_channel: SalesChannel | null;
   // Optional until the status column lands in Supabase (T-001). Absent status
   // must resolve to 'prospect' (full form) — see getClientStatus().
   status?: ClientStatus | null;
@@ -178,6 +182,17 @@ export interface Meeting {
   // `SELECT m.*` before this column existed would omit it — treat missing
   // as 'valid' (SQLite's own column default), never as pending.
   validity_status?: MeetingValidityStatus;
+  /**
+   * B-095 fix (2026-08-08, Migration v26): the client's `status` at the
+   * moment THIS meeting was recorded — frozen forever, set once by
+   * `lib/meeting-service.ts::createMeeting()`, never recomputed from the
+   * client's current row. Null for meetings recorded before this column
+   * existed (legacy rows) or with no `client_id` — callers must omit the
+   * lifecycle badge rather than fall back to the live client status. Use
+   * `lib/client-status.ts::getMeetingLifecycleStatus()`, never read this
+   * field directly.
+   */
+  client_status_at_meeting?: ClientStatus | null;
 }
 
 /** ADR-046 correction addendum: mirrors the wireframe's `meeting.validityStatus` field name/values exactly (Wireframe-Sales-BizLink.html). */
@@ -316,6 +331,14 @@ export interface TeamMeeting {
   // Timeframe chip via `lib/report-timeframe.ts::filterMeetingsByTimeframe()`
   // — the pre-formatted `date` string above can't be parsed back reliably.
   meetingDateIso?: string;
+  /**
+   * B-095 fix (2026-08-08): mirrors `Meeting.client_status_at_meeting` — the
+   * client's status frozen at the moment this meeting was recorded, never
+   * the client's live status. Null for legacy meetings (pre-Migration v26)
+   * or rows read via a path that doesn't select the column yet (Executive,
+   * out of scope this batch). Use `getMeetingLifecycleStatus()`.
+   */
+  clientStatusAtMeeting?: ClientStatus | null;
 }
 
 // ─── Tag-Along companion selector (ADR-030, F-015) ─────────────────────────────

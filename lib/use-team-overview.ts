@@ -13,9 +13,8 @@ export interface UseTeamOverview {
 
 /**
  * B-054 Phase 1: real Manager team-wide data — see `lib/manager-team-service.ts`.
- * Unlike `lib/useManagerDashboard.ts` (which never surfaces a load failure to
- * the UI, a known gap), this hook has a real `error` state so screens can
- * show a retry affordance instead of spinning forever.
+ * Has a real `error` state so screens can show a retry affordance instead of
+ * spinning forever.
  *
  * `scope` (B-073, ADR-052 §G) defaults to `DEFAULT_MANAGER_SCOPE` ('combined')
  * — this reproduces `fetchTeamOverview()`'s pre-existing always-include-the-
