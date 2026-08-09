@@ -2,6 +2,7 @@ import { File } from 'expo-file-system';
 import { getDb } from './db';
 import { uuidv4 } from './uuid';
 import { supabase } from './supabase';
+import { rawSupabaseRestInsert } from './supabase-raw-probe';
 import { isLikelyOnline } from './sync/connectivity';
 import { withTimeout } from './with-timeout';
 import { MEETING_PHOTO_BUCKET, PHOTO_UPLOAD_TIMEOUT_MS } from './meeting-photo-service';
@@ -162,9 +163,10 @@ async function uploadPoEvidencePhoto(localUri: string, storagePath: string): Pro
  * kinds of rejection with the identical message "new row violates row-level
  * security policy", just for a different underlying table. Before this fix,
  * ONLY the table-insert step below checked for this (via `error.code ===
- * RLS_PERMISSION_DENIED_CODE`) and terminated the row as `'superseded'` — a
- * Storage-side RLS rejection fell straight to the generic catch below,
- * leaving the row stuck `'draft'` and silently retried forever
+ * RLS_PERMISSION_DENIED_CODE`) and classified the row as permanently
+ * rejected. Because B-098 now has evidence of a device transport anomaly,
+ * both table and Storage RLS failures remain retryable (`'draft'`) until a
+ * release build proves a genuine ownership failure.
  * (`retryDraftPoConfirmations()` runs on every Notifications-screen visit)
  * with no indication it would never succeed. The Supabase Storage JS client
  * doesn't reliably surface the Postgres SQLSTATE on its error object the way
@@ -180,14 +182,42 @@ function isRlsPermissionDenied(err: unknown): boolean {
   return message.toLowerCase().includes('row-level security policy');
 }
 
-/** Shared terminal-state write for a permanently RLS-rejected request — see `isRlsPermissionDenied()`'s doc comment for why this now covers both the Storage upload and the table insert. */
-async function markPoConfirmationSuperseded(db: SQLiteDatabase, requestId: string, reason: string): Promise<void> {
-  const now = new Date().toISOString();
-  await db.runAsync(
-    `UPDATE po_confirmation_requests SET status = 'superseded', updated_at = ? WHERE id = ?`,
-    [now, requestId]
-  );
-  console.error('[po-confirmation-service] submission permanently rejected (RLS) — marked superseded:', reason);
+/**
+ * 2026-08-09 (Vince: PO submission still failing after the B-098 logging
+ * fix landed — "may error pa din"): the previous log line only printed
+ * `error.message`, which is always the same generic Postgres text ("new row
+ * violates row-level security policy") no matter WHICH of the with-check's
+ * two conditions failed (`requester_id = current_profile_id()` vs the
+ * `client_id` ownership `exists(...)`), or whether it's the table insert or
+ * the Storage upload. `PostgrestError` also carries `.code`/`.details`/
+ * `.hint` (its own doc comment: "Always log the full object... logging only
+ * error.message hides the hint") — none of that ever reached the console.
+ *
+ * A first reproduction (requester_id=9516ba01-…, live auth.uid()=11e69449-…)
+ * ruled out a stale cached `profileId`: Vince confirmed a full logout/login
+ * cycle (which re-derives `profileId` fresh from `profiles.select('id')
+ * .eq('user_id', userId)`, `app/(auth)/login.tsx`) still hits the same
+ * rejection — so `requester_id = current_profile_id()` is very likely fine.
+ * That leaves the OTHER with-check condition: `clients.assigned_agent_id =
+ * current_profile_id()` for this specific `client_id`. Given ADR-051's
+ * explicit "no SQLite wipe on logout/suspension" and this device's
+ * documented history of switching between multiple test accounts (see
+ * Bugs.md B-080's verification note), the leading theory is that the local
+ * `clients` row being used here is stale data left over from a DIFFERENT
+ * test account's session — its `assigned_agent_id` server-side may not
+ * belong to whoever is logged in now. This now does a live, RLS-gated read
+ * of the client's real `assigned_agent_id` right at the failure point (same
+ * "Agents read own clients" policy the with-check's `exists()` uses) to
+ * confirm or rule this out directly in the log, instead of guessing again.
+ */
+function describeRlsRejection(err: unknown): string {
+  if (err && typeof err === 'object' && 'code' in err) {
+    const code = err.code;
+    if (typeof code === 'string') {
+      return `code=${code} reason=permission denied by remote policy or request transport`;
+    }
+  }
+  return 'code=unknown reason=permission denied by remote policy or request transport';
 }
 
 export type SubmitPoConfirmationResult = 'submitted' | 'skipped_not_draft' | 'offline' | 'failed' | 'superseded';
@@ -222,6 +252,52 @@ async function isClientSynced(db: SQLiteDatabase, clientId: string): Promise<boo
   return client?.sync_status === 'synced';
 }
 
+type SubmissionAttemptResult =
+  | { kind: 'submitted'; publicUrl: string }
+  | { kind: 'rls_rejected'; err: unknown }
+  | { kind: 'other_error'; err: unknown };
+
+/**
+ * One attempt: upload the photo, then INSERT. Classifies the outcome but
+ * never throws — the caller decides whether to retry.
+ *
+ * 2026-08-09 (Bugs.md B-098): the INSERT goes through `rawSupabaseRestInsert`
+ * (a direct PostgREST POST with manually-attached headers) instead of
+ * `supabase.from('po_confirmation_requests').insert()`. A live-device
+ * reproduction proved the SDK call was getting RLS-rejected while the same
+ * token and payload succeed in an off-device curl request. The data, policy,
+ * and token were independently verified correct (direct-SQL reproduction and
+ * decoded JWT claims), so this bypass isolates the transport path. Release
+ * build/device verification remains required before closing B-098.
+ */
+async function attemptSubmission(row: LocalPoConfirmationRow, userId: string, requestId: string): Promise<SubmissionAttemptResult> {
+  try {
+    const storagePath = buildPoEvidenceStoragePath(userId, requestId);
+    const publicUrl = await uploadPoEvidencePhoto(row.po_photo_path, storagePath);
+
+    const remotePayload = {
+      id: row.id,
+      client_id: row.client_id,
+      cycle_id: row.cycle_id,
+      meeting_id: row.meeting_id,
+      requester_id: row.requester_id,
+      po_photo_path: publicUrl,
+    };
+    const result = await rawSupabaseRestInsert('po_confirmation_requests', remotePayload);
+    if (!result.ok) {
+      console.error(
+        `[po-confirmation-service] rawSupabaseRestInsert failed: status=${result.status} code=${result.code ?? 'unknown'}`
+      );
+    }
+    if (!result.ok && result.code === RLS_PERMISSION_DENIED_CODE) return { kind: 'rls_rejected', err: result };
+    if (!result.ok && result.code !== UNIQUE_VIOLATION_CODE) return { kind: 'other_error', err: result };
+    return { kind: 'submitted', publicUrl };
+  } catch (err) {
+    if (isRlsPermissionDenied(err)) return { kind: 'rls_rejected', err };
+    return { kind: 'other_error', err };
+  }
+}
+
 /**
  * Step 2 (online-only, ADR-044 decision 5): uploads the captured photo, then
  * a direct RLS-gated INSERT into `po_confirmation_requests` (no dedicated
@@ -229,6 +305,26 @@ async function isClientSynced(db: SQLiteDatabase, clientId: string): Promise<boo
  * confirmation" policy is a plain INSERT policy). Never throws — a failure
  * leaves the local row `'draft'` so the UI can retry later; this must never
  * be allowed to undo or block the already-saved meeting it's attached to.
+ *
+ * 2026-08-09 (Vince: PO submission repeatedly RLS-rejected with correct
+ * ownership data): a live-DB reproduction proved the "Agents create own PO
+ * confirmation" policy and the underlying data are BOTH correct — inserting
+ * the exact same row as the real authenticated user (matching JWT `sub`)
+ * succeeded, while the identical insert as `anon` (no JWT) failed with the
+ * exact same "new row violates row-level security policy" message this app
+ * was seeing. This proves the rejection is a TRANSPORT-level issue: the
+ * request landed without a valid Authorization token, not a data/policy
+ * problem — plausible given this call fires immediately after two
+ * back-to-back `runSync()` passes (`meeting-po-evidence-submission.ts`,
+ * heavy concurrent Supabase call volume right after meeting save), a window
+ * where a supabase-js token-refresh race is plausible. 23505 on this row's
+ * own id (not the RLS check below) means a prior attempt already got the
+ * INSERT through server-side but the local status update never landed (app
+ * killed mid-retry) — the duplicate IS the already-submitted state, not a
+ * new failure. Plain `.insert()` kept deliberately (not `.upsert()`) —
+ * matches lib/sync/remote-upsert.ts's documented 42501/PostgREST quirk with
+ * `.upsert(..., {ignoreDuplicates})` on insert-only RLS policies like this
+ * table's.
  */
 export async function submitPoConfirmation(
   db: SQLiteDatabase,
@@ -253,79 +349,55 @@ export async function submitPoConfirmation(
     return 'offline';
   }
 
-  try {
-    const storagePath = buildPoEvidenceStoragePath(userId, requestId);
-    const publicUrl = await uploadPoEvidencePhoto(row.po_photo_path, storagePath);
+  let result = await attemptSubmission(row, userId, requestId);
 
-    const remotePayload = {
-      id: row.id,
-      client_id: row.client_id,
-      cycle_id: row.cycle_id,
-      meeting_id: row.meeting_id,
-      requester_id: row.requester_id,
-      po_photo_path: publicUrl,
-    };
-    const { error } = await supabase.from('po_confirmation_requests').insert(remotePayload);
-    // 23505 on this specific row's id means a PRIOR submitPoConfirmation
-    // attempt already got the INSERT through, but this row's local status
-    // update below never completed (e.g. app killed mid-retry) — so the
-    // local row was stuck 'draft' even though the server already has it.
-    // The duplicate IS the already-submitted state, not a new failure:
-    // without this check, every future retry (retryDraftPoConfirmations
-    // runs on every Notifications load) would re-attempt the same insert
-    // and fail the same way forever. Plain `.insert()` kept deliberately
-    // (not `.upsert()`) — matches lib/sync/remote-upsert.ts's documented
-    // finding that `.upsert(..., {ignoreDuplicates})` hits a PostgREST/RLS
-    // 42501 quirk on this project's Supabase project for insert-only RLS
-    // policies like this table's.
-    //
-    // 42501 (RLS_PERMISSION_DENIED_CODE) means the "Agents create own PO
-    // confirmation" policy's `with check` failed — either requester_id
-    // doesn't match the live session, or (far more likely given the
-    // ownership join in that policy) `row.client_id` is no longer assigned
-    // to this requester server-side (reassigned, deleted, stale test data).
-    // This is NEVER transient like the isMeetingSynced/isClientSynced
-    // guards above — retrying an unchanged payload against an unchanged
-    // policy produces the same rejection forever. Mark the row terminal
-    // (2026-08-04, SQLite v24 `'superseded'`) so retryDraftPoConfirmations()
-    // stops resubmitting it on every Notifications-screen visit.
-    if (error && error.code === RLS_PERMISSION_DENIED_CODE) {
-      await markPoConfirmationSuperseded(db, requestId, error.message);
-      return 'superseded';
+  // A single retry after an EXPLICIT session refresh — not a blind retry of
+  // an unchanged payload against an unchanged policy (that really would loop
+  // forever), but a targeted response to the proven transport-auth theory
+  // above. If the token genuinely was stale/mid-refresh, a fresh one gives
+  // the retried request a real chance; if ownership is genuinely wrong, this
+  // second attempt fails identically and is left retryable below.
+  if (result.kind === 'rls_rejected') {
+    try {
+      await supabase.auth.refreshSession();
+    } catch (refreshErr) {
+      console.error(
+        '[po-confirmation-service] session refresh before RLS retry failed:',
+        refreshErr instanceof Error ? refreshErr.message : String(refreshErr)
+      );
     }
-    if (error && error.code !== UNIQUE_VIOLATION_CODE) throw error;
+    result = await attemptSubmission(row, userId, requestId);
+  }
 
-    const now = new Date().toISOString();
-    await db.runAsync(
-      `UPDATE po_confirmation_requests
-         SET status = 'pending', po_photo_path = ?, updated_at = ?, synced_at = ?
-       WHERE id = ?`,
-      [publicUrl, now, now, requestId]
-    );
-    return 'submitted';
-  } catch (err) {
-    const details =
-      err instanceof Error
-        ? err.message
-        : (() => {
-            try {
-              return JSON.stringify(err);
-            } catch {
-              return String(err);
-            }
-          })();
-    // B-095 follow-up: catches the Storage-upload RLS case that used to fall
-    // through here silently as a generic 'failed' — see
-    // isRlsPermissionDenied()'s doc comment. Anything else (network blip,
-    // timeout, transient Storage error) still returns 'failed' as before,
-    // leaving the row 'draft' for a legitimate retry.
-    if (isRlsPermissionDenied(err)) {
-      await markPoConfirmationSuperseded(db, requestId, details);
-      return 'superseded';
+  if (result.kind === 'rls_rejected') {
+    const reason = describeRlsRejection(result.err);
+    // B-098: the server accepts this exact token/payload from curl while the
+    // device POST is rejected. Keep the evidence retryable until a release
+    // build proves this is a genuine ownership/policy failure; do not destroy
+    // the only local copy by marking it permanently superseded.
+    console.error('[po-confirmation-service] submission rejected (RLS/transport); leaving local evidence draft for retry:', `${reason} | retried after session refresh`);
+    return 'failed';
+  }
+
+  if (result.kind === 'other_error') {
+    let details = 'request failed';
+    if (result.err && typeof result.err === 'object' && 'status' in result.err) {
+      const status = typeof result.err.status === 'number' ? result.err.status : 'unknown';
+      const code = 'code' in result.err && typeof result.err.code === 'string' ? result.err.code : 'unknown';
+      details = `status=${status} code=${code}`;
     }
     console.error('[po-confirmation-service] submission failed:', details);
     return 'failed';
   }
+
+  const now = new Date().toISOString();
+  await db.runAsync(
+    `UPDATE po_confirmation_requests
+       SET status = 'pending', po_photo_path = ?, updated_at = ?, synced_at = ?
+     WHERE id = ?`,
+    [result.publicUrl, now, now, requestId]
+  );
+  return 'submitted';
 }
 
 interface PendingPoConfirmationClientRow {

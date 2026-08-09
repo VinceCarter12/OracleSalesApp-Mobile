@@ -3,7 +3,6 @@ import { Alert, ScrollView } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useSQLiteContext } from 'expo-sqlite';
 import { router, useLocalSearchParams } from 'expo-router';
-import * as ImagePicker from 'expo-image-picker';
 import { MapPin } from 'lucide-react-native';
 import { Spinner, Text, XStack, YStack } from 'tamagui';
 import { useAuth } from '../../../lib/useAuth';
@@ -33,6 +32,8 @@ import { PoEvidenceCard } from '../../../components/meetings/PoEvidenceCard';
 import { DraftResumePrompt } from '../../../components/meetings/DraftResumePrompt';
 import { ClientCutoffAllowanceBlock } from '../../../components/cutoff/ClientCutoffAllowanceBlock';
 import { StartMeetingConfirmDialog } from '../../../components/meetings/StartMeetingConfirmDialog';
+import { CancelMeetingDialog } from '../../../components/meetings/CancelMeetingDialog';
+import { InAppCameraOverlay } from '../../../components/meetings/InAppCameraOverlay';
 import { isCloseDealPoEligible } from '../../../lib/policies/po-confirmation-status-policy';
 import { CLOSE_DEAL_AGENDA, type MeetingOutcome } from '../../../types';
 
@@ -91,10 +92,12 @@ export default function RecordMeetingScreen() {
     selectedCompanions, toggleCompanion, companionSelections, companionsPreAccepted,
     mode, setMode, start, starting, elapsedSeconds, startConfirmOpen,
     requestStartMeeting, cancelStartMeeting, confirmStartMeeting, updateStartGps, updateDraftAgendas,
-    autoResumedAgendas, pendingDraft, resumeDraft, discardDraft, clearDraft,
+    autoResumedAgendas, pendingDraft, resumeDraft, discardDraft, cancelActiveMeeting, clearDraft,
   } = controller;
 
   const [photoUri, setPhotoUri] = useState<string | null>(null);
+  const [selfieEvidence, setSelfieEvidence] = useState<{ capturedAt: string; gpsLat: number; gpsLng: number } | null>(null);
+  const [cameraTarget, setCameraTarget] = useState<'selfie' | 'po' | null>(null);
   const [selfiePreviewOpen, setSelfiePreviewOpen] = useState(false);
   const [loadingLocation, setLoadingLocation] = useState(false);
 
@@ -120,6 +123,7 @@ export default function RecordMeetingScreen() {
   const [capturingPoPhoto, setCapturingPoPhoto] = useState(false);
 
   const [saving, setSaving] = useState(false);
+  const [cancelDialogOpen, setCancelDialogOpen] = useState(false);
 
   useEffect(() => {
     if (!client) {
@@ -175,21 +179,7 @@ export default function RecordMeetingScreen() {
     }
   }
 
-  async function captureSelfie() {
-    const { status } = await ImagePicker.requestCameraPermissionsAsync();
-    if (status !== 'granted') {
-      Alert.alert('Permission denied', 'Camera permission is required for selfie capture.');
-      return;
-    }
-    const result = await ImagePicker.launchCameraAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      quality: 0.7,
-      allowsEditing: false,
-    });
-    if (!result.canceled && result.assets.length > 0) {
-      setPhotoUri(result.assets[0].uri);
-    }
-  }
+  function captureSelfie() { setCameraTarget('selfie'); }
 
   function toggleAgenda(agenda: string) {
     const next = selectedAgendas.includes(agenda)
@@ -202,27 +192,7 @@ export default function RecordMeetingScreen() {
     void updateDraftAgendas(next);
   }
 
-  async function capturePoPhoto() {
-    setCapturingPoPhoto(true);
-    try {
-      const { status } = await ImagePicker.requestCameraPermissionsAsync();
-      if (status !== 'granted') {
-        Alert.alert('Permission denied', 'Camera permission is required for PO evidence capture.');
-        return;
-      }
-      const result = await ImagePicker.launchCameraAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
-        quality: 0.7,
-        allowsEditing: false,
-      });
-      if (!result.canceled && result.assets.length > 0) {
-        setPoPhotoUri(result.assets[0].uri);
-        showToast('PO evidence attached. Manager approval is still required.');
-      }
-    } finally {
-      setCapturingPoPhoto(false);
-    }
-  }
+  function capturePoPhoto() { setCapturingPoPhoto(true); setCameraTarget('po'); }
 
   function selectOutcome(next: MeetingOutcome) {
     if (next === 'Lost Opportunity') {
@@ -233,6 +203,7 @@ export default function RecordMeetingScreen() {
   }
 
   async function doSave() {
+    if (saving) return;
     if (!start) {
       Alert.alert('Start Meeting Required', 'Tap Start meeting to lock GPS + timestamp before saving.');
       return;
@@ -264,7 +235,27 @@ export default function RecordMeetingScreen() {
       return;
     }
 
+    // F-003 gap fix (2026-08-09): capture end GPS silently at Save time —
+    // same treatment as start GPS at Start (no dedicated button/UI, the
+    // wireframe has none). Matches PhotoCapture's failure behavior for the
+    // fast path's end photo: alert + abort so the agent can just tap Save
+    // again, rather than silently saving with a missing end fix.
+    //
+    // `saving` is set to true BEFORE the captureGps() await (not after) so
+    // the Save button's disabled/"Saving…" state covers the entire span
+    // from tap to success/shown-error — otherwise a second tap during the
+    // GPS-fetch window fires a concurrent doSave() and double-saves.
     setSaving(true);
+    let endGps: { capturedAt: string; gpsLat: number; gpsLng: number };
+    try {
+      const gps = await captureGps();
+      endGps = { capturedAt: new Date().toISOString(), gpsLat: gps.lat, gpsLng: gps.lng };
+    } catch (err) {
+      Alert.alert('Location Error', err instanceof Error ? err.message : 'Failed to get GPS location.');
+      setSaving(false);
+      return;
+    }
+
     try {
       // T-014 Phase C (ADR-026 P1 item 4): the photo is no longer uploaded
       // in the foreground at all — the meeting saves with the local
@@ -285,6 +276,7 @@ export default function RecordMeetingScreen() {
           companions: companionSelections,
           companionsPreAccepted,
           selfieUri: photoUri,
+          selfieEvidence: selfieEvidence ?? undefined,
           outcome,
           // Meeting-Flow Wireframe Parity Audit 2026-08-03 item 1: the
           // "Actual contact person" fields aren't in the wireframe's
@@ -306,6 +298,7 @@ export default function RecordMeetingScreen() {
             poPhotoUri && client?.cycle_id && isCloseDealPoEligible(client?.status, outcome, selectedAgendas)
               ? { localPhotoUri: poPhotoUri, cycleId: client.cycle_id }
               : null,
+          endGps,
         })
       );
       await clearDraft();
@@ -325,6 +318,20 @@ export default function RecordMeetingScreen() {
       Alert.alert('Save Error', message);
     } finally {
       setSaving(false);
+    }
+  }
+
+  function confirmCancelMeeting(): void {
+    setCancelDialogOpen(true);
+  }
+
+  async function cancelMeeting(): Promise<void> {
+    setCancelDialogOpen(false);
+    try {
+      await cancelActiveMeeting();
+      router.replace(routes.meetingsHome());
+    } catch {
+      Alert.alert('Cancel failed', 'Hindi na-discard ang meeting draft. Subukan ulit.');
     }
   }
 
@@ -452,14 +459,21 @@ export default function RecordMeetingScreen() {
               }
             />
 
-            <YStack marginTop="$5">
+            <XStack marginTop="$5" gap="$2.5" alignItems="stretch">
               {/* Wireframe-Sales-BizLink.html:1731 (aRenderRecordStage): the
                   static "End meeting, take photo" markup on #a-recordSaveBtn
                   is overwritten to "Save "+actionName the moment a client is
                   selected and never reset — the wireframe's actual runtime
                   label is always status-aware, not the placeholder text. */}
-              <BizButton label={saving ? 'Saving…' : `Save ${actionName}`} onPress={doSave} disabled={saving} />
-            </YStack>
+              <YStack flex={1}>
+                <BizButton label={saving ? 'Saving…' : `Save ${actionName}`} onPress={doSave} disabled={saving} />
+              </YStack>
+              {!saving ? (
+                <YStack flex={1}>
+                  <BizButton label="Cancel meeting" variant="white" onPress={confirmCancelMeeting} />
+                </YStack>
+              ) : null}
+            </XStack>
             <XStack justifyContent="center" marginTop="$2.5">
               {saving ? <Spinner color={BIZLINK_COLORS.brand} /> : null}
             </XStack>
@@ -481,12 +495,39 @@ export default function RecordMeetingScreen() {
 
       <PhotoLightbox uri={photoUri} visible={selfiePreviewOpen} onClose={() => setSelfiePreviewOpen(false)} />
 
+      <InAppCameraOverlay
+        visible={cameraTarget !== null}
+        title={cameraTarget === 'po' ? 'PO evidence' : 'Meeting selfie'}
+        facing={cameraTarget === 'po' ? 'back' : 'front'}
+        onCancel={() => { setCameraTarget(null); setCapturingPoPhoto(false); }}
+        onCaptured={(uri, capturedAt) => {
+          const target = cameraTarget;
+          setCameraTarget(null);
+          if (target === 'po') {
+            setPoPhotoUri(uri);
+            setCapturingPoPhoto(false);
+            showToast('PO evidence attached. Manager approval is still required.');
+          } else {
+            void captureGps().then((gps) => {
+              setPhotoUri(uri);
+              setSelfieEvidence({ capturedAt, gpsLat: gps.lat, gpsLng: gps.lng });
+            }).catch((error) => Alert.alert('Location Error', error instanceof Error ? error.message : 'Failed to get GPS location.'));
+          }
+        }}
+      />
+
       <StartMeetingConfirmDialog
         visible={startConfirmOpen}
         onCancel={cancelStartMeeting}
         onConfirm={() => {
           void confirmStartMeeting();
         }}
+      />
+
+      <CancelMeetingDialog
+        visible={cancelDialogOpen}
+        onCancel={() => setCancelDialogOpen(false)}
+        onConfirm={cancelMeeting}
       />
     </YStack>
   );

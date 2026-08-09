@@ -30,6 +30,7 @@ import { SelectedClientCard } from '../../../components/meetings/SelectedClientC
 import { formatMeetingLocation } from '../../../lib/format-meeting-location';
 import type { OutboxStatus } from '../../../lib/sync/outbox-status';
 import type { Client, Meeting } from '../../../types';
+import { mapMeetingPhotoEvidence } from '../../../lib/meeting-photo-evidence';
 
 /**
  * Local SQLite is the primary read path (ADR-001/T-004) — a meeting only
@@ -119,6 +120,9 @@ export default function MeetingDetailScreen() {
   // Null (no second badge/stage-rail highlight) for meetings recorded before
   // Migration v26 added the column — deliberately not backfilled/guessed.
   const displayStatus = getMeetingLifecycleStatus(meeting);
+  const selfieEvidence = mapMeetingPhotoEvidence(meeting, 'selfie');
+  const startEvidence = mapMeetingPhotoEvidence(meeting, 'start');
+  const endEvidence = mapMeetingPhotoEvidence(meeting, 'end');
   const progress = client ? getClientJourneyProgress(client, clientMeetings) : null;
   // Only present when the row has a real client_id (legacy rows missing one
   // must never navigate into a broken journey route) AND this screen is
@@ -218,6 +222,8 @@ export default function MeetingDetailScreen() {
                 <YStack>
                   <Text fontSize={12} fontFamily={BIZLINK_FONTS.semibold} color={BIZLINK_ON_INK.solid}>Start photo</Text>
                   <Text fontSize={11} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_ON_INK.textMuted}>Locked</Text>
+                  <Text fontSize={10.5} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_ON_INK.textMuted}>{startEvidence.gpsLat !== null ? `GPS ${startEvidence.gpsLat.toFixed(4)}, ${startEvidence.gpsLng?.toFixed(4)}` : 'GPS unavailable'} · {startEvidence.capturedAt ? new Date(startEvidence.capturedAt).toLocaleString() : 'Timestamp unavailable'}</Text>
+                  <Text fontSize={10.5} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_ON_INK.textMuted}>Client status at meeting: {startEvidence.clientStatusLabel}</Text>
                 </YStack>
               </XStack>
             </YStack>
@@ -244,6 +250,8 @@ export default function MeetingDetailScreen() {
                 <YStack>
                   <Text fontSize={12} fontFamily={BIZLINK_FONTS.semibold} color={BIZLINK_ON_INK.solid}>End photo</Text>
                   <Text fontSize={11} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_ON_INK.textMuted}>Locked</Text>
+                  <Text fontSize={10.5} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_ON_INK.textMuted}>{endEvidence.gpsLat !== null ? `GPS ${endEvidence.gpsLat.toFixed(4)}, ${endEvidence.gpsLng?.toFixed(4)}` : 'GPS unavailable'} · {endEvidence.capturedAt ? new Date(endEvidence.capturedAt).toLocaleString() : 'Timestamp unavailable'}</Text>
+                  <Text fontSize={10.5} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_ON_INK.textMuted}>Client status at meeting: {endEvidence.clientStatusLabel}</Text>
                 </YStack>
               </XStack>
             </YStack>
@@ -279,7 +287,11 @@ export default function MeetingDetailScreen() {
                     <Camera size={20} color={BIZLINK_ON_INK.solid} strokeWidth={1.75} />
                   </YStack>
                 )}
-                <Text fontSize={12} fontFamily={BIZLINK_FONTS.semibold} color={BIZLINK_ON_INK.solid}>Selfie captured</Text>
+                <YStack flex={1}>
+                  <Text fontSize={12} fontFamily={BIZLINK_FONTS.semibold} color={BIZLINK_ON_INK.solid}>Selfie captured</Text>
+                  <Text fontSize={10.5} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_ON_INK.textMuted}>{selfieEvidence.gpsLat !== null ? `GPS ${selfieEvidence.gpsLat.toFixed(4)}, ${selfieEvidence.gpsLng?.toFixed(4)}` : 'GPS unavailable'} · {selfieEvidence.capturedAt ? new Date(selfieEvidence.capturedAt).toLocaleString() : 'Timestamp unavailable'}</Text>
+                  <Text fontSize={10.5} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_ON_INK.textMuted}>Client status at meeting: {selfieEvidence.clientStatusLabel}</Text>
+                </YStack>
               </XStack>
             </YStack>
 

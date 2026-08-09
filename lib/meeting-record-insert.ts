@@ -47,9 +47,10 @@ export async function insertMeetingRecord(params: InsertMeetingRecordParams): Pr
         `INSERT INTO meetings
           (id, client_id, agent_id, gps_lat, gps_lng, selfie_url, agendas, agenda_ids, outcome, meeting_mode,
            start_photo_url, start_captured_at, end_photo_url, end_captured_at, end_gps_lat, end_gps_lng,
+           selfie_captured_at, selfie_gps_lat, selfie_gps_lng,
            logged_at, created_at, contact_person, contact_position, location_type, location_name, remarks,
            validity_status, client_status_at_meeting, sync_status, local_updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?)`,
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?)`,
         [
           id,
           record.client_id,
@@ -67,6 +68,9 @@ export async function insertMeetingRecord(params: InsertMeetingRecordParams): Pr
           record.end_captured_at ?? null,
           record.end_gps_lat ?? null,
           record.end_gps_lng ?? null,
+          record.selfie_captured_at ?? null,
+          record.selfie_gps_lat ?? null,
+          record.selfie_gps_lng ?? null,
           record.logged_at,
           now,
           record.contactPerson?.trim() || null,

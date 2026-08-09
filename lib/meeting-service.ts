@@ -48,6 +48,9 @@ export interface NewMeetingRecord {
   /** End-of-meeting GPS, captured at the end photo's shutter press — kept separate from start GPS so admin (web) can manually validate the two match. */
   end_gps_lat?: number | null;
   end_gps_lng?: number | null;
+  selfie_captured_at?: string | null;
+  selfie_gps_lat?: number | null;
+  selfie_gps_lng?: number | null;
   logged_at: string;
   contactPerson?: string | null;
   contactPosition?: string | null;

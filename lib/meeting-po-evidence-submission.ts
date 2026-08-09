@@ -1,5 +1,5 @@
 import type { SQLiteDatabase } from 'expo-sqlite';
-import { runSync } from './sync-engine';
+import { pushOutboxOnly } from './sync-engine';
 import { captureAndSubmitPoEvidence } from './po-confirmation-service';
 
 // Split out of lib/meeting-service.ts::createMeeting() to keep that file
@@ -23,6 +23,13 @@ import { captureAndSubmitPoEvidence } from './po-confirmation-service';
 // guard to lean on here; push (and await) this meeting's sync explicitly
 // instead. po-confirmation-service.ts's own isMeetingSynced() guard still
 // covers the case where this push doesn't fully land (offline/transient).
+//
+// B-0XX (2026-08-09): uses `pushOutboxOnly()` (push half only), NOT
+// `runSync()` (full push+pull pass) — this check only cares whether THIS
+// meeting's outbox row pushed, which has nothing to do with `runSync()`'s
+// pull half (agenda catalog/policy/stage rules/client cycles/cutoff data
+// via `syncDown()`). Depending on the full pass meant a PO save could hang
+// for up to two full sync passes waiting on unrelated background pulls.
 
 export interface SubmitMeetingPoEvidenceInput {
   meetingId: string;
@@ -35,25 +42,23 @@ export async function submitMeetingPoEvidenceIfPresent(
   db: SQLiteDatabase,
   input: SubmitMeetingPoEvidenceInput
 ): Promise<void> {
-  await runSync(input.agentId).catch((err) => {
+  await pushOutboxOnly(input.agentId).catch((err) => {
     const message = err instanceof Error ? err.message : String(err);
     console.error('[meeting-service] pre-PO-evidence sync failed:', message);
   });
-  // B-091: runSync() may resolve without having pushed THIS meeting's row
-  // yet if it coalesced into a pass that was already in flight when called
-  // (sync-engine.ts's coalescing runner, Phase 1 adaptive scheduling
-  // 2026-08-04 — formerly a plain `isSyncing` boolean that just dropped the
-  // call). One bounded retry covers that window; po-confirmation-
-  // service.ts's isMeetingSynced() guard + its getMyPoConfirmationStatuses()
-  // retry-on-read are the backstop if the meeting is still unsynced after
-  // this (e.g. genuinely offline).
+  // B-091: the push may resolve without having pushed THIS meeting's row yet
+  // if another push was already in flight when this one was called. One
+  // bounded retry covers that window; po-confirmation-service.ts's
+  // isMeetingSynced() guard + its getMyPoConfirmationStatuses() retry-on-read
+  // are the backstop if the meeting is still unsynced after this (e.g.
+  // genuinely offline).
   const meetingRow = await db.getFirstAsync<{ sync_status: string }>(
     'SELECT sync_status FROM meetings WHERE id = ?',
     [input.meetingId]
   );
   if (meetingRow?.sync_status !== 'synced') {
     await new Promise((resolve) => setTimeout(resolve, 1500));
-    await runSync(input.agentId).catch((err) => {
+    await pushOutboxOnly(input.agentId).catch((err) => {
       const message = err instanceof Error ? err.message : String(err);
       console.error('[meeting-service] pre-PO-evidence retry sync failed:', message);
     });

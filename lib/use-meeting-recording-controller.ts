@@ -327,6 +327,23 @@ export function useMeetingRecordingController({ clientId, flow }: UseMeetingReco
     if (profileId) clearLiveSession(profileId, clientId);
   }, [clientId, profileId]);
 
+  /**
+   * Explicitly abandons a running meeting. This is intentionally a local
+   * SQLite draft delete only: no meeting row or sync/outbox item exists until
+   * the agent confirms the end/save action, so cancelling can never submit a
+   * partial meeting. Callers own the confirmation dialog and navigation.
+   */
+  const cancelActiveMeeting = useCallback(async (): Promise<void> => {
+    if (!clientId) return;
+    await deleteDraft(clientId);
+    setStart(null);
+    setSelectedCompanions([]);
+    setAutoResumeDraft(null);
+    setPendingDraft(null);
+    setAutoResumedAgendas(null);
+    if (profileId) clearLiveSession(profileId, clientId);
+  }, [clientId, profileId]);
+
   const companionSelections: CompanionSelection[] = selectedCompanions
     .filter((entry) => visibleRoster.some((visibleEntry) => visibleEntry.profileId === entry.profileId))
     .map((entry) => ({
@@ -370,6 +387,7 @@ export function useMeetingRecordingController({ clientId, flow }: UseMeetingReco
     pendingDraft,
     resumeDraft,
     discardDraft,
+    cancelActiveMeeting,
     clearDraft,
   };
 }

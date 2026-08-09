@@ -3,6 +3,7 @@ import { Spinner, Text, XStack, YStack } from 'tamagui';
 import { useBizlinkColors, BIZLINK_FONTS } from '../../lib/theme';
 import { BizCard } from '../bizlink/BizCard';
 import { BizSectionHeader } from '../bizlink/BizSectionHeader';
+import { BizButton } from '../bizlink/BizButton';
 import { AgendaChecklist } from './AgendaChecklist';
 import { PhotoCapture, type CapturedPhoto } from './PhotoCapture';
 
@@ -20,6 +21,7 @@ interface VisitInProgressPanelProps {
   onToggleAgenda: (agenda: string) => void;
   saving: boolean;
   onConfirm: (endPhoto: CapturedPhoto) => void;
+  onCancel: () => void;
 }
 
 /**
@@ -34,6 +36,7 @@ export function VisitInProgressPanel({
   onToggleAgenda,
   saving,
   onConfirm,
+  onCancel,
 }: VisitInProgressPanelProps) {
   const BIZLINK_COLORS = useBizlinkColors();
   return (
@@ -85,6 +88,7 @@ export function VisitInProgressPanel({
           disabled={selectedAgendas.length === 0}
         />
       )}
+      {!saving ? <BizButton label="Cancel meeting" variant="white" onPress={onCancel} /> : null}
     </YStack>
   );
 }
