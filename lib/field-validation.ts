@@ -18,6 +18,15 @@ export const OFFICE_ADDRESS_MAX_LENGTH = 255;
 export const MINOR_NOTES_MAX_LENGTH = 500;
 export const REMARKS_MAX_LENGTH = 500;
 export const OTHER_LOCATION_MAX_LENGTH = 100;
+/**
+ * NOTE (Vince, 2026-08-09): the app no longer enforces a minimum password
+ * length on sign-in — the gate locked out the team's shared/common password
+ * (`opc1983!`, used across several test/agent accounts). That client-side
+ * check is REMOVED from `app/(auth)/login.tsx` on purpose. If a password
+ * rule is ever re-added, it must NOT reject `opc1983!` (exactly 8 chars) or
+ * any other legacy/shared account password. Keep this constant as the
+ * ceiling for "safe to allow" rather than re-wiring login to it.
+ */
 export const PASSWORD_MIN_LENGTH = 8;
 
 export const CONTACT_NUMBER_INVALID_MESSAGE =

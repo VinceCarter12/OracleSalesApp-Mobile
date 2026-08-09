@@ -10,7 +10,7 @@ import { useSession } from '../../lib/session-store';
 import { withTimeout } from '../../lib/with-timeout';
 import { wipeLocalDataIfAccountChanged } from '../../lib/wipe-local-data';
 import { writeSnapshot } from '../../lib/app-lock/session-snapshot';
-import { EMAIL_INVALID_MESSAGE, PASSWORD_TOO_SHORT_MESSAGE, PASSWORD_MIN_LENGTH, isValidEmail } from '../../lib/field-validation';
+import { EMAIL_INVALID_MESSAGE, isValidEmail } from '../../lib/field-validation';
 import type { UserRole } from '../../types';
 
 /** Maps raw Supabase/network errors to the wireframe's login-error copy (a-loginErr). */
@@ -42,15 +42,13 @@ export default function LoginScreen() {
     setErrorMessage(null);
 
     try {
-      // 2026-08-09 (field validation): format checks before hitting Supabase —
-      // a typo'd email or short password should fail client-side with clear copy.
+      // 2026-08-09 (field validation): format checks before hitting Supabase.
+      // NOTE (Vince): the password minimum-length gate is REMOVED — it locked
+      // out accounts using the team's common/shared password. No password
+      // min-length check may be re-added (see lib/field-validation.ts).
       const trimmedEmail = email.trim();
       if (!isValidEmail(trimmedEmail)) {
         setErrorMessage(EMAIL_INVALID_MESSAGE);
-        return;
-      }
-      if (password.length < PASSWORD_MIN_LENGTH) {
-        setErrorMessage(PASSWORD_TOO_SHORT_MESSAGE);
         return;
       }
 
