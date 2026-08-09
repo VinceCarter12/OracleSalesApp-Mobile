@@ -221,16 +221,24 @@ async function pullTeamRoster(
   teamId: string | null | undefined,
   now: string
 ): Promise<void> {
-  if (!teamId) return;
   try {
+    if (!teamId) {
+      try {
+        await db.runAsync('DELETE FROM team_roster_snapshot');
+      } catch (err) {
+        console.error('[sync-down] failed to clear team roster without a team:', err);
+      }
+      return;
+    }
     const { data, error } = await withTimeout(
       Promise.resolve(
         supabase
           .from('profiles')
-          .select('id, full_name, role, team_id, avatar_url')
-          .eq('team_id', teamId)
-          .neq('id', profileId)
-          .in('role', ['sales_manager', 'sales_specialist', 'rsr'])
+            .select('id, full_name, role, team_id, is_active, avatar_url')
+            .eq('team_id', teamId)
+            .neq('id', profileId)
+            .eq('is_active', true)
+            .in('role', ['sales_manager', 'sales_specialist', 'rsr'])
       ),
       SYNC_TIMEOUT_MS,
       'sync-down team roster'
@@ -243,18 +251,19 @@ async function pullTeamRoster(
         const teammate = row as {
           id: string;
           full_name: string;
-          role: string;
-          team_id: string | null;
+            role: string;
+            team_id: string | null;
+            is_active: boolean | null;
           avatar_url: string | null;
         };
         // team_id is guaranteed non-null by the `.eq('team_id', teamId)`
         // scope above, but the column itself is nullable remotely.
-        if (!teammate.team_id) continue;
-        await db.runAsync(
-          `INSERT INTO team_roster_snapshot (profile_id, full_name, role, team_id, avatar_url, synced_at)
-           VALUES (?, ?, ?, ?, ?, ?)`,
-          [teammate.id, teammate.full_name, teammate.role, teammate.team_id, teammate.avatar_url, now]
-        );
+          if (!teammate.team_id || teammate.is_active !== true) continue;
+          await db.runAsync(
+            `INSERT INTO team_roster_snapshot (profile_id, full_name, role, team_id, is_active, avatar_url, synced_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?)`,
+            [teammate.id, teammate.full_name, teammate.role, teammate.team_id, teammate.is_active ? 1 : 0, teammate.avatar_url, now]
+          );
       }
     });
   } catch (err) {

@@ -349,6 +349,7 @@ export interface TeamRosterEntry {
   fullName: string;
   role: Extract<UserRole, 'sales_manager' | 'sales_specialist' | 'rsr'>;
   teamId: string;
+  isActive: boolean;
   avatarUrl: string | null;
   syncedAt: string;
 }

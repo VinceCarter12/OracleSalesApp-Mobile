@@ -60,7 +60,8 @@
       ],
       "expo-font",
       "expo-sqlite",
-      "expo-local-authentication"
+      "expo-local-authentication",
+      "expo-splash-screen"
     ],
     "experiments": {
       "typedRoutes": true

@@ -12,7 +12,7 @@ export const DATABASE_NAME = 'oracle-sales-app.db';
 
 // Bump this and add a new `case` below whenever the schema changes — never
 // edit an already-shipped case, since devices may have already run it.
-const LATEST_SCHEMA_VERSION = 28;
+const LATEST_SCHEMA_VERSION = 29;
 
 /**
  * Idempotent `ADD COLUMN` — only adds `column` if the table doesn't already
@@ -1180,6 +1180,14 @@ export async function migrateDbIfNeeded(db: SQLiteDatabase): Promise<void> {
       CREATE INDEX IF NOT EXISTS idx_collection_payments_visit ON collection_payments (visit_id);
     `);
     currentVersion = 28;
+  }
+
+  // Tag-Along roster hardening: retain the server's active-state decision in
+  // the local snapshot so inactive users cannot reappear from an old cache.
+  if (currentVersion === 28) {
+    await addColumnIfMissing(db, 'team_roster_snapshot', 'is_active', 'INTEGER NOT NULL DEFAULT 0');
+    await db.runAsync('DELETE FROM team_roster_snapshot');
+    currentVersion = 29;
   }
 
   await db.execAsync(`PRAGMA user_version = ${currentVersion}`);
