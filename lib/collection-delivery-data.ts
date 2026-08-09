@@ -185,9 +185,20 @@ export const COLLECTION_STORES: CollectionStore[] = [
   { id: '11111111-1111-4111-8111-000000000008', name: 'Camaya Grocers', area: 'Limay', initials: 'CG', due: 5600, status: 'pending' },
 ];
 
-// One day, one outcome (web 044): a PO is delivered, or failed (= backload,
-// with a photo). No follow-up window, no re-listing on the mobile side.
-export type DeliveryPoStatus = 'pending' | 'delivered' | 'failed';
+// web 044 base + web 073 partial COD: a PO is delivered, failed (= backload,
+// with a photo), or 'partial' — handed over but the COD is being paid down over
+// installments (stays open until the running COD total reaches cod_due).
+export type DeliveryPoStatus = 'pending' | 'delivered' | 'failed' | 'partial';
+
+/** A PO still open on the list — pending (unworked) or partial (handed over, COD still owing). */
+export function isOpenForDelivery(status: DeliveryPoStatus): boolean {
+  return status === 'pending' || status === 'partial';
+}
+
+/** COD still owed on a PO: original cod_due minus what's been collected so far (never negative). */
+export function remainingCod(po: Pick<DeliveryPo, 'codDue' | 'codAmount'>): number {
+  return Math.max(0, (po.codDue ?? 0) - (po.codAmount ?? 0));
+}
 
 export interface DeliveryPo {
   /** UUID string (web `purchase_orders.id`). */
@@ -373,11 +384,14 @@ export function getCollectionSummary(stores: CollectionStore[] = COLLECTION_STOR
 }
 
 export function getDeliverySummary(pos: DeliveryPo[] = DELIVERY_POS) {
-  const pending = pos.filter((p) => p.status === 'pending');
+  // Still-to-do = pending (unworked) + partial (handed over, COD still owing).
+  const pending = pos.filter((p) => isOpenForDelivery(p.status));
   const delivered = pos.filter((p) => p.status === 'delivered');
   const failed = pos.filter((p) => p.status === 'failed');
+  // COD on hand = every peso actually collected but not yet remitted, INCLUDING
+  // partial COD — a partial PO isn't 'delivered' but its cash is already in the bag.
   const codOnHand = pos
-    .filter((p) => p.cod && p.status === 'delivered' && !p.codRemitted)
+    .filter((p) => p.cod && (p.status === 'delivered' || p.status === 'partial') && !p.codRemitted)
     .reduce((sum, p) => sum + (p.codAmount ?? 0), 0);
   return {
     pendingCount: pending.length,

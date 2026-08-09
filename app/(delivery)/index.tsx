@@ -20,7 +20,9 @@ import {
   formatPeso,
   formatShortDateTime,
   getDeliverySummary,
+  isOpenForDelivery,
   isScheduledForToday,
+  remainingCod,
   type DeliveryPo,
 } from '../../lib/collection-delivery-data';
 import { useDeliveryPos } from '../../lib/use-collection-delivery';
@@ -42,6 +44,9 @@ function PoBadge({ po }: { po: DeliveryPo }) {
   }
   if (po.status === 'failed') {
     return <StatusBadge label="Backload" background={COLORS.redSoft} color={COLORS.ledgeRed} />;
+  }
+  if (po.status === 'partial') {
+    return <StatusBadge label="Partial" background={COLORS.purpleSoft} color={COLORS.purple} />;
   }
   if (po.onTheWay) {
     return <StatusBadge label="On the way" background={COLORS.amberSoft} color={COLORS.orange} />;
@@ -69,7 +74,12 @@ function PoPreviewRow({ po, onPress }: { po: DeliveryPo; onPress: () => void }) 
             {po.po} · {po.client}
           </Text>
           <Text fontSize={11.5} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} numberOfLines={1}>
-            {po.area}{po.cod && po.codDue ? ` · COD ${formatPeso(po.codDue)}` : ''}
+            {po.area}
+            {po.cod && po.status === 'partial'
+              ? ` · COD balance ${formatPeso(remainingCod(po))}`
+              : po.cod && po.codDue
+                ? ` · COD ${formatPeso(po.codDue)}`
+                : ''}
           </Text>
           {po.onTheWay && po.claimedBy ? (
             <XStack alignItems="center" gap="$1.5">
@@ -107,7 +117,7 @@ export default function DeliveryDashboardScreen() {
   // Dashboard shows only TODAY's deliveries — the mirror holds past days too.
   const todayPos = pos.filter((p) => isScheduledForToday(p.scheduledFor));
   const summary = getDeliverySummary(todayPos);
-  const preview = todayPos.filter((p) => p.status === 'pending').slice(0, 3);
+  const preview = todayPos.filter((p) => isOpenForDelivery(p.status)).slice(0, 3);
   const greetingName = firstName(fullName) || 'Driver';
 
   const openDeliver = (id: string) =>
