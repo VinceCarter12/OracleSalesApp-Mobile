@@ -176,11 +176,22 @@ export async function pullClientCycles(db: SQLiteDatabase, agentId: string, now:
   }
 }
 
-/** Runs all four ADR-045 mirror pulls. Called once per `syncDown()` pass (lib/sync-down.ts). */
+/**
+ * Runs all four ADR-045 mirror pulls. Called once per `syncDown()` pass (lib/sync-down.ts).
+ *
+ * B-0XX (2026-08-09): these four pulls are independent reads — none reads a
+ * value another one writes, and each already catches its own errors
+ * internally (never throws) — so they were needlessly `await`ed sequentially,
+ * stacking up to 4x SYNC_TIMEOUT_MS (60s) when the connection was degraded
+ * enough that multiple pulls hung. Run concurrently instead: worst case is
+ * now bounded by the single SYNC_TIMEOUT_MS ceiling (~15s).
+ */
 export async function syncAgendaPolicyAndCycles(db: SQLiteDatabase, agentId: string): Promise<void> {
   const now = new Date().toISOString();
-  await pullAgendaPolicyVersions(db, now);
-  await pullAgendaCatalog(db, now);
-  await pullAgendaStageRules(db, now);
-  await pullClientCycles(db, agentId, now);
+  await Promise.all([
+    pullAgendaPolicyVersions(db, now),
+    pullAgendaCatalog(db, now),
+    pullAgendaStageRules(db, now),
+    pullClientCycles(db, agentId, now),
+  ]);
 }

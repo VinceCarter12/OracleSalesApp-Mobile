@@ -1,7 +1,8 @@
-import { TextInput } from 'react-native';
-import { Search, Check, GitBranch, RotateCcw, AlertTriangle, ChevronRight } from 'lucide-react-native';
+import { useState } from 'react';
+import { Pressable, TextInput } from 'react-native';
+import { Search, SlidersHorizontal, Check, GitBranch, RotateCcw, AlertTriangle, ChevronRight } from 'lucide-react-native';
 import { Spinner, Text, View, XStack, YStack } from 'tamagui';
-import { useBizlinkColors, BIZLINK_FONTS } from '../../lib/theme';
+import { useBizlinkColors, BIZLINK_FONTS, BIZLINK_ON_INK } from '../../lib/theme';
 import type { SyncHistoryEntry } from '../../lib/sync-history';
 import {
   getDisplayStatus,
@@ -9,7 +10,11 @@ import {
   SYNC_HISTORY_OUTCOME_FILTERS,
   type SyncHistoryFilterValue,
 } from '../../lib/sync-history-display';
-import { BizFilterScroll } from '../bizlink/BizFilterScroll';
+import type { DateRange } from '../bizlink/DateRangePickerModal';
+import { DateRangeFilterRow } from '../bizlink/DateRangeFilterRow';
+import { BizFilterSheet } from '../bizlink/BizFilterSheet';
+import { BizFilterSheetRow } from '../bizlink/BizFilterSheetRow';
+import { BizChip } from '../bizlink/BizChip';
 
 function getStatusIcon(entry: SyncHistoryEntry) {
   const status = getDisplayStatus(entry);
@@ -32,6 +37,10 @@ interface SyncHistoryListProps {
   onSearchChange: (value: string) => void;
   outcomeFilter: SyncHistoryFilterValue;
   onFilterChange: (value: SyncHistoryFilterValue) => void;
+  dateRange: DateRange | null;
+  onDateRangeChange: (range: DateRange | null) => void;
+  filtersActive: boolean;
+  onResetFilters: () => void;
   onPressEntry: (entry: SyncHistoryEntry) => void;
 }
 
@@ -55,9 +64,15 @@ export function SyncHistoryList({
   onSearchChange,
   outcomeFilter,
   onFilterChange,
+  dateRange,
+  onDateRangeChange,
+  filtersActive,
+  onResetFilters,
   onPressEntry,
 }: SyncHistoryListProps) {
   const BIZLINK_COLORS = useBizlinkColors();
+  const [filterOpen, setFilterOpen] = useState(false);
+  const outcomeLabel = SYNC_HISTORY_OUTCOME_FILTERS.find((o) => o.value === outcomeFilter)?.label ?? outcomeFilter;
 
   return (
     <>
@@ -65,27 +80,57 @@ export function SyncHistoryList({
         {description}
       </Text>
 
-      {/* Search Bar */}
-      <XStack alignItems="center" gap="$2" height={52} paddingHorizontal={16} backgroundColor={BIZLINK_COLORS.card} borderRadius={16} marginBottom="$3">
-        <Search size={17} color={BIZLINK_COLORS.muted} strokeWidth={1.75} />
-        <TextInput
-          value={search}
-          onChangeText={onSearchChange}
-          placeholder="Search record or result..."
-          placeholderTextColor={BIZLINK_COLORS.muted}
+      {/* Search Bar + Filters toggle — same pattern as Meeting Details (app/(tabs)/meetings/index.tsx) */}
+      <XStack gap="$2" alignItems="center" marginBottom="$3">
+        <XStack flex={1} alignItems="center" gap="$2" height={52} paddingHorizontal={16} backgroundColor={BIZLINK_COLORS.card} borderRadius={16}>
+          <Search size={17} color={BIZLINK_COLORS.muted} strokeWidth={1.75} />
+          <TextInput
+            value={search}
+            onChangeText={onSearchChange}
+            placeholder="Search record or result..."
+            placeholderTextColor={BIZLINK_COLORS.muted}
+            style={{
+              flex: 1,
+              fontFamily: BIZLINK_FONTS.medium,
+              fontSize: 14,
+              color: BIZLINK_COLORS.text,
+            }}
+          />
+        </XStack>
+        <Pressable
+          accessibilityLabel="Toggle filters"
+          onPress={() => setFilterOpen((open) => !open)}
           style={{
-            flex: 1,
-            fontFamily: BIZLINK_FONTS.medium,
-            fontSize: 14,
-            color: BIZLINK_COLORS.text,
+            flexDirection: 'row',
+            alignItems: 'center',
+            gap: 6,
+            backgroundColor: filterOpen || filtersActive ? BIZLINK_COLORS.ink : BIZLINK_COLORS.card,
+            borderRadius: 16,
+            paddingHorizontal: 14,
+            height: 52,
           }}
-        />
+        >
+          <SlidersHorizontal
+            size={16}
+            color={filterOpen || filtersActive ? BIZLINK_ON_INK.solid : BIZLINK_COLORS.muted}
+            strokeWidth={1.75}
+          />
+          <Text fontSize={11.5} fontFamily={BIZLINK_FONTS.medium} color={filterOpen || filtersActive ? BIZLINK_ON_INK.solid : BIZLINK_COLORS.muted}>
+            Filters
+          </Text>
+        </Pressable>
       </XStack>
 
-      {/* Filter Chips */}
-      <YStack marginBottom="$3">
-        <BizFilterScroll options={SYNC_HISTORY_OUTCOME_FILTERS} value={outcomeFilter} onChange={onFilterChange} />
-      </YStack>
+      <BizFilterSheet visible={filterOpen} onClose={() => setFilterOpen(false)} filtersActive={filtersActive} onReset={onResetFilters}>
+        <DateRangeFilterRow range={dateRange} onApply={onDateRangeChange} />
+        <BizFilterSheetRow label="Status" value={outcomeLabel}>
+          <XStack gap="$2" flexWrap="wrap">
+            {SYNC_HISTORY_OUTCOME_FILTERS.map((option) => (
+              <BizChip key={option.value} label={option.label} selected={outcomeFilter === option.value} onPress={() => onFilterChange(option.value)} />
+            ))}
+          </XStack>
+        </BizFilterSheetRow>
+      </BizFilterSheet>
 
       {/* Sync History List */}
       {loading && totalCount === 0 ? (

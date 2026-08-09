@@ -3,7 +3,7 @@ import { supabase } from './supabase';
 import { syncDown } from './sync-down';
 import { checkConnectivity, type ConnectivityState } from './sync/connectivity';
 import { isNetworkConnectivityError } from './network-error';
-import { isEntityTableName } from './sync/entity-registry';
+import { resetLocalSyncStatusForRetry } from './sync/entity-registry';
 import { pruneSyncedOutboxRows, recoverStuckSyncingRows, type OutboxStatus } from './sync/outbox-status';
 import { setLastSyncAt } from './sync/last-sync';
 import { healStuckFieldRoleConflicts, pushDueOutboxRows, type OutboxRow, type OutboxSyncResult } from './sync/push-batch';
@@ -52,11 +52,12 @@ export async function retryFailedOutboxRow(id: string): Promise<void> {
     "UPDATE outbox SET status = 'pending', retry_count = 0, next_attempt_at = NULL, last_error = NULL WHERE id = ?",
     [id]
   );
-  if (isEntityTableName(row.table_name)) {
-    await db.runAsync(`UPDATE ${row.table_name} SET sync_status = 'pending', sync_error = NULL WHERE id = ?`, [
-      row.record_id,
-    ]);
-  }
+  // B-104: shared, unit-tested gate (entity-registry.ts) instead of an
+  // inline `isEntityTableName()`-only check — that once regressed into the
+  // exact "no such column: sync_status" ERR_INTERNAL_SQLITE_ERROR this fix
+  // exists to prevent, for `client_edit_requests` rows (ADR-052, no local
+  // sync_status column; the outbox-row reset above is all a retry needs).
+  await resetLocalSyncStatusForRetry(db, row.table_name, row.record_id);
 }
 
 /**
@@ -236,6 +237,36 @@ async function runSyncOnce(agentId: string, teamId?: string | null): Promise<Syn
       photoPatchResult.failed +
       photoPatchResult.conflicted +
       paymentResult.failed,
+    connectivity,
+  };
+}
+
+/**
+ * B-0XX (2026-08-09): push-only primitive for callers that need this
+ * device's outbox rows to have landed in Supabase (e.g. `isMeetingSynced`'s
+ * FK-race guard in po-confirmation-service.ts) but have no use for
+ * `runSyncOnce()`'s pull half (`syncDown()` — agenda catalog/policy/stage
+ * rules/client cycles/cutoff data) or its other bookkeeping (recovery of
+ * stuck rows, avatar upload, collection payments, `setLastSyncAt`). Waiting
+ * on a full `runSync()` for a push-only need meant a PO save could be
+ * blocked for up to two full sync passes by pulls that have nothing to do
+ * with whether the outbox push landed. Same connectivity-gate behavior as
+ * `runSyncOnce()`: returns a zeroed result immediately if not online, never
+ * throws (mirrors `processOutbox`'s own error handling inside
+ * `pushDueOutboxRows`). Deliberately NOT routed through `syncCoordinator` —
+ * it's a narrower, additive primitive, not a replacement for `runSync()`,
+ * and every outbox row is idempotent (client-generated UUIDs) so a
+ * concurrent push racing a coalesced `runSyncOnce()` pass is safe.
+ */
+export async function pushOutboxOnly(agentId: string): Promise<SyncResult> {
+  const connectivity = await checkConnectivity();
+  if (connectivity !== 'online') {
+    return { synced: 0, failed: 0, connectivity };
+  }
+  const outboxResult = await processOutbox(agentId);
+  return {
+    synced: outboxResult.synced,
+    failed: outboxResult.failed + outboxResult.conflicted,
     connectivity,
   };
 }
