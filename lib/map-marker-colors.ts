@@ -16,6 +16,15 @@ import type { ClientStatus } from '../types';
  */
 export const MAP_OFFICE_PIN_COLOR = BIZLINK_COLORS.brand;
 
+/**
+ * Manager Maps only (Wireframe-Manager-BizLink.html `#s-maps`, line ~809:
+ * `<span><i style="background:var(--navy)"></i> Team record</span>`) — a
+ * teammate's office pin/meeting marker (not the manager's own) is rendered
+ * navy instead of the status color, so "My Team"/"Combined" scope visibly
+ * distinguishes team-owned records from the manager's own on the map.
+ */
+export const MAP_TEAM_RECORD_COLOR = BIZLINK_COLORS.navy;
+
 export const MAP_MEETING_STATUS_COLORS: Record<ClientStatus, string> = {
   prospect: '#7C3AED', // purple
   in_progress: '#D97706', // orange

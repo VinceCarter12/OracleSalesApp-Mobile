@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { useSQLiteContext } from 'expo-sqlite';
+import { useAppDb } from './app-db-provider';
 import { useFocusEffect } from 'expo-router';
 import { useSession } from './session-store';
 import { subscribeSyncComplete } from './sync/sync-events';
@@ -54,7 +54,7 @@ export interface MeetingMapDateWindow {
 }
 
 export function useMeetingMapMarkers(dateWindow?: MeetingMapDateWindow): UseMeetingMapMarkers {
-  const db = useSQLiteContext();
+  const db = useAppDb();
   const { profileId } = useSession();
   const startAt = dateWindow?.startAt;
   const endAtExclusive = dateWindow?.endAtExclusive;

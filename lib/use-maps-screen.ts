@@ -43,6 +43,37 @@ function buildMeetingMapMarkers(markers: MeetingMapMarker[], typeLabel: Record<M
   }));
 }
 
+/**
+ * Reusable office-pin filter predicate (verified/unverified + company-name
+ * search) — extracted so `lib/use-manager-maps-screen.ts` can apply the exact
+ * same rules to the manager-only "My Team" pin set without duplicating this
+ * logic. Generic over the row shape since `TeamOfficePin`
+ * (lib/manager-team-map-service.ts) has the same `verified`/`companyName`
+ * fields as `OfficePinClient` but is a structurally distinct type.
+ */
+export function filterOfficePins<T extends { verified: boolean; companyName: string }>(
+  pins: readonly T[],
+  pinFilter: PinFilterValue,
+  search: string
+): T[] {
+  const q = search.trim().toLocaleLowerCase();
+  return pins.filter(
+    (pin) => (pinFilter === 'all' || (pinFilter === 'verified') === pin.verified) && (!q || pin.companyName.toLocaleLowerCase().includes(q))
+  );
+}
+
+/** Reusable meeting-marker filter predicate — see `filterOfficePins` doc comment for why this is generic/shared. */
+export function filterMeetingMarkers<T extends { markerType: MeetingMarkerType; clientStatusAtMeeting: ClientStatus | null }>(
+  markers: readonly T[],
+  meetingTypeFilter: MeetingTypeFilterValue,
+  meetingStatusFilter: MeetingStatusFilterValue
+): T[] {
+  return markers.filter((marker) => {
+    if (meetingTypeFilter !== 'all' && marker.markerType !== meetingTypeFilter) return false;
+    return meetingStatusFilter === 'all' || marker.clientStatusAtMeeting === meetingStatusFilter;
+  });
+}
+
 export interface MapsScreenState {
   filteredPins: OfficePinClient[];
   verifiedCount: number;
@@ -73,18 +104,10 @@ export function useMapsScreen(
   const [meetingTypeFilter, setMeetingTypeFilter] = useState<MeetingTypeFilterValue>('all');
   const [meetingStatusFilter, setMeetingStatusFilter] = useState<MeetingStatusFilterValue>('all');
 
-  const search = officeSearch.trim().toLocaleLowerCase();
-  const filteredPins = pins.filter((pin) =>
-    (pinFilter === 'all' || (pinFilter === 'verified') === pin.verified) &&
-    (!search || pin.companyName.toLocaleLowerCase().includes(search))
-  );
+  const filteredPins = filterOfficePins(pins, pinFilter, officeSearch);
 
   const filteredMeetingMarkers = useMemo(
-    () =>
-      meetingMarkers.filter((marker) => {
-        if (meetingTypeFilter !== 'all' && marker.markerType !== meetingTypeFilter) return false;
-        return meetingStatusFilter === 'all' || marker.clientStatusAtMeeting === meetingStatusFilter;
-      }),
+    () => filterMeetingMarkers(meetingMarkers, meetingTypeFilter, meetingStatusFilter),
     [meetingMarkers, meetingTypeFilter, meetingStatusFilter]
   );
 

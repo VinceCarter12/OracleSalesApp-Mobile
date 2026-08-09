@@ -18,20 +18,45 @@ export function OfflineBanner() {
   );
 }
 
-export function MapLegend() {
+export interface LegendEntry {
+  color: string;
+  label: string;
+}
+
+const BASE_LEGEND_ITEMS: LegendEntry[] = [
+  { color: MAP_OFFICE_PIN_COLOR, label: 'Office pin' },
+  { color: MAP_MEETING_STATUS_COLORS.prospect, label: 'Prospect meeting' },
+  { color: MAP_MEETING_STATUS_COLORS.in_progress, label: 'In Progress meeting' },
+  { color: MAP_MEETING_STATUS_COLORS.new, label: 'New meeting' },
+  { color: MAP_MEETING_STATUS_COLORS.existing, label: 'Existing meeting' },
+  { color: BIZLINK_COLORS.navy, label: 'You here' },
+];
+
+/**
+ * Fixed 2-column grid (not free-flowing `flexWrap` of variable-width items)
+ * so every dot lands on one of two consistent x-offsets regardless of how
+ * long the row-mate's label is — a `flexWrap` row of variously-sized chips
+ * left the dots at ragged, unaligned x-positions (Vince, 2026-08-10).
+ * `extraItems` lets manager-only maps.tsx append "Team record" into the SAME
+ * grid instead of a second, separately-wrapping `XStack` sibling, which used
+ * to start its own row at the far left instead of continuing the grid.
+ */
+export function MapLegend({ extraItems = [] }: { extraItems?: LegendEntry[] }) {
+  const items = [...BASE_LEGEND_ITEMS, ...extraItems];
   return (
-    <XStack gap="$4" marginTop="$2.5" paddingHorizontal="$1" flexWrap="wrap">
-      <LegendItem color={MAP_OFFICE_PIN_COLOR} label="Office pin" />
-      <LegendItem color={MAP_MEETING_STATUS_COLORS.prospect} label="Prospect meeting" />
-      <LegendItem color={MAP_MEETING_STATUS_COLORS.in_progress} label="In Progress meeting" />
-      <LegendItem color={MAP_MEETING_STATUS_COLORS.new} label="New meeting" />
-      <LegendItem color={MAP_MEETING_STATUS_COLORS.existing} label="Existing meeting" />
-      <LegendItem color={BIZLINK_COLORS.navy} label="You here" />
+    <XStack flexWrap="wrap" marginTop="$2.5" paddingHorizontal="$1">
+      {items.map((item) => (
+        <XStack key={item.label} width="50%" alignItems="center" gap="$1.5" paddingVertical={3}>
+          <View width={10} height={10} borderRadius={5} backgroundColor={item.color} />
+          <Text fontSize={11} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted}>{item.label}</Text>
+        </XStack>
+      ))}
     </XStack>
   );
 }
 
-function LegendItem({ color, label }: { color: string; label: string }) {
+/** Exported for callers that need a single standalone legend dot+label outside the grid. */
+export function LegendItem({ color, label }: { color: string; label: string }) {
   return (
     <XStack alignItems="center" gap="$1.5">
       <View width={10} height={10} borderRadius={5} backgroundColor={color} />
