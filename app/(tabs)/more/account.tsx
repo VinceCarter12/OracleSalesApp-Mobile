@@ -1,14 +1,13 @@
 import { Alert, Image, ScrollView } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
-import { ImagePlus } from 'lucide-react-native';
 import { Text, View, XStack, YStack } from 'tamagui';
 import { useSession } from '../../../lib/session-store';
 import { useAuth } from '../../../lib/useAuth';
 import { useProfileAvatar } from '../../../lib/use-profile-avatar';
 import { initialsFromName } from '../../../lib/display-name';
-import { useBizlinkColors, BIZLINK_FONTS, BIZLINK_ON_INK } from '../../../lib/theme';
-import { useThemePreference, type ThemePreference } from '../../../lib/theme-preference';
+import { useBizlinkColors, BIZLINK_FONTS } from '../../../lib/theme';
+import type { ThemePreference } from '../../../lib/theme-preference';
 import { Avatar } from '../../../components/ui/Avatar';
 import { BizTopBar } from '../../../components/bizlink/BizTopBar';
 import { BizCard } from '../../../components/bizlink/BizCard';
@@ -34,9 +33,8 @@ export default function AgentAccountScreen() {
   const insets = useSafeAreaInsets();
   const { signOut, fullName, role } = useSession();
   const { session, signOut: signOutSupabase } = useAuth();
-  const { avatarUri, pickingAvatar, handlePickAvatar } = useProfileAvatar(session?.user.id);
+  const { avatarUri } = useProfileAvatar(session?.user.id);
   const BIZLINK_COLORS = useBizlinkColors();
-  const { preference, setPreference } = useThemePreference();
 
   function confirmSignOut(): void {
     Alert.alert('Sign Out', 'Are you sure you want to sign out?', [
@@ -62,31 +60,13 @@ export default function AgentAccountScreen() {
       <BizTopBar title="Account & Security" fallbackHref="/(tabs)" />
       <ScrollView contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 24 }}>
         <BizCard flexDirection="row" alignItems="center" gap="$3.5">
-          <View position="relative">
-            {avatarUri ? (
-              <View width={60} height={60} borderRadius={30} overflow="hidden">
-                <Image source={{ uri: avatarUri }} style={{ width: 60, height: 60 }} resizeMode="cover" />
-              </View>
-            ) : (
-              <Avatar initials={initialsFromName(fullName)} size="lg" background={BIZLINK_COLORS.tintA} color={BIZLINK_COLORS.ink} />
-            )}
-            <View
-              position="absolute"
-              right={-4}
-              bottom={-4}
-              width={26}
-              height={26}
-              borderRadius={13}
-              backgroundColor={BIZLINK_COLORS.brand}
-              borderWidth={2}
-              borderColor={BIZLINK_COLORS.card}
-              alignItems="center"
-              justifyContent="center"
-              onPress={pickingAvatar ? undefined : handlePickAvatar}
-            >
-              <ImagePlus size={13} color={BIZLINK_ON_INK.solid} strokeWidth={1.75} />
+          {avatarUri ? (
+            <View width={60} height={60} borderRadius={30} overflow="hidden">
+              <Image source={{ uri: avatarUri }} style={{ width: 60, height: 60 }} resizeMode="cover" />
             </View>
-          </View>
+          ) : (
+            <Avatar initials={initialsFromName(fullName)} size="lg" background={BIZLINK_COLORS.tintA} color={BIZLINK_COLORS.ink} />
+          )}
           <YStack>
             <Text fontFamily={BIZLINK_FONTS.semibold} fontSize={17} color={BIZLINK_COLORS.text}>{fullName ?? '—'}</Text>
             <Text fontSize={13} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted}>
@@ -107,16 +87,23 @@ export default function AgentAccountScreen() {
         </BizCard>
 
         <BizSectionHeader title="Appearance" />
-        <XStack gap="$2" flexWrap="wrap">
+        {/* 2026-08-09: temporarily disabled — light mode only for now, see
+            lib/theme-preference.tsx. Chips render grayed-out and inert
+            instead of being removed, so re-enabling later is a one-line
+            revert of both `disabled` and the resolvedTheme override. */}
+        <XStack gap="$2" flexWrap="wrap" opacity={0.4}>
           {APPEARANCE_OPTIONS.map((opt) => (
             <BizChip
               key={opt.value}
               label={opt.label}
-              selected={preference === opt.value}
-              onPress={() => setPreference(opt.value)}
+              selected={opt.value === 'light'}
+              onPress={() => {}}
             />
           ))}
         </XStack>
+        <Text fontSize={11.5} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} marginTop="$1">
+          Light mode lang muna ang available sa ngayon.
+        </Text>
 
         <BizCard flat marginTop="$4">
           <XStack alignItems="center" gap="$2">
