@@ -27,6 +27,7 @@ import {
   type CollectionStore,
 } from '../../lib/collection-delivery-data';
 import { useCollectionStores } from '../../lib/use-collection-delivery';
+import { useCollectionOnHand } from '../../lib/use-remittance';
 import { useSyncRefresh } from '../../lib/use-sync-refresh';
 
 /**
@@ -137,14 +138,21 @@ function RoutePreviewRow({ store, onPress }: { store: CollectionStore; onPress: 
 export default function CollectionDashboardScreen() {
   const BIZLINK_COLORS = useBizlinkColors();
   const insets = useSafeAreaInsets();
-  const { fullName } = useSession();
+  const { fullName, profileId } = useSession();
   const [syncSheetOpen, setSyncSheetOpen] = useState(false);
   // B-023: remount the chip on sheet-close, same as the other dashboards.
   const [syncChipKey, setSyncChipKey] = useState(0);
   // F-007 Phase 1: real data from the local mirror (synced down, web 043-046).
   // Re-read on focus so a just-published list / completed stop shows on return.
   const { stores, refresh } = useCollectionStores();
-  useFocusEffect(useCallback(() => { refresh(); }, [refresh]));
+  // Bug 1 fix (2026-08-10): the "For remittance" hero must show cash actually
+  // still on hand — collected + partial visits NOT yet covered by a remittance —
+  // the same remittance-aware number the Remit screen uses, not
+  // getCollectionSummary's `forRemittance` (which is just today's collectedTotal
+  // and never decreases after a remit). Refreshed on focus so returning from a
+  // successful remit reflects the drop immediately.
+  const { summary: onHand, refresh: refreshOnHand } = useCollectionOnHand(profileId);
+  useFocusEffect(useCallback(() => { refresh(); refreshOnHand(); }, [refresh, refreshOnHand]));
   // Pull-to-refresh: fetch the day's lists now instead of waiting for the 30s
   // timer. runSync's sync-complete re-reads the mirror; refresh() is belt-and-braces.
   const { refreshing, onRefresh } = useSyncRefresh(refresh);
@@ -211,7 +219,7 @@ export default function CollectionDashboardScreen() {
         </XStack>
 
         <RemittanceHero
-          amount={summary.forRemittance}
+          amount={onHand.total}
           visitedPct={summary.visitedPct}
           onPress={() => router.push('/(collection)/remit')}
         />
