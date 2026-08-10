@@ -732,6 +732,14 @@ export type Database = {
         Args: { p_client_id: string };
         Returns: { ok: boolean; code: string; client?: Record<string, unknown> };
       };
+      // Migration 088 (declare_client_lost_rpc.sql) — Complete Info's
+      // "Declare lost opportunity" action. `code` is one of the
+      // LostOpportunityDeclareCode values in
+      // lib/policies/lost-opportunity-declare-policy.ts.
+      declare_client_lost: {
+        Args: { p_client_id: string; p_reason: string };
+        Returns: { ok: boolean; code: string; client?: Record<string, unknown> };
+      };
       // ADR-053 / Migrations 057-060 (Batch 7B, live 2026-08-02): the
       // calling agent's own role-scoped usage against the active
       // `cutoff_periods` row. target/confirmed_count/remaining are all
