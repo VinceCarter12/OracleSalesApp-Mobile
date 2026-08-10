@@ -16,7 +16,7 @@ import { Avatar } from '../../../components/ui/Avatar';
  * lib/executive-overview-service.ts (`ExecMeeting.location`/`.gps`/`.date`
  * already resolved by lib/team-remote-mappers.ts's shared
  * `resolveLocation()`/`formatGps()`/`formatShortDate()` helpers — reused,
- * not reinvented). The map render itself (Leaflet sa WebView, same
+ * not reinvented). The map render itself (Leaflet in a WebView, same
  * tiles/pins as the web app — Context.md cross-repo MAPS section, OQ-8)
  * remains explicitly out of scope; the pin canvas below stays a placeholder.
  */
@@ -26,10 +26,10 @@ export default function ExecutiveMapsScreen() {
 
   return (
     <YStack flex={1} backgroundColor={BIZLINK_COLORS.canvas} paddingTop={insets.top}>
-      <BizTopBar title="Maps" />
+      <BizTopBar title="Maps" fallbackHref="/(executive)" />
       <ScrollView contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 24 }}>
         <Text fontSize={13} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} marginBottom="$3" lineHeight={19}>
-          Pinpoint ng lahat ng meeting locations, company-wide — pang-verify na totoong nagpunta ang agent.
+          Every meeting location, company-wide — to verify the agent actually showed up.
         </Text>
 
         <YStack
@@ -42,7 +42,7 @@ export default function ExecutiveMapsScreen() {
         >
           <Map size={32} color={BIZLINK_COLORS.muted} strokeWidth={1.75} />
           <Text fontSize={12} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} textAlign="center" paddingHorizontal="$4">
-            Map render pending (Leaflet sa WebView, same tiles ng web app — OQ-8)
+            Map render pending (Leaflet in a WebView, same tiles as the web app — OQ-8)
           </Text>
         </YStack>
 
@@ -60,12 +60,12 @@ export default function ExecutiveMapsScreen() {
         ) : error ? (
           <YStack alignItems="center" paddingVertical="$6" gap="$3">
             <Text fontSize={13} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} textAlign="center">{error}</Text>
-            <BizButton small label="Ulitin" variant="white" onPress={reload} />
+            <BizButton small label="Retry" variant="white" onPress={reload} />
           </YStack>
         ) : !overview || overview.meetings.length === 0 ? (
           <YStack alignItems="center" paddingVertical="$6">
             <Text fontSize={13} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted}>
-              Walang naitalang meeting location.
+              No meeting locations recorded.
             </Text>
           </YStack>
         ) : (

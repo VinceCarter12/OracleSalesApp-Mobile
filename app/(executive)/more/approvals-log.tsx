@@ -32,10 +32,10 @@ export default function ExecutiveTagAlongLogScreen() {
 
   return (
     <YStack flex={1} backgroundColor={BIZLINK_COLORS.canvas} paddingTop={insets.top}>
-      <BizTopBar title="Tag-Along Log" />
+      <BizTopBar title="Tag-Along Log" fallbackHref="/(executive)" />
       <ScrollView contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 24 }}>
         <Text fontSize={13} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} marginBottom="$3" lineHeight={19}>
-          Read-only history ng mga tag-along request na tinanggap o tinanggihan, company-wide — hindi ka pwedeng mag-override dito.
+          Read-only history of accepted or declined tag-along requests, company-wide — you can’t override anything here.
         </Text>
 
         {loading ? (
@@ -45,12 +45,12 @@ export default function ExecutiveTagAlongLogScreen() {
         ) : error ? (
           <YStack alignItems="center" paddingVertical="$6" gap="$3">
             <Text fontSize={13} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} textAlign="center">{error}</Text>
-            <BizButton small label="Ulitin" variant="white" onPress={reload} />
+            <BizButton small label="Retry" variant="white" onPress={reload} />
           </YStack>
         ) : items.length === 0 ? (
           <YStack alignItems="center" paddingVertical="$6">
             <Text fontSize={13} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted}>
-              Wala pang tinanggap o tinanggihang tag-along request.
+              No tag-along requests accepted or declined yet.
             </Text>
           </YStack>
         ) : (
@@ -70,14 +70,14 @@ export default function ExecutiveTagAlongLogScreen() {
                 {entry.clientName ?? '—'}
               </Text>
               <Text fontSize={11.5} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted}>
-                {entry.requesterName ?? '—'} tinag-along si {entry.inviteeName ?? '—'}
+                {entry.requesterName ?? '—'} tagged along {entry.inviteeName ?? '—'}
               </Text>
               <XStack alignItems="center" gap="$2">
-                <Text fontSize={12.5} fontFamily={BIZLINK_FONTS.semibold} color={BIZLINK_COLORS.text}>Desisyon</Text>
+                <Text fontSize={12.5} fontFamily={BIZLINK_FONTS.semibold} color={BIZLINK_COLORS.text}>Decision</Text>
                 {entry.decision === 'accepted' ? (
-                  <StatusBadge label="Tinanggap" background={BIZLINK_COLORS.tintA} color={BIZLINK_COLORS.brand} />
+                  <StatusBadge label="Accepted" background={BIZLINK_COLORS.tintA} color={BIZLINK_COLORS.brand} />
                 ) : (
-                  <StatusBadge label="Tinanggihan" background={BIZLINK_COLORS.tintB} color={BIZLINK_COLORS.red} />
+                  <StatusBadge label="Declined" background={BIZLINK_COLORS.tintB} color={BIZLINK_COLORS.red} />
                 )}
               </XStack>
             </BizCard>

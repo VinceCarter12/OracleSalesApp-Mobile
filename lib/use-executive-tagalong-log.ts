@@ -23,7 +23,7 @@ export function useExecutiveTagAlongLog(): UseExecutiveTagAlongLog {
       setItems(data);
     } catch (err) {
       console.error('[use-executive-tagalong-log] load failed:', err instanceof Error ? err.message : String(err));
-      setError('Hindi na-load ang tag-along decision history. Subukan ulit.');
+      setError('Couldn’t load the tag-along decision history. Please try again.');
     } finally {
       setLoading(false);
     }

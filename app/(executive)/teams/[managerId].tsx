@@ -28,7 +28,7 @@ export default function ExecutiveManagerDetailScreen() {
     return (
       <YStack flex={1} justifyContent="center" alignItems="center" backgroundColor={BIZLINK_COLORS.canvas} gap="$3" paddingHorizontal="$5">
         <Text fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} textAlign="center">{error}</Text>
-        <BizButton small label="Ulitin" variant="white" onPress={reload} />
+        <BizButton small label="Retry" variant="white" onPress={reload} />
       </YStack>
     );
   }
@@ -65,10 +65,10 @@ export default function ExecutiveManagerDetailScreen() {
           <StatBox value={manager.agentCount} label="Agents" />
         </XStack>
 
-        <BizSectionHeader title="Agents sa team na ito" />
+        <BizSectionHeader title="Agents on this team" />
         {agents.length === 0 ? (
           <Text fontSize={13} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} paddingVertical="$3">
-            Walang agent na naka-assign sa team na ito.
+            No agents assigned to this team.
           </Text>
         ) : null}
         {agents.map((agent) => {
