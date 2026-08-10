@@ -36,7 +36,7 @@ export default function ExecutiveAccountScreen() {
 
   return (
     <YStack flex={1} backgroundColor={BIZLINK_COLORS.canvas} paddingTop={insets.top}>
-      <BizTopBar title="Account & Security" />
+      <BizTopBar title="Account & Security" fallbackHref="/(executive)" />
       <ScrollView contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 24 }}>
         <BizCard flexDirection="row" alignItems="center" gap="$3.5">
           {avatarUri ? (
@@ -48,7 +48,7 @@ export default function ExecutiveAccountScreen() {
           )}
           <YStack>
             <Text fontFamily={BIZLINK_FONTS.semibold} fontSize={17} color={BIZLINK_COLORS.text}>Executive</Text>
-            <Text fontSize={13} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted}>Company-wide na access</Text>
+            <Text fontSize={13} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted}>Company-wide access</Text>
           </YStack>
         </BizCard>
 

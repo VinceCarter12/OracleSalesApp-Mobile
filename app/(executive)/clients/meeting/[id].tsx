@@ -40,7 +40,7 @@ export default function ExecutiveMeetingDetailScreen() {
     return (
       <YStack flex={1} justifyContent="center" alignItems="center" backgroundColor={BIZLINK_COLORS.canvas} gap="$3" paddingHorizontal="$5">
         <Text fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} textAlign="center">{error}</Text>
-        <BizButton small label="Ulitin" variant="white" onPress={reload} />
+        <BizButton small label="Retry" variant="white" onPress={reload} />
       </YStack>
     );
   }

@@ -10,6 +10,7 @@ import { useExecutiveOverview } from '../../../lib/use-executive-overview';
 import { avatarPaletteFor } from '../../../lib/avatar-palette';
 import { BizChip } from '../../../components/bizlink/BizChip';
 import { BizButton } from '../../../components/bizlink/BizButton';
+import { BizTopBar } from '../../../components/bizlink/BizTopBar';
 import { BizFilterSheet } from '../../../components/bizlink/BizFilterSheet';
 import { BizFilterSheetRow } from '../../../components/bizlink/BizFilterSheetRow';
 import { Avatar } from '../../../components/ui/Avatar';
@@ -56,9 +57,7 @@ export default function ExecutiveClientsScreen() {
 
   return (
     <YStack flex={1} backgroundColor={BIZLINK_COLORS.canvas} paddingTop={insets.top}>
-      <XStack alignItems="center" paddingHorizontal="$4" paddingTop="$2.5" paddingBottom="$1.5">
-        <Text fontFamily={BIZLINK_FONTS.semibold} fontSize={21} color={BIZLINK_COLORS.text}>Clients</Text>
-      </XStack>
+      <BizTopBar title="Clients" />
       <YStack paddingHorizontal="$4" gap="$2.5">
         <XStack gap="$2" alignItems="center">
           <XStack flex={1} alignItems="center" backgroundColor={BIZLINK_COLORS.card} borderRadius={16} height={52} paddingHorizontal={14} gap="$2">
@@ -122,7 +121,7 @@ export default function ExecutiveClientsScreen() {
       ) : error ? (
         <YStack alignItems="center" paddingVertical="$6" gap="$3">
           <Text fontSize={13} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} textAlign="center">{error}</Text>
-          <BizButton small label="Ulitin" variant="white" onPress={reload} />
+          <BizButton small label="Retry" variant="white" onPress={reload} />
         </YStack>
       ) : (
         <FlatList
@@ -131,14 +130,14 @@ export default function ExecutiveClientsScreen() {
           contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 24, paddingTop: 8 }}
           ListEmptyComponent={
             <Text fontSize={13} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} textAlign="center" paddingVertical="$4">
-              Walang client na tumugma.
+              No matching clients.
             </Text>
           }
           ListFooterComponent={
             <XStack alignItems="center" justifyContent="center" gap="$1.5" paddingVertical="$3">
               <Eye size={13} color={BIZLINK_COLORS.muted} strokeWidth={1.75} />
               <Text fontSize={12} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} textAlign="center" flexShrink={1}>
-                Nakikita mo ang LAHAT ng clients ng kumpanya — view-only, ang pag-approve ay sa manager.
+                You can see ALL company clients — view-only; approvals happen at the manager level.
               </Text>
             </XStack>
           }

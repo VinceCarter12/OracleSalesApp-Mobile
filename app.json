@@ -62,7 +62,8 @@
       "expo-font",
       "expo-sqlite",
       "expo-local-authentication",
-      "expo-splash-screen"
+      "expo-splash-screen",
+      "expo-sharing"
     ],
     "experiments": {
       "typedRoutes": true

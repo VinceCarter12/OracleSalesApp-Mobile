@@ -12,8 +12,8 @@ import { BizButton } from '../../../components/bizlink/BizButton';
 import { StatusBadge } from '../../../components/ui/StatusBadge';
 
 const LOST_STATUS_BADGES: Record<ExecLostOpportunityStatus, { label: string; background: string; color: string }> = {
-  cooldown: { label: 'Sa cooldown (14 araw)', background: BIZLINK_COLORS.tintB, color: BIZLINK_COLORS.red },
-  released: { label: 'Naka-release na', background: BIZLINK_COLORS.amberSoft, color: BIZLINK_COLORS.orange },
+  cooldown: { label: 'In cooldown (14 days)', background: BIZLINK_COLORS.tintB, color: BIZLINK_COLORS.red },
+  released: { label: 'Released', background: BIZLINK_COLORS.amberSoft, color: BIZLINK_COLORS.orange },
 };
 
 function formatDate(iso: string | null): string {
@@ -39,10 +39,10 @@ export default function ExecutiveLostOpportunityScreen() {
 
   return (
     <YStack flex={1} backgroundColor={BIZLINK_COLORS.canvas} paddingTop={insets.top}>
-      <BizTopBar title="Lost Opportunity" />
+      <BizTopBar title="Lost Opportunity" fallbackHref="/(executive)" />
       <ScrollView contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 24 }}>
         <Text fontSize={13} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} marginBottom="$3" lineHeight={19}>
-          Company-wide na listahan. Dating &ldquo;admin side lang&rdquo; — ngayon makikita mo rin bilang Executive.
+          Company-wide list. Previously admin-only — now visible to you as an Executive.
         </Text>
 
         {loading ? (
@@ -52,12 +52,12 @@ export default function ExecutiveLostOpportunityScreen() {
         ) : error ? (
           <YStack alignItems="center" paddingVertical="$6" gap="$3">
             <Text fontSize={13} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} textAlign="center">{error}</Text>
-            <BizButton small label="Ulitin" variant="white" onPress={reload} />
+            <BizButton small label="Retry" variant="white" onPress={reload} />
           </YStack>
         ) : items.length === 0 ? (
           <YStack alignItems="center" paddingVertical="$6">
             <Text fontSize={13} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted}>
-              Walang lost opportunity sa ngayon.
+              No lost opportunities right now.
             </Text>
           </YStack>
         ) : (
@@ -73,10 +73,10 @@ export default function ExecutiveLostOpportunityScreen() {
                 </XStack>
                 <Text fontFamily={BIZLINK_FONTS.semibold} fontSize={14} color={BIZLINK_COLORS.text}>{lost.companyName}</Text>
                 <Text fontSize={11.5} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted}>
-                  {lost.agentName ?? '—'} · team ni {lost.managerName ?? '—'}
+                  {lost.agentName ?? '—'} · {lost.managerName ?? '—'}’s team
                 </Text>
                 <Text fontSize={12.5} fontFamily={BIZLINK_FONTS.semibold} color={BIZLINK_COLORS.muted}>
-                  {lost.reason ?? 'Walang naitalang dahilan'}
+                  {lost.reason ?? 'No reason recorded'}
                 </Text>
               </BizCard>
             );

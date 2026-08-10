@@ -6,6 +6,7 @@ import { BIZLINK_COLORS, BIZLINK_FONTS } from '../../../lib/theme';
 import { useExecutiveOverview } from '../../../lib/use-executive-overview';
 import { avatarPaletteFor } from '../../../lib/avatar-palette';
 import { BizButton } from '../../../components/bizlink/BizButton';
+import { BizTopBar } from '../../../components/bizlink/BizTopBar';
 import { Avatar } from '../../../components/ui/Avatar';
 import { StatusBadge } from '../../../components/ui/StatusBadge';
 
@@ -24,12 +25,10 @@ export default function ExecutiveTeamsScreen() {
 
   return (
     <YStack flex={1} backgroundColor={BIZLINK_COLORS.canvas} paddingTop={insets.top}>
-      <XStack alignItems="center" paddingHorizontal="$4" paddingTop="$2.5" paddingBottom="$1.5">
-        <Text fontFamily={BIZLINK_FONTS.semibold} fontSize={21} color={BIZLINK_COLORS.text}>Teams</Text>
-      </XStack>
+      <BizTopBar title="Teams" />
       <ScrollView contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 24 }}>
         <Text fontSize={13} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} marginBottom="$3" lineHeight={19}>
-          Lahat ng managers sa buong kumpanya (ADR-014) — kasama ang laki ng kanya-kanyang team.
+          All managers company-wide — including the size of each one’s team.
         </Text>
 
         {loading ? (
@@ -39,12 +38,12 @@ export default function ExecutiveTeamsScreen() {
         ) : error ? (
           <YStack alignItems="center" paddingVertical="$6" gap="$3">
             <Text fontSize={13} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} textAlign="center">{error}</Text>
-            <BizButton small label="Ulitin" variant="white" onPress={reload} />
+            <BizButton small label="Retry" variant="white" onPress={reload} />
           </YStack>
         ) : !overview || overview.managers.length === 0 ? (
           <YStack alignItems="center" paddingVertical="$6">
             <Text fontSize={13} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted}>
-              Walang manager na naitala.
+              No managers recorded.
             </Text>
           </YStack>
         ) : (
