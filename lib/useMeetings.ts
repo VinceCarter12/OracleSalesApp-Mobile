@@ -34,16 +34,22 @@ export function useMeetings(clientId?: string) {
     perfStart(clientId ? 'client.meetings.sqlite.read' : 'meetings.sqlite.read');
     setLoading(true);
     const rows = await db.getAllAsync<LocalMeetingRow>(
+      // The `AND (m.client_id IS NULL OR c.id IS NOT NULL)` guard that used to
+      // sit in both WHERE clauses is gone. It existed so a meeting whose client
+      // row had been removed locally couldn't render as a nameless row — but it
+      // did that by hiding the agent's ENTIRE history with any client that went
+      // lost or deleted, and it left the Reports screen's "Lost" filter
+      // unmatchable by construction. meetings.client_name (SQLite v31) now
+      // carries the name independently of the JOIN, so there is nothing left
+      // to guard against.
       clientId
-        ? `SELECT m.*, c.company_name as client_name
+        ? `SELECT m.*, c.company_name as joined_client_name
            FROM meetings m LEFT JOIN clients c ON c.id = m.client_id
            WHERE m.agent_id = ? AND m.client_id = ?
-             AND (m.client_id IS NULL OR c.id IS NOT NULL)
            ORDER BY m.logged_at DESC`
-        : `SELECT m.*, c.company_name as client_name
+        : `SELECT m.*, c.company_name as joined_client_name
            FROM meetings m LEFT JOIN clients c ON c.id = m.client_id
            WHERE m.agent_id = ?
-             AND (m.client_id IS NULL OR c.id IS NOT NULL)
            ORDER BY m.logged_at DESC`,
       clientId ? [profileId, clientId] : [profileId]
     );
