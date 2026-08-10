@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { Alert, ScrollView } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router, useLocalSearchParams } from 'expo-router';
-import { Spinner, Text, View, XStack, YStack } from 'tamagui';
+import { Spinner, Text, XStack, YStack } from 'tamagui';
 import { useSession } from '../../../lib/session-store';
 import { getClientById } from '../../../lib/client-service';
 import { getPendingEditRequestForClient, ClientNotFoundLocallyError, type ClientEditRequest } from '../../../lib/client-edit-request-service';
@@ -17,6 +17,8 @@ import { BizChip } from '../../../components/bizlink/BizChip';
 import { BizSectionHeader } from '../../../components/bizlink/BizSectionHeader';
 import { BizButton } from '../../../components/bizlink/BizButton';
 import { BizPendingBanner } from '../../../components/bizlink/BizPendingBanner';
+import { DeclareLostOpportunityAction } from '../../../components/bizlink/DeclareLostOpportunityAction';
+import { CompleteInfoReadOnlyHeader } from '../../../components/bizlink/CompleteInfoReadOnlyHeader';
 import { SALES_CHANNELS, type Client, type SalesChannel } from '../../../types';
 import {
   CONTACT_NUMBER_MAX_LENGTH,
@@ -42,7 +44,7 @@ import {
 export default function CompleteInfoScreen() {
   const insets = useSafeAreaInsets();
   const BIZLINK_COLORS = useBizlinkColors();
-  const { profileId, role, markSuspended } = useSession();
+  const { profileId, role, teamId, markSuspended } = useSession();
   const { clientId } = useLocalSearchParams<{ clientId: string }>();
   const [client, setClient] = useState<Client | null>(null);
   const [pendingRequest, setPendingRequest] = useState<ClientEditRequest | null>(null);
@@ -92,6 +94,17 @@ export default function CompleteInfoScreen() {
 
   const firstTime = !isInfoComplete(client);
   const isManagerOwnClient = role === 'sales_manager' && client.agent_id === profileId;
+  // Vince's locked decision (2026-08-11): the owning agent of any role, which
+  // already includes a sales_manager on a client they directly own (the same
+  // `isManagerOwnClient` carve-out edits above use — `client.agent_id ===
+  // profileId` is a superset). Manager stays read-only for every other
+  // agent's client. No local lost/deleted check is possible here: mobile's
+  // ClientStatus domain (types/index.ts CLIENT_STATUSES) has no 'lost'
+  // value — a lost client is deleted from local SQLite entirely on
+  // sync-down (ADR-026 P1, lib/sync/entity-appliers.ts::
+  // removeLostOrDeletedClient), so any client this screen can even load is,
+  // by construction, never already lost.
+  const canDeclareLost = client.agent_id === profileId;
 
   // Contact number is OPTIONAL (blank allowed), but when provided it must be
   // a valid 11-digit 09-format Philippine mobile number (lib/field-validation).
@@ -178,44 +191,7 @@ export default function CompleteInfoScreen() {
         {/* Company name + city are set once at Create Client (Phase A) and
             are view-only here — not part of the wireframe's a-complete form,
             and editing them isn't in scope for info completion. */}
-        <XStack gap="$2.5" marginBottom="$3.5">
-          <YStack flex={1} gap="$1.5">
-            <Text fontSize={11} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} letterSpacing={0.4}>
-              COMPANY NAME
-            </Text>
-            <View
-              height={52}
-              borderRadius={16}
-              paddingHorizontal={16}
-              justifyContent="center"
-              backgroundColor={BIZLINK_COLORS.canvas}
-              borderWidth={1}
-              borderColor={BIZLINK_COLORS.line}
-            >
-              <Text fontSize={14.5} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.text} numberOfLines={1}>
-                {client.company_name}
-              </Text>
-            </View>
-          </YStack>
-          <YStack flex={1} gap="$1.5">
-            <Text fontSize={11} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} letterSpacing={0.4}>
-              CITY
-            </Text>
-            <View
-              height={52}
-              borderRadius={16}
-              paddingHorizontal={16}
-              justifyContent="center"
-              backgroundColor={BIZLINK_COLORS.canvas}
-              borderWidth={1}
-              borderColor={BIZLINK_COLORS.line}
-            >
-              <Text fontSize={14.5} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.text} numberOfLines={1}>
-                {client.city ?? '—'}
-              </Text>
-            </View>
-          </YStack>
-        </XStack>
+        <CompleteInfoReadOnlyHeader companyName={client.company_name} city={client.city} />
         <BizField
           label="CONTACT PERSON"
           value={contactPerson}
@@ -301,6 +277,16 @@ export default function CompleteInfoScreen() {
             disabled={!canSubmit}
           />
         </YStack>
+
+        {canDeclareLost ? (
+          <DeclareLostOpportunityAction
+            clientId={client.id}
+            profileId={profileId}
+            teamId={teamId}
+            onSuspended={markSuspended}
+            onDeclared={() => router.back()}
+          />
+        ) : null}
       </ScrollView>
     </YStack>
   );
