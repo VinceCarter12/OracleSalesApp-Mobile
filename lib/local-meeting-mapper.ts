@@ -8,7 +8,22 @@ import type { Meeting, MeetingMode, MeetingOutcome, MeetingValidityStatus } from
 export interface LocalMeetingRow {
   id: string;
   client_id: string | null;
+  /**
+   * The name snapshotted onto the meeting row itself (SQLite v31), stamped at
+   * the moment a lost/deleted client is removed from this device. This is the
+   * ONLY name still available once that client row is gone — see
+   * removeLostOrDeletedClient() in lib/sync/entity-appliers.ts.
+   */
   client_name?: string | null;
+  /**
+   * The name resolved through `JOIN clients` at read time. Deliberately a
+   * DIFFERENT key from `client_name`: the read queries do `SELECT m.*`, which
+   * now yields a real `client_name` column, so aliasing the joined value to
+   * the same name would emit two identically-named columns and leave which one
+   * survives up to the driver. Live value wins in rowToMeeting (it tracks
+   * renames); the snapshot is the fallback.
+   */
+  joined_client_name?: string | null;
   agent_id: string;
   gps_lat: number;
   gps_lng: number;
@@ -48,7 +63,7 @@ export function rowToMeeting(row: LocalMeetingRow): Meeting {
   return {
     id: row.id,
     client_id: row.client_id,
-    client_name: row.client_name ?? null,
+    client_name: row.joined_client_name ?? row.client_name ?? null,
     agent_id: row.agent_id,
     gps_lat: row.gps_lat,
     gps_lng: row.gps_lng,

@@ -34,8 +34,27 @@ import type {
  * mirror row (same 'synced'-only guard as the upsert below, so an unsynced
  * local edit is never silently discarded) is the correct "remove from
  * agent" behavior without inventing new lifecycle states or UI.
+ *
+ * The client goes; the agent's MEETINGS with it stay (db.ts v31). Stamping the
+ * company name onto those rows is done here, immediately before the delete,
+ * because this is the last moment the name is available on-device — the server
+ * row being applied still carries it, and a heartbeat later the local clients
+ * row is gone and nothing can resolve the name again. `WHERE client_name IS
+ * NULL` keeps it a one-time stamp: a client that is lost, claimed by someone
+ * else, and lost again must not have its historical name rewritten.
  */
-async function removeLostOrDeletedClient(db: SQLiteDatabase, agentId: string, id: string): Promise<void> {
+async function removeLostOrDeletedClient(
+  db: SQLiteDatabase,
+  agentId: string,
+  id: string,
+  companyName: string | null
+): Promise<void> {
+  if (companyName) {
+    await db.runAsync(
+      'UPDATE meetings SET client_name = ? WHERE client_id = ? AND client_name IS NULL',
+      [companyName, id]
+    );
+  }
   const result = await db.runAsync("DELETE FROM clients WHERE id = ? AND sync_status = 'synced'", [id]);
   if (result.changes > 0) {
     await enqueueLwwAudit(db, agentId, 'clients', id, 'delete');
@@ -85,7 +104,12 @@ export async function upsertSyncedClient(
 ): Promise<void> {
   const remoteStatus = (row.status as RemoteClientStatus) ?? 'active';
   if (remoteStatus === 'lost' || remoteStatus === 'deleted') {
-    await removeLostOrDeletedClient(db, agentId, row.id as string);
+    await removeLostOrDeletedClient(
+      db,
+      agentId,
+      row.id as string,
+      (row.company_name as string | null) ?? null
+    );
     return;
   }
 
