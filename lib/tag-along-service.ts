@@ -241,11 +241,11 @@ export function companionRequestDisplayStatus(request: Pick<ClientCompanionReque
 }
 
 export const COMPANION_REQUEST_STATUS_LABELS: Record<CompanionRequestDisplayStatus, string> = {
-  pending_offline: 'Pending (hindi pa nase-send — offline)',
-  pending_synced: 'Pending (hinihintay ang sagot)',
-  accepted: 'Tinanggap',
-  declined: 'Tinanggihan',
-  cancelled: 'Kinansela',
+  pending_offline: 'Waiting to send (no connection yet)',
+  pending_synced: 'Waiting for their answer',
+  accepted: 'Accepted',
+  declined: 'Declined',
+  cancelled: 'Cancelled',
 };
 
 /**

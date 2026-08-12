@@ -42,7 +42,7 @@ export function useManagerLostOpportunities(): UseManagerLostOpportunities {
       setItems(data);
     } catch (err) {
       console.error('[use-manager-lost-opportunities] load failed:', err instanceof Error ? err.message : String(err));
-      setError('Hindi na-load ang listahan ng lost opportunities. Subukan ulit.');
+      setError("The lost opportunities list couldn't be loaded. Try again.");
     } finally {
       setLoading(false);
     }
@@ -107,7 +107,7 @@ export function useManagerLostOpportunityDetail(clientId: string | undefined): U
       );
     } catch (err) {
       console.error('[use-manager-lost-opportunities] detail load failed:', err instanceof Error ? err.message : String(err));
-      setError('Hindi na-load ang detalye ng opportunity. Subukan ulit.');
+      setError("The opportunity details couldn't be loaded. Try again.");
     } finally {
       setLoading(false);
     }

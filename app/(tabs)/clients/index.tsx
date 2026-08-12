@@ -23,6 +23,7 @@ import { BizFilterSheet } from '../../../components/bizlink/BizFilterSheet';
 import { BizFilterSheetRow } from '../../../components/bizlink/BizFilterSheetRow';
 import { DateRangeFilterRow } from '../../../components/bizlink/DateRangeFilterRow';
 import type { DateRange } from '../../../components/bizlink/DateRangePickerModal';
+import { KeyboardAwareFlatList } from '../../../components/ui/KeyboardAwareScrollView';
 import { BizFloatingPager } from '../../../components/bizlink/BizFloatingPager';
 import { BizTopBar } from '../../../components/bizlink/BizTopBar';
 import { PAGINATION_PAGE_SIZE, usePagination } from '../../../lib/use-pagination';
@@ -147,7 +148,7 @@ function ClientRow({
           </Text>
         </XStack>
         <Text fontSize={12} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} marginTop="$1">
-          {client.sales_channel || 'Walang detalye pa — kumpletuhin ang info'}
+          {client.sales_channel || 'No details yet — complete the info'}
         </Text>
 
         <XStack alignItems="center" gap="$2" marginTop="$1.5" flexWrap="wrap">
@@ -402,8 +403,9 @@ export default function ClientsScreen() {
           <Spinner size="large" color={BIZLINK_COLORS.brand} />
         </YStack>
       ) : (
-        <FlatList
+          <KeyboardAwareFlatList
           data={pageItems}
+          keyboardShouldPersistTaps="handled"
           keyExtractor={(item) => item.id}
           contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 120 + insets.bottom, paddingTop: 20 }}
           renderItem={({ item, index }) => (
@@ -421,7 +423,7 @@ export default function ClientsScreen() {
             <YStack alignItems="center" padding="$8" gap="$2.5">
               <Building2 size={40} color={BIZLINK_COLORS.muted} strokeWidth={1.75} />
               <Text fontSize={13} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} textAlign="center">
-                {clients.length === 0 ? 'Wala ka pang clients.' : 'Walang tumugma sa filter.'}
+                {clients.length === 0 ? 'You have no clients yet.' : 'No client matches these filters.'}
               </Text>
             </YStack>
           }

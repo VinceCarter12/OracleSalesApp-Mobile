@@ -72,14 +72,14 @@ export default function MeetingCelebrateScreen() {
           <>
             <CloudUpload size={14} color={BIZLINK_COLORS.card} strokeWidth={1.75} />
             <Text fontFamily={BIZLINK_FONTS.medium} fontSize={12.5} color={BIZLINK_COLORS.card}>
-              Online — ni-sync na o sina-sync na ngayon
+              Online — uploaded or uploading now
             </Text>
           </>
         ) : (
           <>
             <RefreshCw size={14} color={BIZLINK_COLORS.card} strokeWidth={1.75} />
             <Text fontFamily={BIZLINK_FONTS.medium} fontSize={12.5} color={BIZLINK_COLORS.card}>
-              Queued for sync — auto-uploads when online
+              Waiting to upload — sent automatically when online
             </Text>
           </>
         )}

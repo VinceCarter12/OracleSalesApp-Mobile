@@ -23,14 +23,14 @@ const DECLARE_CODES: readonly LostOpportunityDeclareCode[] = [
 
 function decodeDeclareRpcResult(value: unknown): LostOpportunityDeclareCode {
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
-    throw new Error('Hindi ma-verify ang declare-lost response mula sa server.');
+    throw new Error("Can't verify the declare-lost response from the server.");
   }
   const result = value as Record<string, unknown>;
   if (
     typeof result.code !== 'string' ||
     !DECLARE_CODES.includes(result.code as LostOpportunityDeclareCode)
   ) {
-    throw new Error('Hindi ma-verify ang declare-lost response mula sa server.');
+    throw new Error("Can't verify the declare-lost response from the server.");
   }
   return result.code as LostOpportunityDeclareCode;
 }
@@ -45,7 +45,7 @@ export async function declareClientLost(
 ): Promise<LostOpportunityDeclareCode> {
   const online = await isLikelyOnline();
   if (!online) {
-    throw new Error('Kailangan ng internet connection para i-declare lost ang client na ito.');
+    throw new Error('You need an internet connection to declare this client lost.');
   }
 
   const { data, error } = await withTimeout(

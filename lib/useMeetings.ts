@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { useSQLiteContext } from 'expo-sqlite';
+import { useAppDb } from './app-db-provider';
 import { useSession } from './session-store';
 import { rowToMeeting, type LocalMeetingRow } from './local-meeting-mapper';
 import { subscribeSyncComplete } from './sync/sync-events';
@@ -20,7 +20,7 @@ import type { Meeting } from '../types';
 // client detail's meeting history) despite having saved successfully.
 
 export function useMeetings(clientId?: string) {
-  const db = useSQLiteContext();
+  const db = useAppDb();
   const { profileId } = useSession();
   const [meetings, setMeetings] = useState<Meeting[]>([]);
   const [loading, setLoading] = useState(true);

@@ -140,7 +140,7 @@ export function SyncHistoryList({
       ) : entries.length === 0 ? (
         <YStack alignItems="center" padding="$8" gap="$2.5">
           <Text fontSize={13} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} textAlign="center">
-            {totalCount === 0 ? 'Wala pang sync history.' : 'Walang record na tumugma sa search/filter.'}
+            {totalCount === 0 ? 'No upload history yet.' : 'No record matches your search or filter.'}
           </Text>
         </YStack>
       ) : (

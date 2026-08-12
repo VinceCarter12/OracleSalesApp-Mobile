@@ -7,38 +7,43 @@
 
 export type CompleteInfoSubmitBranch =
   | 'blocked_pending' // Step 1: an existing pending client_edit_request already exists — block, show BizPendingBanner.
-  | 'direct_first_time' // Step 2: first-time completion (Wireframe a-complete Phase B) — always direct, never gated.
-  | 'direct_exempt_only' // Step 3: only approval-EXEMPT fields (minor_notes) changed — direct, any role.
+  | 'direct_first_time' // Step 2: every changed field is either approval-exempt (minor_notes) or was blank before this save (first-time fill of that field) — always direct, never gated.
+  | 'direct_exempt_only' // Step 3: nothing changed at all — direct no-op save, any role.
   | 'direct_manager_owns' // Step 4: sales_manager editing their own assigned client — direct, version-checked, never a request.
-  | 'request_approval'; // Step 5: sales_specialist/rsr, at least one approval-required field changed.
+  | 'request_approval'; // Step 5: sales_specialist/rsr, at least one already-set field changed — needs manager approval for just those fields.
 
+// Per-field approval gating (2026-08-11, fixes B-10x: firstTime was a
+// whole-record flag computed from isInfoComplete(), so any client left
+// permanently partial stayed firstTime === true forever, silently
+// defeating ADR-052's approval workflow for that record). The split is now
+// computed once, from the actual before/after diff, by
+// lib/complete-info-submit.ts's splitCompleteInfoChanges() — this function
+// only decides which branch that split maps to.
 export interface DetermineCompleteInfoSubmitBranchInput {
   hasPendingRequest: boolean;
-  firstTime: boolean;
   isManagerOwnClient: boolean;
-  /** Every field (out of the 8 CLIENT_EDITABLE_FIELDS) that is actually dirty this save. */
-  changedFields: readonly string[];
-  /** CLIENT_APPROVAL_EXEMPT_FIELDS — currently just ['minor_notes']. */
-  exemptFields: readonly string[];
+  /** Changed fields that were already non-blank before this save — require manager approval. */
+  approvalRequiredFields: readonly string[];
+  /** Changed fields safe to write immediately: minor_notes (globally exempt) or any field whose OLD value was blank. */
+  directApplyFields: readonly string[];
 }
 
 /**
- * ADR-052 section F, order is load-bearing: guard → firstTime → exempt-only
- * → manager-owns → request. Step 3 (exempt-only) is evaluated BEFORE step 4
- * (manager-owns) specifically so a manager editing only minor_notes takes
- * the cheap exempt path — but a manager changing anything else, even
- * alongside minor_notes, still falls through to step 4's direct-write
- * (never creates a request either way; the distinction only matters for
- * which write path is taken, not whether approval is required).
+ * ADR-052 section F, order is load-bearing: guard → nothing-requires-approval
+ * → manager-owns → request. When no field in this save needs approval, the
+ * write is always direct — 'direct_first_time' if at least one field was
+ * actually written, 'direct_exempt_only' for a true no-op save (nothing
+ * changed at all). A manager editing their own client stays direct
+ * regardless of what changed, including an already-set field.
  */
 export function determineCompleteInfoSubmitBranch(
   input: DetermineCompleteInfoSubmitBranchInput
 ): CompleteInfoSubmitBranch {
   if (input.hasPendingRequest) return 'blocked_pending';
-  if (input.firstTime) return 'direct_first_time';
 
-  const hasNonExemptChange = input.changedFields.some((field) => !input.exemptFields.includes(field));
-  if (!hasNonExemptChange) return 'direct_exempt_only';
+  if (input.approvalRequiredFields.length === 0) {
+    return input.directApplyFields.length > 0 ? 'direct_first_time' : 'direct_exempt_only';
+  }
 
   if (input.isManagerOwnClient) return 'direct_manager_owns';
 

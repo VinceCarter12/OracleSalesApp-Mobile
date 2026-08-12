@@ -15,6 +15,7 @@ import { processCodPayments } from './sync/cod-payments';
 import { uploadPendingAvatar } from './profile-avatar';
 import { retryFailedPendingUpload, type PendingUploadStatus } from './sync/pending-upload-status';
 import { createCoalescingRunner } from './sync/coalescing-runner';
+import { notifySyncComplete } from './sync/sync-events';
 
 // T-002/T-005/T-014: pushes queued local writes (T-001's `outbox`) to
 // Supabase, dispatching per-table behavior via the entity registry
@@ -246,6 +247,9 @@ async function runSyncOnce(agentId: string, teamId?: string | null): Promise<Syn
   await setLastSyncAt(new Date().toISOString()).catch((err: unknown) => {
     console.error('setLastSyncAt failed', err);
   });
+  // Direct post-write callers bypass `useSync`, so publish only after the
+  // sync-down mirror has the server-confirmed data.
+  notifySyncComplete();
   return {
     synced: outboxResult.synced + photoPatchResult.synced + paymentResult.synced + codPaymentResult.synced,
     failed:

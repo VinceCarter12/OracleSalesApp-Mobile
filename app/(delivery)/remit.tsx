@@ -2,7 +2,7 @@ import { useRef, useState } from 'react';
 import { Alert, ScrollView } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Building2 } from 'lucide-react-native';
-import { useSQLiteContext } from 'expo-sqlite';
+import { useAppDb } from '../../lib/app-db-provider';
 import { Text, XStack, YStack } from 'tamagui';
 import { useBizlinkColors, BIZLINK_FONTS, BIZLINK_ON_INK, COLORS } from '../../lib/theme';
 import { useSession } from '../../lib/session-store';
@@ -27,7 +27,7 @@ import { submitCodRemittance } from '../../lib/remittance-write';
 export default function DeliveryRemitScreen() {
   const BIZLINK_COLORS = useBizlinkColors();
   const insets = useSafeAreaInsets();
-  const db = useSQLiteContext();
+  const db = useAppDb();
   const { profileId } = useSession();
   const { summary, refresh } = useCodOnHand(profileId);
 

@@ -17,6 +17,7 @@ import { BizSectionHeader } from '../../../components/bizlink/BizSectionHeader';
 import { BizButton } from '../../../components/bizlink/BizButton';
 import { LockToggleRow } from '../../../components/security/LockToggleRow';
 import { clearSnapshot } from '../../../lib/app-lock/session-snapshot';
+import { useTeamName } from '../../../lib/use-team-name';
 
 // NOTE (T-014 Phase 3, ADR-024): bypasses the shared `components/account/AccountScreen.tsx`
 // shell — same precedent as the Sales Agent account screen (Phase 2) — since that
@@ -29,6 +30,7 @@ export default function ManagerAccountScreen() {
   const insets = useSafeAreaInsets();
   const { summary } = useManagerDashboard();
   const { signOut, fullName, teamId, profileId } = useSession();
+  const teamName = useTeamName(teamId);
   const { session, signOut: signOutSupabase } = useAuth();
   const { avatarUri } = useProfileAvatar(session?.user.id);
   const [newClientsCount, setNewClientsCount] = useState<number | null>(null);
@@ -59,7 +61,7 @@ export default function ManagerAccountScreen() {
 
   return (
     <YStack flex={1} backgroundColor={BIZLINK_COLORS.canvas} paddingTop={insets.top}>
-      <BizTopBar title="Account & Security" />
+      <BizTopBar title="Account & Security" fallbackHref="/(manager)" />
       <ScrollView contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 24 }}>
         <BizCard flexDirection="row" alignItems="center" gap="$3.5">
           {avatarUri ? (
@@ -72,7 +74,7 @@ export default function ManagerAccountScreen() {
           <YStack>
             <Text fontFamily={BIZLINK_FONTS.semibold} fontSize={17} color={BIZLINK_COLORS.text}>{fullName ?? '—'}</Text>
             {/* ADR-017: a single `sales_manager` role. Team-level Sales-vs-RSR "track" retired 2026-07-23 — teams are now mixed, team_id no longer implies a track. */}
-            <Text fontSize={13} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted}>Sales Manager · {teamId ?? '—'}</Text>
+            <Text fontSize={13} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted}>Sales Manager · {teamName}</Text>
           </YStack>
         </BizCard>
 
@@ -95,11 +97,11 @@ export default function ManagerAccountScreen() {
 
         <BizCard flat marginTop="$4">
           <XStack alignItems="center" gap="$2">
-            <Text fontSize={12.5} fontFamily={BIZLINK_FONTS.semibold} color={BIZLINK_COLORS.text}>Session policy</Text>
+            <Text fontSize={12.5} fontFamily={BIZLINK_FONTS.semibold} color={BIZLINK_COLORS.text}>Staying signed in</Text>
           </XStack>
           <Text fontSize={13} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} marginTop="$1" lineHeight={18}>
-            Kapag naka-on ang device-credential unlock, ang phone fingerprint, PIN, pattern, o device password ang
-            gagamitin sa pag-unlock ng app. Hindi nagse-save ang app ng hiwalay na passcode.
+            If device-credential unlock is on, your phone's fingerprint, PIN, pattern, or device password is
+            used to unlock the app. The app doesn't save a separate passcode.
           </Text>
         </BizCard>
 

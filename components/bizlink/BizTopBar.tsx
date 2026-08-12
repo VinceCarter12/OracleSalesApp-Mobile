@@ -1,4 +1,5 @@
 import { Pressable } from 'react-native';
+import { useRef } from 'react';
 import { router } from 'expo-router';
 import type { Href } from 'expo-router';
 import { ArrowLeft } from 'lucide-react-native';
@@ -25,22 +26,42 @@ interface BizTopBarProps {
    * there, since it already lands on the same place `fallbackHref` would.
    */
   fallbackHref?: Href;
+  /**
+   * Use `fallbackHref` only when this screen has no native stack history.
+   * This preserves normal nested push/pop behavior while keeping direct
+   * route entry recoverable (for example, a meeting screen opened from a
+   * notification or deep link).
+   */
+  fallbackOnlyIfNoHistory?: boolean;
 }
 
 /**
  * T-014 Phase 2 (ADR-024): BizLink `.topbar` — white circular back button
- * (44x44dp touch target) + General Sans title. Scoped to `app/(tabs)` for
- * this phase — see `components/ui/TopBar.tsx` for the Manager/Executive
- * equivalent (out of scope, unchanged).
+ * (44x44dp touch target) + General Sans title. Shared by Sales/RSR and
+ * Manager route families; Home/dashboard entry points intentionally omit it.
  */
-export function BizTopBar({ title, right, fallbackHref }: BizTopBarProps) {
+export function BizTopBar({ title, right, fallbackHref, fallbackOnlyIfNoHistory = false }: BizTopBarProps) {
   const BIZLINK_COLORS = useBizlinkColors();
+  const navigationLocked = useRef(false);
+
   function handleBack(): void {
-    if (fallbackHref) {
+    // Android can deliver two presses before the native router transition has
+    // completed. Ignore the second one so a back tap cannot pop two screens or
+    // enqueue duplicate fallback navigations.
+    if (navigationLocked.current) return;
+    navigationLocked.current = true;
+
+    if (fallbackHref && (!fallbackOnlyIfNoHistory || !router.canGoBack())) {
       router.navigate(fallbackHref);
     } else {
       router.back();
     }
+
+    // Keep the guard short enough that a failed/no-op transition can be retried,
+    // while still covering the delayed press events seen on physical Android.
+    setTimeout(() => {
+      navigationLocked.current = false;
+    }, 450);
   }
 
   return (
@@ -48,14 +69,17 @@ export function BizTopBar({ title, right, fallbackHref }: BizTopBarProps) {
       <Pressable
         onPress={handleBack}
         hitSlop={6}
-        style={{
+        accessibilityRole="button"
+        accessibilityLabel={`Back from ${title}`}
+        style={({ pressed }) => ({
           width: 44,
           height: 44,
           borderRadius: 22,
           backgroundColor: BIZLINK_COLORS.card,
           alignItems: 'center',
           justifyContent: 'center',
-        }}
+          opacity: pressed ? 0.55 : 1,
+        })}
       >
         <ArrowLeft size={18} color={BIZLINK_COLORS.text} strokeWidth={1.75} />
       </Pressable>

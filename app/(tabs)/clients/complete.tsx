@@ -6,7 +6,7 @@ import { Spinner, Text, XStack, YStack } from 'tamagui';
 import { useSession } from '../../../lib/session-store';
 import { getClientById } from '../../../lib/client-service';
 import { getPendingEditRequestForClient, ClientNotFoundLocallyError, type ClientEditRequest } from '../../../lib/client-edit-request-service';
-import { submitCompleteInfo } from '../../../lib/complete-info-submit';
+import { submitCompleteInfo, splitCompleteInfoChanges } from '../../../lib/complete-info-submit';
 import { AccountSuspendedError } from '../../../lib/app-lock/account-status';
 import { useBizlinkColors, BIZLINK_FONTS } from '../../../lib/theme';
 import { showToast } from '../../../lib/toast';
@@ -19,6 +19,7 @@ import { BizButton } from '../../../components/bizlink/BizButton';
 import { BizPendingBanner } from '../../../components/bizlink/BizPendingBanner';
 import { DeclareLostOpportunityAction } from '../../../components/bizlink/DeclareLostOpportunityAction';
 import { CompleteInfoReadOnlyHeader } from '../../../components/bizlink/CompleteInfoReadOnlyHeader';
+import { KeyboardAwareScrollView } from '../../../components/ui/KeyboardAwareScrollView';
 import { SALES_CHANNELS, type Client, type SalesChannel } from '../../../types';
 import {
   CONTACT_NUMBER_MAX_LENGTH,
@@ -92,6 +93,8 @@ export default function CompleteInfoScreen() {
     );
   }
 
+  // Cosmetic only (BizTopBar title toggle) — "has the checklist ever been
+  // fully filled," independent of the per-field approval gating below.
   const firstTime = !isInfoComplete(client);
   const isManagerOwnClient = role === 'sales_manager' && client.agent_id === profileId;
   // Vince's locked decision (2026-08-11): the owning agent of any role, which
@@ -106,6 +109,19 @@ export default function CompleteInfoScreen() {
   // by construction, never already lost.
   const canDeclareLost = client.agent_id === profileId;
 
+  // Per-field approval gating (2026-08-11, fixes B-10x): recomputed live from
+  // current form state on every render, using the exact same split
+  // submitCompleteInfo() applies at save time (lib/complete-info-submit.ts)
+  // — one definition of "does this change need approval," shared by the
+  // live UI and the write path. `channel === null` (not yet chosen) can't
+  // be diffed yet — canSubmit already blocks save in that state.
+  const approvalRequiredFields: string[] =
+    channel === null
+      ? []
+      : splitCompleteInfoChanges(client, { contactPerson, position, contactNumber, officeAddress, channel, existingOverride, minorNotes })
+          .approvalRequiredFields;
+  const needsApproval = approvalRequiredFields.length > 0 && !isManagerOwnClient;
+
   // Contact number is OPTIONAL (blank allowed), but when provided it must be
   // a valid 11-digit 09-format Philippine mobile number (lib/field-validation).
   const contactNumberValid = contactNumber.trim() === '' || isValidContactNumber(contactNumber.trim());
@@ -113,7 +129,7 @@ export default function CompleteInfoScreen() {
   async function handleSubmit(): Promise<void> {
     if (!profileId || !clientId || !client) return;
     if (channel === null) {
-      Alert.alert('Error', 'Piliin ang sales channel bago i-save.');
+      Alert.alert('Error', 'Pick the sales channel before saving.');
       return;
     }
     if (!contactNumberValid) {
@@ -129,7 +145,6 @@ export default function CompleteInfoScreen() {
         clientId,
         profileId,
         pendingRequest,
-        firstTime,
         isManagerOwnClient,
         form: { contactPerson, position, contactNumber, officeAddress, channel, existingOverride, minorNotes },
       });
@@ -137,10 +152,10 @@ export default function CompleteInfoScreen() {
       if (branch === 'blocked_pending') return;
 
       const TOASTS: Record<Exclude<Awaited<ReturnType<typeof submitCompleteInfo>>, 'blocked_pending'>, string> = {
-        direct_first_time: '✓ Nakumpleto ang info — direktang na-apply',
-        direct_manager_owns: '✓ Na-update ang info — direktang na-apply',
-        direct_exempt_only: '✓ Na-save ang notes — direktang na-apply',
-        request_approval: 'Naisumite para sa approval ng manager',
+        direct_first_time: '✓ Info completed — applied right away',
+        direct_manager_owns: '✓ Info updated — applied right away',
+        direct_exempt_only: '✓ Notes saved — applied right away',
+        request_approval: "Submitted for your manager's approval",
       };
       showToast(TOASTS[branch]);
       router.back();
@@ -165,19 +180,25 @@ export default function CompleteInfoScreen() {
   return (
     <YStack flex={1} backgroundColor={BIZLINK_COLORS.canvas} paddingTop={insets.top}>
       <BizTopBar title={firstTime ? 'Complete Info' : 'Edit Info'} />
-      <ScrollView contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 24 }}>
+      <KeyboardAwareScrollView contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 24 }} keyboardShouldPersistTaps="handled">
         <Text fontSize={13} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} marginBottom="$3.5" lineHeight={19}>
-          {firstTime ? (
+          {needsApproval ? (
             <>
-              Kumpletuhin ang blangkong info na ito —{' '}
-              <Text fontFamily={BIZLINK_FONTS.semibold} color={BIZLINK_COLORS.text}>direktang mag-a-apply</Text>, walang approval
-              na kailangan (Phase B ng creation, hindi ito edit).
+              Some info here was already saved —{' '}
+              <Text fontFamily={BIZLINK_FONTS.semibold} color={BIZLINK_COLORS.text}>changing it needs your Sales Manager's approval</Text>{' '}
+              before it becomes final. Fields that are still blank apply right away.
+            </>
+          ) : firstTime ? (
+            <>
+              Complete these blank details —{' '}
+              <Text fontFamily={BIZLINK_FONTS.semibold} color={BIZLINK_COLORS.text}>they take effect immediately</Text>, no approval
+              needed (this is part of creating the client, not an edit).
             </>
           ) : (
             <>
-              Kumpleto na ang info ng client na ito — ang mga{' '}
-              <Text fontFamily={BIZLINK_FONTS.semibold} color={BIZLINK_COLORS.text}>pagbabago dito ay isusumite para sa approval</Text>{' '}
-              ng iyong Sales Manager bago maging final.
+              This client's info is complete —{' '}
+              <Text fontFamily={BIZLINK_FONTS.semibold} color={BIZLINK_COLORS.text}>changes here are sent for approval</Text>{' '}
+              by your Sales Manager before they become final.
             </>
           )}
         </Text>
@@ -200,7 +221,7 @@ export default function CompleteInfoScreen() {
           maxLength={CONTACT_PERSON_MAX_LENGTH}
         />
         <BizField
-          label="POSITION (decision-maker lang: purchasing/CEO/owner)"
+          label="POSITION (the decision-maker only: purchasing/CEO/owner)"
           value={position}
           onChangeText={setPosition}
           placeholder="e.g. Purchasing Manager"
@@ -243,11 +264,20 @@ export default function CompleteInfoScreen() {
 
         <BizSectionHeader title="Client status" />
         <Text fontSize={12} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} marginBottom="$2" lineHeight={17}>
-          Lahat ng bagong client ay Prospect. Awtomatikong magbabago ang status matapos ang validated meeting.
+          All new clients start as Prospect. The status automatically updates after a validated meeting.
         </Text>
         <XStack gap="$2" flexWrap="wrap">
           <BizChip label="Existing client" selected={existingOverride} onPress={() => setExistingOverride((prev) => !prev)} />
         </XStack>
+        {existingOverride && canDeclareLost ? (
+          <DeclareLostOpportunityAction
+            clientId={client.id}
+            profileId={profileId}
+            teamId={teamId}
+            onSuspended={markSuspended}
+            onDeclared={() => router.back()}
+          />
+        ) : null}
 
         <BizSectionHeader title="Sales channel" />
         <XStack gap="$2" flexWrap="wrap">
@@ -272,7 +302,7 @@ export default function CompleteInfoScreen() {
 
         <YStack marginTop="$5">
           <BizButton
-            label={saving ? 'Saving…' : firstTime || isManagerOwnClient ? 'Save info' : 'Submit for approval'}
+            label={saving ? 'Saving…' : !needsApproval ? 'Save info' : 'Submit for approval'}
             onPress={handleSubmit}
             disabled={!canSubmit}
           />
@@ -287,7 +317,7 @@ export default function CompleteInfoScreen() {
             onDeclared={() => router.back()}
           />
         ) : null}
-      </ScrollView>
+      </KeyboardAwareScrollView>
     </YStack>
   );
 }

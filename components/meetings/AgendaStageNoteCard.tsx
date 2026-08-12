@@ -51,7 +51,7 @@ export function AgendaStageNoteCard({ stage, loading, error }: AgendaStageNoteCa
       ) : null}
       {error ? (
         <Text fontSize={11} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.red} marginTop="$2">
-          Hindi na-load ang agenda list. I-check ang connection at subukang muli.
+          The agenda list couldn't be loaded. Check your connection and try again.
         </Text>
       ) : null}
     </BizCard>

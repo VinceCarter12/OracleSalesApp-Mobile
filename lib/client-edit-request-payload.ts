@@ -59,8 +59,11 @@ export function buildClientEditRequestRemotePayload(
 // look "dirty" the moment the form round-trips it through a controlled
 // TextInput (which always yields `''`, never `null`). `undefined` is also
 // folded in so a caller that omits a key entirely behaves the same as one
-// that supplies an explicit blank.
-function normalizeForCompare(value: unknown): unknown {
+// that supplies an explicit blank. Exported (per-field approval gating,
+// 2026-08-11) so lib/complete-info-submit.ts's blank-before-value check
+// uses this exact same '' / null / undefined equivalence rather than
+// reimplementing it.
+export function normalizeForCompare(value: unknown): unknown {
   return value === '' || value === null || value === undefined ? null : value;
 }
 

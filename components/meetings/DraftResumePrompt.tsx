@@ -20,8 +20,8 @@ interface DraftResumePromptProps {
 // (lib/policies/meeting-draft-resume-policy.ts); keep these two strings in
 // sync with that function if either flow's post-Start fields ever change.
 const RESUME_DETAIL_TL: Record<MeetingDraft['flow'], string> = {
-  visit: 'mananatili ang GPS/oras ng simula at ang mga na-tick na agenda',
-  full: 'mananatili ang GPS/oras ng simula, ang mga kasamang napili, at ang mga na-tick na agenda, pero kailangan mong ulitin ang outcome at remarks',
+  visit: 'the start location and time stay, and the agenda items you ticked stay',
+  full: "the start location and time, the companions you picked, and the agenda items you ticked all stay, but you'll need to do the outcome and remarks again",
 };
 
 /**
@@ -35,7 +35,7 @@ export function DraftResumePrompt({ draft, onResume, onDiscard }: DraftResumePro
   return (
     <BizCard flat borderRadius={20} marginTop="$4">
       <Text fontFamily={BIZLINK_FONTS.semibold} fontSize={14} color={BIZLINK_COLORS.ink}>
-        May naka-simulang meeting na hindi pa natatapos
+        A meeting you started hasn't been finished
       </Text>
       <Text
         fontSize={12.5}
@@ -45,12 +45,12 @@ export function DraftResumePrompt({ draft, onResume, onDiscard }: DraftResumePro
         marginBottom="$3"
         lineHeight={17}
       >
-        Na-start ang meeting na ito noong {new Date(draft.payload.capturedAt).toLocaleTimeString()} — bago naabala
-        ang app. Ipagpatuloy ({RESUME_DETAIL_TL[draft.flow]}) o simulan ulit?
+        This meeting started at {new Date(draft.payload.capturedAt).toLocaleTimeString()} — before the app
+        was interrupted. Continue ({RESUME_DETAIL_TL[draft.flow]}) or start again?
       </Text>
       <YStack gap="$2">
-        <BizButton label="Ipagpatuloy" onPress={onResume} />
-        <BizButton label="Simulan ulit" variant="white" onPress={onDiscard} />
+        <BizButton label="Continue" onPress={onResume} />
+        <BizButton label="Start again" variant="white" onPress={onDiscard} />
       </YStack>
     </BizCard>
   );

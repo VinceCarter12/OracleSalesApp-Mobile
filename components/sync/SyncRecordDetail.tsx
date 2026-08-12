@@ -5,6 +5,18 @@ import type { SyncHistoryEntry } from '../../lib/sync-history';
 import { getDisplayStatus, getResultMessage, SYNC_TABLE_LABEL } from '../../lib/sync-history-display';
 import { BizCard } from '../bizlink/BizCard';
 
+const STATUS_LABELS: Record<string, string> = {
+  synced: 'Uploaded',
+  resolved: 'Fixed',
+  retried: 'Retrying',
+  conflict: 'Needs your choice',
+  failed: 'Couldn\'t be uploaded',
+};
+
+function friendlyStatus(status: string): string {
+  return STATUS_LABELS[status] ?? status;
+}
+
 interface SyncRecordDetailProps {
   entry: SyncHistoryEntry;
   /**
@@ -64,7 +76,7 @@ export function SyncRecordDetail({ entry, showFullFields, noticeText }: SyncReco
           paddingVertical={6}
         >
           <Text fontSize={11} fontFamily={BIZLINK_FONTS.semibold} color={displayStatus === 'synced' ? BIZLINK_COLORS.brand : BIZLINK_COLORS.muted}>
-            {displayStatus}
+            {friendlyStatus(displayStatus)}
           </Text>
         </View>
       </View>
@@ -84,8 +96,8 @@ export function SyncRecordDetail({ entry, showFullFields, noticeText }: SyncReco
           {showFullFields ? (
             <>
               <InfoRow label="Type:" value={getRecordType()} />
-              <InfoRow label="Local record:" value={`${entry.tableName.slice(0, -1)}-${entry.id.slice(-3)}`} />
-              <InfoRow label="Included:" value={getIncludedFields()} />
+              <InfoRow label="Saved on this phone:" value={`${entry.tableName.slice(0, -1)}-${entry.id.slice(-3)}`} />
+              <InfoRow label="What was included:" value={getIncludedFields()} />
             </>
           ) : null}
           <InfoRow label="Result:" value={getResultMessage(entry)} />
@@ -99,7 +111,7 @@ export function SyncRecordDetail({ entry, showFullFields, noticeText }: SyncReco
           <YStack flexDirection="row" gap="$2" alignItems="center">
             <Smartphone size={18} color={BIZLINK_COLORS.text} strokeWidth={1.75} />
             <Text fontSize={14} fontFamily={BIZLINK_FONTS.semibold} color={BIZLINK_COLORS.text}>
-              Device-scoped history
+              This phone's history
             </Text>
           </YStack>
           <Text fontSize={13} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} lineHeight={19}>

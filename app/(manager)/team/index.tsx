@@ -7,9 +7,12 @@ import { BIZLINK_COLORS, BIZLINK_FONTS } from '../../../lib/theme';
 import { useTeamOverview } from '../../../lib/use-team-overview';
 import { avatarPaletteFor } from '../../../lib/avatar-palette';
 import { BizButton } from '../../../components/bizlink/BizButton';
+import { BizTopBar } from '../../../components/bizlink/BizTopBar';
 import { BizFilterScroll } from '../../../components/bizlink/BizFilterScroll';
+import { BizFloatingPager } from '../../../components/bizlink/BizFloatingPager';
 import { Avatar } from '../../../components/ui/Avatar';
 import { TEAM_FILTER_OPTIONS, filterTeamAgents, type TeamFilterValue } from '../../../lib/team-attention-filter';
+import { PAGINATION_PAGE_SIZE, usePagination } from '../../../lib/use-pagination';
 
 /** Wireframe s-team — ungated: staff stats only, no client data, so no fingerprint needed. Real data (B-054 Phase 1). */
 export default function ManagerTeamScreen() {
@@ -17,16 +20,15 @@ export default function ManagerTeamScreen() {
   const { overview, loading, error, reload } = useTeamOverview();
   const [filter, setFilter] = useState<TeamFilterValue>('all');
   const shownAgents = useMemo(() => filterTeamAgents(overview?.agents ?? [], filter), [overview, filter]);
+  const { page, totalPages, pageItems, setPage } = usePagination(shownAgents, filter, PAGINATION_PAGE_SIZE);
 
   return (
     <YStack flex={1} backgroundColor={BIZLINK_COLORS.canvas} paddingTop={insets.top}>
-      <XStack alignItems="center" paddingHorizontal="$4" paddingTop="$2.5" paddingBottom="$1.5">
-        <Text fontFamily={BIZLINK_FONTS.semibold} fontSize={21} color={BIZLINK_COLORS.text}>My Team</Text>
-      </XStack>
+      <BizTopBar title="My Team" fallbackHref="/(manager)" />
       <ScrollView contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 24 }}>
         <Text fontSize={13} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} marginBottom="$3" lineHeight={19}>
-          Makikita mo dito ang lahat ng agents sa ilalim mo — kanya-kanyang stats para malaman mo kung sino ang
-          kailangan ng tulong. (Staff stats lang ito — hindi customer data, kaya walang fingerprint na kailangan.)
+          Here you'll see every agent under you — each one's stats, so you can tell who needs help.
+          (These are staff stats only — no customer data, so no fingerprint is needed.)
         </Text>
 
         {loading ? (
@@ -38,12 +40,12 @@ export default function ManagerTeamScreen() {
             <Text fontSize={13} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} textAlign="center">
               {error}
             </Text>
-            <BizButton small label="Ulitin" variant="white" onPress={reload} />
+            <BizButton small label="Try again" variant="white" onPress={reload} />
           </YStack>
         ) : !overview || overview.agents.length === 0 ? (
           <YStack alignItems="center" paddingVertical="$6">
             <Text fontSize={13} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted}>
-              Walang agent na naka-assign sa team mo.
+              No agents are assigned to your team yet.
             </Text>
           </YStack>
         ) : (
@@ -54,11 +56,11 @@ export default function ManagerTeamScreen() {
             {shownAgents.length === 0 ? (
               <YStack alignItems="center" paddingVertical="$6">
                 <Text fontSize={13} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted}>
-                  Walang team member sa filter na ito.
+                  No team member matches this filter.
                 </Text>
               </YStack>
             ) : (
-              shownAgents.map((agent) => {
+              pageItems.map((agent, index) => {
                 const color = avatarPaletteFor(agent.id);
                 return (
                   <XStack
@@ -72,6 +74,19 @@ export default function ManagerTeamScreen() {
                     onPress={() => router.push(`/(manager)/team/${agent.id}`)}
                     pressStyle={{ opacity: 0.85 }}
                   >
+                    <YStack
+                      width={26}
+                      height={26}
+                      borderRadius={13}
+                      backgroundColor={BIZLINK_COLORS.tintA}
+                      alignItems="center"
+                      justifyContent="center"
+                      flexShrink={0}
+                    >
+                      <Text fontSize={11} fontFamily={BIZLINK_FONTS.semibold} color={BIZLINK_COLORS.ink}>
+                        {(page - 1) * PAGINATION_PAGE_SIZE + index + 1}
+                      </Text>
+                    </YStack>
                     <Avatar initials={agent.initials} background={color.background} color={color.color} />
                     <YStack flex={1}>
                       <Text fontFamily={BIZLINK_FONTS.semibold} fontSize={14} color={BIZLINK_COLORS.text}>{agent.name}</Text>
@@ -95,6 +110,9 @@ export default function ManagerTeamScreen() {
           </>
         )}
       </ScrollView>
+      {shownAgents.length > 0 ? (
+        <BizFloatingPager page={page} totalPages={totalPages} onPageChange={setPage} bottomOffset={insets.bottom + 16} />
+      ) : null}
     </YStack>
   );
 }

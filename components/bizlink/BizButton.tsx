@@ -45,13 +45,20 @@ export function BizButton({ label, onPress, variant = 'brand', disabled = false,
           opacity: disabled ? 0.4 : 1,
           alignItems: 'center',
           justifyContent: 'center',
+          paddingHorizontal: 16,
         },
         style,
       ]}
     >
-      <XStack gap="$2" alignItems="center">
+      <XStack gap="$2" alignItems="center" justifyContent="center">
         {icon}
-        <Text color={v.color} fontFamily={BIZLINK_FONTS.semibold} fontSize={small ? 13 : 15}>
+        <Text
+          color={v.color}
+          fontFamily={BIZLINK_FONTS.semibold}
+          fontSize={small ? 13 : 15}
+          textAlign="center"
+          flexShrink={1}
+        >
           {label}
         </Text>
       </XStack>

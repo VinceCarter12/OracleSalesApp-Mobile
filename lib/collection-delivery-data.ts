@@ -311,7 +311,7 @@ export function markPoDelivered(id: string, result: DeliverResult, at: string = 
   p.timeIn = at;
   p.timeOut = at;
   p.plate = result.plate;
-  p.receiver = result.receiver && result.receiver.trim() ? result.receiver.trim() : '(walang pangalan — photo proof lang)';
+  p.receiver = result.receiver && result.receiver.trim() ? result.receiver.trim() : '(no name — photo proof only)';
   p.signed = result.signed;
   p.seq = ++deliverySeqCounter;
   if (result.gps) {

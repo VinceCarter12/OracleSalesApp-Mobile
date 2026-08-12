@@ -4,6 +4,7 @@ import { uuidv4 } from './uuid';
 import { runSync } from './sync-engine';
 import { enqueueOutboxRow } from './sync/entity-registry';
 import { isLikelyOnline } from './sync/connectivity';
+import { isPhilippinesCoordinate } from './policies/philippines-coordinate-policy';
 
 export { hasOfficePin } from './policies/office-pin-policy';
 
@@ -29,6 +30,47 @@ export interface SetOfficeLocationInput {
   capturedAt?: string;
 }
 
+export interface LatestClientOfficeMeetingGps {
+  lat: number;
+  lng: number;
+  capturedAt: string | null;
+  locationType: 'Client Office';
+}
+
+/** Read-only local fallback for the last Client Office meeting start GPS.
+ * Others/Online rows are intentionally excluded: meeting GPS is evidence,
+ * not an office pin, unless the meeting was explicitly Client Office.
+ */
+export async function getLatestClientOfficeMeetingGps(clientId: string): Promise<LatestClientOfficeMeetingGps | null> {
+  const db = await getDb();
+  const row = await db.getFirstAsync<{ gps_lat: number | null; gps_lng: number | null; start_captured_at: string | null }>(
+    `SELECT gps_lat, gps_lng, start_captured_at
+       FROM meetings
+      WHERE client_id = ?
+        AND location_type = 'Client Office'
+        AND gps_lat IS NOT NULL
+        AND gps_lng IS NOT NULL
+      ORDER BY COALESCE(start_captured_at, logged_at, created_at) DESC
+      LIMIT 1`,
+    [clientId]
+  );
+  if (!row || row.gps_lat === null || row.gps_lng === null) return null;
+  return { lat: row.gps_lat, lng: row.gps_lng, capturedAt: row.start_captured_at, locationType: 'Client Office' };
+}
+
+/**
+ * A synchronous, local defense-in-depth guard. The Office Location screen
+ * reverse-geocodes candidates and verifies their country before submission;
+ * this guard still protects non-UI callers (including Client Office meeting
+ * capture) from writing clearly invalid or out-of-PH coordinates into SQLite
+ * or the outbox. A future server RPC remains the authoritative boundary.
+ */
+export function assertOfficePinCoordinateWithinPhilippines(lat: number, lng: number): void {
+  if (!Number.isFinite(lat) || !Number.isFinite(lng) || !isPhilippinesCoordinate(lat, lng)) {
+    throw new Error('Office pin must be within the Philippines.');
+  }
+}
+
 /**
  * Transaction-less core write: one `clients` UPDATE + its outbox row. Must
  * be called from INSIDE a transaction the caller already owns — expo-sqlite
@@ -39,6 +81,8 @@ export interface SetOfficeLocationInput {
  * opening a second one).
  */
 export async function writeOfficePinLocal(db: SQLiteDatabase, input: SetOfficeLocationInput): Promise<void> {
+  assertOfficePinCoordinateWithinPhilippines(input.lat, input.lng);
+
   const now = new Date().toISOString();
   const capturedAt = input.capturedAt ?? now;
   const outboxId = uuidv4();
@@ -90,6 +134,8 @@ export async function writeOfficePinLocal(db: SQLiteDatabase, input: SetOfficeLo
  * `client-service.ts::updateClientInfo()`.
  */
 export async function setOfficeLocation(input: SetOfficeLocationInput): Promise<void> {
+  assertOfficePinCoordinateWithinPhilippines(input.lat, input.lng);
+
   const db = await getDb();
   await db.withTransactionAsync(async () => {
     await writeOfficePinLocal(db, input);

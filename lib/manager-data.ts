@@ -100,50 +100,50 @@ const SALES_MEETINGS: TeamMeeting[] = [
   {
     id: 'm108', clientId: 'c1', agentId: 'a1', date: 'Jul 7', time: '3:10 PM', location: 'Client Office',
     contact: 'J. Cruz', position: 'Purchasing', custType: 'Prospect', agenda: ['Product / company presentation', 'Relationship building'],
-    remarks: "Sinamahan ni Ma'am Erika, in-introduce sa bagong pricing.", outcome: 'follow', meetingMode: 'in_person',
+    remarks: "Ma'am Erika tagged along; introduced to the new pricing.", outcome: 'follow', meetingMode: 'in_person',
     gps: '14.5547° N, 120.9842° E', tagAlong: true, tagAlongManagerName: 'Erika Bautista', tagAlongStatus: 'pending', synced: true,
   },
   {
     id: 'm101', clientId: 'c1', agentId: 'a1', date: 'Jul 6', time: '9:41 AM', location: 'Client Office',
     contact: 'J. Cruz', position: 'Purchasing', custType: 'Prospect', agenda: ['New business opportunity', 'Product / company presentation'],
-    remarks: 'Interested sa bulk order, susundan sa susunod na linggo.', outcome: 'success', meetingMode: 'in_person',
+    remarks: 'Interested in a bulk order; will follow up next week.', outcome: 'success', meetingMode: 'in_person',
     gps: '14.5547° N, 120.9842° E', tagAlong: false, synced: false,
   },
   {
     id: 'm102', clientId: 'c4', agentId: 'a2', date: 'Jul 4', time: '2:15 PM', location: 'Starbucks Alabang',
     contact: 'M. Villar', position: 'Owner', custType: 'New', agenda: ['Price negotiation / quotation'],
-    remarks: 'Hihintayin ang budget approval sa susunod na buwan.', outcome: 'follow', meetingMode: 'in_person',
+    remarks: 'Waiting for the budget approval next month.', outcome: 'follow', meetingMode: 'in_person',
     gps: '14.4187° N, 121.0450° E', tagAlong: true, synced: true,
   },
   {
     id: 'm103', clientId: 'c5', agentId: 'a2', date: 'Jul 3', time: '10:02 AM', location: 'Client Office',
     contact: 'R. Santiago', position: 'CEO', custType: 'Existing', agenda: ['Relationship building', 'Closed deal'],
-    remarks: 'Naka-close na ang renewal contract.', outcome: 'success', meetingMode: 'in_person',
+    remarks: 'The renewal contract is now closed.', outcome: 'success', meetingMode: 'in_person',
     gps: '14.6091° N, 121.0223° E', tagAlong: false, synced: true,
   },
   {
     id: 'm104', clientId: 'c7', agentId: 'a3', date: 'Jun 30', time: '4:40 PM', location: 'Client Office',
     contact: '—', position: '—', custType: 'Existing', agenda: ['Collection'],
-    remarks: 'Hindi na po sumasagot, ilang beses ng huli sa bayad.', outcome: 'lost', meetingMode: 'in_person',
+    remarks: 'No longer answering — several payments already late.', outcome: 'lost', meetingMode: 'in_person',
     gps: '14.5378° N, 121.0014° E', tagAlong: false, synced: true,
   },
   {
     id: 'm105', clientId: 'c6', agentId: 'a4', date: 'Jun 28', time: '11:20 AM', location: 'Client Office',
     contact: 'P. Domingo', position: 'Purchasing', custType: 'Existing', agenda: ['Technical support'],
-    remarks: 'Kailangan ng follow-up demo sa bagong product line.', outcome: 'nodec', meetingMode: 'in_person',
+    remarks: 'Needs a follow-up demo of the new product line.', outcome: 'nodec', meetingMode: 'in_person',
     gps: '15.0794° N, 120.6200° E', tagAlong: false, synced: true,
   },
   {
     // ADR-012 online meeting demo — GPS = agent's own location, not the client's.
     id: 'm106', clientId: 'c2', agentId: 'a3', date: 'Jun 27', time: '1:05 PM', location: 'Online (video call)',
     contact: '—', position: '—', custType: 'Prospect', agenda: ['New business opportunity'],
-    remarks: 'Unang pagkikita via video call, gagawa pa ng follow up.', outcome: 'nodec', meetingMode: 'online',
+    remarks: 'First meeting via video call; will do a follow up.', outcome: 'nodec', meetingMode: 'online',
     gps: '14.6760° N, 121.0437° E', tagAlong: false, synced: true,
   },
   {
     id: 'm107', clientId: 'c8', agentId: 'a4', date: 'Jun 25', time: '3:30 PM', location: 'Client Office',
     contact: 'L. Tan', position: 'Owner', custType: 'New', agenda: ['Closed deal'],
-    remarks: 'Sign na ang kontrata, unang order darating sa Aug.', outcome: 'success', meetingMode: 'in_person',
+    remarks: 'Contract signed; first order arriving in Aug.', outcome: 'success', meetingMode: 'in_person',
     gps: '14.5891° N, 120.9803° E', tagAlong: true, tagAlongManagerName: 'Erika Bautista', tagAlongStatus: 'approved', synced: true,
   },
 ];

@@ -3,7 +3,6 @@ import { Spinner, TamaguiProvider, Theme, View } from 'tamagui';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
-import { SQLiteProvider } from 'expo-sqlite';
 import * as SplashScreen from 'expo-splash-screen';
 import {
   useFonts,
@@ -16,13 +15,14 @@ import tamaguiConfig from '../tamagui.config';
 import { SessionProvider, useSession } from '../lib/session-store';
 import { ThemePreferenceProvider, useThemePreference } from '../lib/theme-preference';
 import { AppLockProvider } from '../lib/app-lock/lock-provider';
-import { DATABASE_NAME, migrateDbIfNeeded } from '../lib/db';
+import { AppDbProvider } from '../lib/app-db-provider';
 import { useSync } from '../lib/use-sync';
 import { useColdStartBootstrap } from '../lib/app-lock/cold-start-bootstrap';
 import { useSuspensionWatch } from '../lib/app-lock/use-suspension-watch';
 import { AccountSuspendedScreen } from '../components/security/AccountSuspendedScreen';
 import { LockGate } from '../components/security/LockGate';
 import { useBizlinkColors } from '../lib/theme';
+import { KeyboardResponsiveView } from '../components/ui/KeyboardResponsiveView';
 
 // Keeps the native splash screen up until fonts finish loading (see
 // RootLayout below) instead of the previous `if (!fontsLoaded) return null`
@@ -147,16 +147,19 @@ export default function RootLayout() {
 
   return (
     <SafeAreaProvider>
-      {/* T-001: local SQLite is the primary write path (ADR-001/002/004) —
-          onInit runs the versioned migration once per launch, before any
-          screen underneath can read/write the local DB. */}
-      <SQLiteProvider databaseName={DATABASE_NAME} onInit={migrateDbIfNeeded}>
+      {/* T-001: local SQLite is the primary write path (ADR-001/002/004).
+          `AppDbProvider` (B-110) awaits `lib/db.ts::getDb()` — the app's
+          ONE native SQLite connection, also used by every service outside
+          the React tree — and republishes it via context, running the
+          versioned migration once per launch before any screen underneath
+          can read/write the local DB. */}
+      <AppDbProvider>
         <TamaguiProvider config={tamaguiConfig} defaultTheme="light">
           <ThemePreferenceProvider>
             <ThemedApp />
           </ThemePreferenceProvider>
         </TamaguiProvider>
-      </SQLiteProvider>
+      </AppDbProvider>
     </SafeAreaProvider>
   );
 }
@@ -177,7 +180,9 @@ function ThemedApp() {
       <SessionProvider>
         <AppLockProvider>
           <LockGate>
-            <RootNavigator />
+            <KeyboardResponsiveView>
+              <RootNavigator />
+            </KeyboardResponsiveView>
           </LockGate>
         </AppLockProvider>
       </SessionProvider>

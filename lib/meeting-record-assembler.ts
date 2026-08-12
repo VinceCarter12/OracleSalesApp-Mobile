@@ -28,8 +28,6 @@ interface BuildMeetingRecordCommon {
   agendas: string[];
   /** ADR-030 Pass 2.5 companions, already resolved to profileId+kind by the caller (lib/team-roster.ts::inviteeKindForRole). */
   companions: CompanionSelection[];
-  /** F-205 decision 2: true only when the requester is a sales_manager recording their own meeting. */
-  companionsPreAccepted: boolean;
 }
 
 export interface BuildFullMeetingRecordInput extends BuildMeetingRecordCommon {
@@ -88,7 +86,6 @@ export function buildMeetingRecord(input: BuildMeetingRecordInput): NewMeetingRe
     // attribution to a later moment than when the meeting actually began.
     logged_at: input.start.capturedAt,
     companions: input.companions,
-    companionsPreAccepted: input.companionsPreAccepted,
   };
 
   if (input.flow === 'visit') {

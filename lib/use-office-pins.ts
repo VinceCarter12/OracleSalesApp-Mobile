@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { useSQLiteContext } from 'expo-sqlite';
+import { useAppDb } from './app-db-provider';
 import { useFocusEffect } from 'expo-router';
 import { useSession } from './session-store';
 import { isOfficePinVerified } from './policies/office-pin-policy';
@@ -38,7 +38,7 @@ export interface UseOfficePins {
 }
 
 export function useOfficePins(): UseOfficePins {
-  const db = useSQLiteContext();
+  const db = useAppDb();
   const { profileId } = useSession();
   const [pins, setPins] = useState<OfficePinClient[]>([]);
   const [loading, setLoading] = useState(true);

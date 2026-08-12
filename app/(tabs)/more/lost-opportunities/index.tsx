@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 import { FlatList, RefreshControl, TextInput } from 'react-native';
+import { KeyboardAwareFlatList } from '../../../../components/ui/KeyboardAwareScrollView';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { RotateCcw } from 'lucide-react-native';
@@ -40,8 +41,9 @@ export default function LostOpportunitiesScreen() {
       <BizTopBar title="Lost Opportunities" fallbackHref="/(tabs)" />
       <YStack paddingHorizontal="$4" paddingTop="$2">
         <Text fontSize={13} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} marginBottom="$3" lineHeight={19}>
-          Lost after a Sales declaration or 6 months without a meeting. After the 1-month cooldown, the first eligible
-          Sales/RSR claimant gets the prospect.
+          A client appears here when it was lost — either declared lost, or with no meeting for 6 months.
+          Once it has been on this list for 1 month, the first eligible Sales/RSR agent who claims it takes over
+          the client.
         </Text>
         <TextInput
           value={search}
@@ -72,11 +74,12 @@ export default function LostOpportunitiesScreen() {
           <Text fontSize={13} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} textAlign="center">
             {error}
           </Text>
-          <BizButton small label="Ulitin" variant="white" onPress={reload} />
+          <BizButton small label="Try again" variant="white" onPress={reload} />
         </YStack>
       ) : (
-        <FlatList
+        <KeyboardAwareFlatList
           data={pageItems}
+          keyboardShouldPersistTaps="handled"
           keyExtractor={(item) => item.id}
           contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 120 }}
           renderItem={({ item, index }) => (
@@ -91,7 +94,7 @@ export default function LostOpportunitiesScreen() {
             <YStack alignItems="center" padding="$8" gap="$2.5">
               <RotateCcw size={28} color={BIZLINK_COLORS.muted} strokeWidth={1.75} />
               <Text fontSize={13} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} textAlign="center">
-                Wala pang claimable opportunity ngayon.
+                There are no opportunities you can claim right now.
               </Text>
             </YStack>
           }

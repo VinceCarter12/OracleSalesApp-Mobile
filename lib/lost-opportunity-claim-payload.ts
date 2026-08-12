@@ -56,8 +56,8 @@ export function parseFreshProspectId(value: unknown): string | null {
 }
 
 export function decodeClaimRpcResult(value: unknown): DecodedClaimRpcResult {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('Hindi ma-verify ang claim response mula sa server.');
+  if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error("Can't verify the claim response from the server.");
   const result = value as Record<string, unknown>;
-  if (typeof result.code !== 'string' || !CLAIM_CODES.includes(result.code as (typeof CLAIM_CODES)[number])) throw new Error('Hindi ma-verify ang claim response mula sa server.');
+  if (typeof result.code !== 'string' || !CLAIM_CODES.includes(result.code as (typeof CLAIM_CODES)[number])) throw new Error("Can't verify the claim response from the server.");
   return { code: result.code as (typeof CLAIM_CODES)[number], client: result.client };
 }

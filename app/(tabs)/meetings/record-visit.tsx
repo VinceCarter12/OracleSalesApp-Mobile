@@ -21,6 +21,8 @@ import { type CapturedPhoto } from '../../../components/meetings/PhotoCapture';
 import { DraftResumePrompt } from '../../../components/meetings/DraftResumePrompt';
 import { StartMeetingConfirmDialog } from '../../../components/meetings/StartMeetingConfirmDialog';
 import { CancelMeetingDialog } from '../../../components/meetings/CancelMeetingDialog';
+import { OngoingMeetingWarningDialog } from '../../../components/meetings/OngoingMeetingWarningDialog';
+import { KeyboardAwareScrollView } from '../../../components/ui/KeyboardAwareScrollView';
 
 /**
  * Existing-client fast path (revises ADR-015, 2026-07-16): select client →
@@ -54,10 +56,11 @@ export default function RecordVisitScreen() {
 
   const controller = useMeetingRecordingController({ clientId, flow: 'visit' });
   const {
-    client, clientLoading, profileId, markSuspended, visibleRoster,
-    selectedCompanions, toggleCompanion, companionSelections, companionsPreAccepted,
+    client, clientLoading, profileId, role, markSuspended, visibleRoster,
+    selectedCompanions, toggleCompanion, companionSelections,
     mode, setMode, start, starting, elapsedSeconds, startConfirmOpen,
-    requestStartMeeting, cancelStartMeeting, confirmStartMeeting, updateDraftAgendas,
+    requestStartMeeting, cancelStartMeeting, closeOngoingMeetingWarning, confirmStartMeeting, updateDraftAgendas,
+    ongoingMeetingWarning,
     autoResumedAgendas, pendingDraft, resumeDraft, discardDraft, cancelActiveMeeting, clearDraft,
   } = controller;
 
@@ -105,7 +108,6 @@ export default function RecordVisitScreen() {
           mode,
           agendas: selectedAgendas,
           companions: companionSelections,
-          companionsPreAccepted,
           endPhoto: {
             uri: endPhoto.uri,
             capturedAt: endPhoto.capturedAt,
@@ -145,7 +147,7 @@ export default function RecordVisitScreen() {
       await cancelActiveMeeting();
       router.replace(routes.meetingsHome());
     } catch {
-      Alert.alert('Cancel failed', 'Hindi na-discard ang meeting draft. Subukan ulit.');
+      Alert.alert('Cancel failed', "The meeting draft couldn't be discarded. Try again.");
     }
   }
 
@@ -172,8 +174,12 @@ export default function RecordVisitScreen() {
 
   return (
     <YStack flex={1} backgroundColor={BIZLINK_COLORS.canvas} paddingTop={insets.top}>
-      <BizTopBar title={`${visitActionName(getClientStatus(client))} — ${client.company_name}`} />
-      <ScrollView contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 32 }}>
+      <BizTopBar
+        title={`${visitActionName(getClientStatus(client))} — ${client.company_name}`}
+        fallbackHref={routes.meetingsHome()}
+        fallbackOnlyIfNoHistory
+      />
+      <KeyboardAwareScrollView contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 32 }} keyboardShouldPersistTaps="handled">
         <SelectedClientCard
           clientName={client.company_name}
           status={getClientStatus(client)}
@@ -205,6 +211,7 @@ export default function RecordVisitScreen() {
             starting={starting}
             onStart={requestStartMeeting}
             actionName={visitActionName(getClientStatus(client))}
+            showCompanionPicker={role !== 'sales_manager'}
           />
         ) : (
           <VisitInProgressPanel
@@ -217,7 +224,7 @@ export default function RecordVisitScreen() {
             onCancel={confirmCancelMeeting}
           />
         )}
-      </ScrollView>
+      </KeyboardAwareScrollView>
 
       <StartMeetingConfirmDialog
         visible={startConfirmOpen}
@@ -225,6 +232,12 @@ export default function RecordVisitScreen() {
         onConfirm={() => {
           void confirmStartMeeting();
         }}
+      />
+
+      <OngoingMeetingWarningDialog
+        visible={ongoingMeetingWarning !== null}
+        unavailable={ongoingMeetingWarning === 'unavailable'}
+        onClose={closeOngoingMeetingWarning}
       />
 
       <CancelMeetingDialog

@@ -37,8 +37,8 @@ export function PoEvidenceCard({ visible, photoUri, capturing, onCapture }: PoEv
       </YStack>
       {!photoUri ? (
         <Text fontSize={12} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} lineHeight={17}>
-          Kumuha ng PO photo. Kapag online, ipapadala ito sa Manager approval; mananatiling In Progress habang
-          pending.
+          Take a PO photo. When online, it will be sent for Manager approval; the meeting stays In Progress while
+          waiting.
         </Text>
       ) : null}
       <BizButton

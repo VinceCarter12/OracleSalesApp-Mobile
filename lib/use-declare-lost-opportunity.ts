@@ -73,7 +73,7 @@ export function useDeclareLostOpportunity({
       if (err instanceof AccountSuspendedError) {
         onSuspended();
       } else {
-        showToast(err instanceof Error ? err.message : 'Hindi na-proseso ang lost-opportunity declaration. Subukan ulit.');
+        showToast(err instanceof Error ? err.message : "The lost-opportunity declaration couldn't be processed. Try again.");
       }
     } finally {
       setSubmitting(false);

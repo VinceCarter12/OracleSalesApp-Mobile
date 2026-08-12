@@ -71,14 +71,14 @@ export function LockScreen() {
 
       <YStack alignItems="center" gap="$2">
         <Text fontFamily={BIZLINK_FONTS.semibold} fontSize={19} color={BIZLINK_COLORS.card} textAlign="center">
-          Naka-lock ang app
+          The app is locked
         </Text>
         <Text fontSize={13.5} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_ON_INK.textMuted} textAlign="center" lineHeight={19}>
-          I-unlock gamit ang fingerprint o device credential para magpatuloy.
+          Unlock with your fingerprint or device credential to continue.
         </Text>
         {failed ? (
           <Text fontSize={12.5} fontFamily={BIZLINK_FONTS.semibold} color={BIZLINK_COLORS.red}>
-            Hindi na-unlock — subukan ulit.
+            Couldn't unlock — try again.
           </Text>
         ) : null}
       </YStack>

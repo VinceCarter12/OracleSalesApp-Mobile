@@ -1,8 +1,9 @@
 import { useMemo, useState } from 'react';
 import { FlatList, RefreshControl, TextInput } from 'react-native';
+import { KeyboardAwareFlatList } from '../../../../components/ui/KeyboardAwareScrollView';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
-import { RotateCcw } from 'lucide-react-native';
+import { SearchX } from 'lucide-react-native';
 import { Spinner, Text, YStack } from 'tamagui';
 import { BIZLINK_COLORS, BIZLINK_FONTS } from '../../../../lib/theme';
 import { useManagerLostOpportunities } from '../../../../lib/use-manager-lost-opportunities';
@@ -47,7 +48,7 @@ export default function ManagerLostOpportunitiesScreen() {
 
   return (
     <YStack flex={1} backgroundColor={BIZLINK_COLORS.canvas} paddingTop={insets.top}>
-      <BizTopBar title="Lost Opportunities" fallbackHref="/(manager)/more" />
+      <BizTopBar title="Lost Opportunities" fallbackHref="/(manager)" />
       <YStack paddingHorizontal="$4" paddingTop="$2">
         <Text fontSize={13} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} marginBottom="$3" lineHeight={19}>
           Team visibility only. Sales/RSR ownership and claim actions remain governed by the server lifecycle policy.
@@ -87,8 +88,9 @@ export default function ManagerLostOpportunitiesScreen() {
           <BizButton small label="Ulitin" variant="white" onPress={reload} />
         </YStack>
       ) : (
-        <FlatList
+        <KeyboardAwareFlatList
           data={pageItems}
+          keyboardShouldPersistTaps="handled"
           keyExtractor={(item) => item.id}
           contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 120 }}
           renderItem={({ item, index }) => (
@@ -103,9 +105,9 @@ export default function ManagerLostOpportunitiesScreen() {
           refreshControl={<RefreshControl refreshing={loading} onRefresh={reload} />}
           ListEmptyComponent={
             <YStack alignItems="center" padding="$8" gap="$2.5">
-              <RotateCcw size={28} color={BIZLINK_COLORS.muted} strokeWidth={1.75} />
+              <SearchX size={28} color={BIZLINK_COLORS.muted} strokeWidth={1.75} />
               <Text fontSize={13} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} textAlign="center">
-                Walang lost opportunity na tumugma.
+                No lost opportunity matches.
               </Text>
             </YStack>
           }

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { ScrollView } from 'react-native';
+import { Image, Pressable, ScrollView } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { CircleAlert } from 'lucide-react-native';
@@ -19,6 +19,7 @@ import { BizButton } from '../../../components/bizlink/BizButton';
 import { BizBadge } from '../../../components/bizlink/BizBadge';
 import { BizDiffBox, type DiffField } from '../../../components/bizlink/BizDiffBox';
 import { BizPendingBanner } from '../../../components/bizlink/BizPendingBanner';
+import { ImagePreviewModal } from '../../../components/ui/ImagePreviewModal';
 
 const KIND_BADGE_LABEL = { client_edit: 'Client Edit', po_confirmation: 'PO Confirmation' } as const;
 
@@ -43,6 +44,7 @@ export default function ManagerApprovalDetailScreen() {
   const [deciding, setDeciding] = useState(false);
   const [decideError, setDecideError] = useState<string | null>(null);
   const [conflict, setConflict] = useState(false);
+  const [previewImageUrl, setPreviewImageUrl] = useState<string | null>(null);
 
   const checkOnline = useCallback(() => {
     isLikelyOnline().then(setOnline);
@@ -71,14 +73,14 @@ export default function ManagerApprovalDetailScreen() {
           // Navigating away unmounts this screen's own feed instance; the
           // list screen's useFocusEffect already refetches on return, so no
           // reload() here (would race a state update on an unmounting hook).
-          showToast(code === 'approved' ? 'Na-approve ang request.' : 'Na-reject ang request.');
+          showToast(code === 'approved' ? 'Request approved.' : 'Request rejected.');
           router.back();
           break;
         case 'already_decided':
           // Not an error — someone else (or a retried tap) already decided
           // this request; per ADR-052 section E's decision-code mapping,
           // just inform and refetch so the list reflects reality.
-          showToast('Na-desisyunan na ito.');
+          showToast('This was already decided.');
           await reload();
           break;
         case 'conflict':
@@ -88,12 +90,12 @@ export default function ManagerApprovalDetailScreen() {
           await reload();
           break;
         case 'error':
-          setDecideError('Hindi na-proseso ang desisyon. Subukan ulit.');
+          setDecideError("The decision couldn't be processed. Try again.");
           await reload();
           break;
       }
     } catch (err) {
-      setDecideError(err instanceof Error ? err.message : 'Hindi na-proseso ang desisyon. Subukan ulit.');
+      setDecideError(err instanceof Error ? err.message : "The decision couldn't be processed. Try again.");
     } finally {
       setDeciding(false);
     }
@@ -119,10 +121,10 @@ export default function ManagerApprovalDetailScreen() {
   if (!row) {
     return (
       <YStack flex={1} backgroundColor={BIZLINK_COLORS.canvas} paddingTop={insets.top}>
-        <BizTopBar title="Approval Detail" />
+        <BizTopBar title="Approval Detail" fallbackHref="/(manager)/approvals" />
         <YStack flex={1} justifyContent="center" alignItems="center" paddingHorizontal="$5">
           <Text fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} textAlign="center">
-            Wala nang approval — na-decide na ito o hindi ma-hanap.
+            This approval is gone — it was already decided or can't be found.
           </Text>
         </YStack>
       </YStack>
@@ -143,7 +145,7 @@ export default function ManagerApprovalDetailScreen() {
 
   return (
     <YStack flex={1} backgroundColor={BIZLINK_COLORS.canvas} paddingTop={insets.top}>
-      <BizTopBar title="Approval Detail" />
+      <BizTopBar title="Approval Detail" fallbackHref="/(manager)/approvals" />
       <ScrollView contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 32 }}>
         <BizCard gap="$1.5">
           <XStack alignItems="center" gap="$2">
@@ -195,13 +197,23 @@ export default function ManagerApprovalDetailScreen() {
         ) : (
           <>
             <BizSectionHeader title="PO Evidence" />
-            <BizCard gap="$1">
+            <BizCard gap="$2">
               <Text fontSize={13} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.text}>
                 Meeting: {row.summary.meetingId}
               </Text>
-              <Text fontSize={13} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.text}>
-                PO photo: {row.summary.poPhotoPath}
-              </Text>
+              {row.summary.poPhotoPath ? (
+                <Pressable onPress={() => setPreviewImageUrl(row.summary.poPhotoPath)}>
+                  <Image
+                    source={{ uri: row.summary.poPhotoPath }}
+                    style={{ width: '100%', height: 220, borderRadius: 16 }}
+                    resizeMode="cover"
+                  />
+                </Pressable>
+              ) : (
+                <Text fontSize={12.5} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted}>
+                  Available after sync
+                </Text>
+              )}
             </BizCard>
           </>
         )}
@@ -236,6 +248,12 @@ export default function ManagerApprovalDetailScreen() {
           </>
         ) : null}
       </ScrollView>
+
+      <ImagePreviewModal
+        visible={Boolean(previewImageUrl)}
+        imageUrl={previewImageUrl}
+        onClose={() => setPreviewImageUrl(null)}
+      />
     </YStack>
   );
 }

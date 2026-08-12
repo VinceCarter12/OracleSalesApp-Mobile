@@ -93,6 +93,18 @@ export type RemoteRemitDestination = 'office' | 'bayad_center' | 'bank_deposit';
 export type Database = {
   public: {
     Tables: {
+      teams: {
+        Row: {
+          id: string;
+          name: string;
+          kind: string | null;
+          manager_id: string | null;
+          created_at: string;
+        };
+        Insert: Omit<Database['public']['Tables']['teams']['Row'], 'id' | 'created_at'> & { id?: string; created_at?: string };
+        Update: Partial<Database['public']['Tables']['teams']['Insert']>;
+        Relationships: [];
+      };
       clients: {
         Row: {
           id: string;

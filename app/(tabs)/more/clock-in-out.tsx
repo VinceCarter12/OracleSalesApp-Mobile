@@ -13,7 +13,7 @@ const WEEK_LABELS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
 type ClockMode = 'office' | 'event';
 
-const PREVIEW_TOAST_MESSAGE = 'Preview lang ang screen na ito — wala pang function (F-006 kailangan pa ng full spec)';
+const PREVIEW_TOAST_MESSAGE = 'This page is under construction. There is no working function here yet — please wait for a future app update.';
 
 /**
  * Wireframe `id="a-clockinout"` (F-006, ~line 942) — UI concept only per
@@ -50,8 +50,8 @@ export default function ClockInOutScreen() {
         >
           <Hourglass size={16} color={BIZLINK_COLORS.orange} strokeWidth={1.75} />
           <Text flex={1} fontSize={12} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.orange} lineHeight={17}>
-            Konsepto pa lang batay sa Features.md F-006 (planned, Phase 2) — hindi pa ito final. Kailangan pa ng
-            full spec bago i-build ang totoong clock in/out logic.
+            This page is just a preview. Nothing here is final yet. The real clock in/out working
+            feature is still being planned for a future app update.
           </Text>
         </XStack>
 
@@ -88,13 +88,13 @@ export default function ClockInOutScreen() {
             <YStack flex={1} backgroundColor={BIZLINK_ON_INK.circleFill} borderRadius={16} padding={12}>
               <Text fontSize={10} fontFamily={BIZLINK_FONTS.semibold} color={BIZLINK_ON_INK.textMuted}>CURRENT STREAK</Text>
               <Text fontSize={20} fontFamily={BIZLINK_FONTS.semibold} color={BIZLINK_ON_INK.solid} marginTop={4}>
-                — <Text fontSize={12} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_ON_INK.textMuted}>wala pang record</Text>
+                — <Text fontSize={12} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_ON_INK.textMuted}>no records yet</Text>
               </Text>
             </YStack>
             <YStack flex={1} backgroundColor={BIZLINK_ON_INK.circleFill} borderRadius={16} padding={12}>
               <Text fontSize={10} fontFamily={BIZLINK_FONTS.semibold} color={BIZLINK_ON_INK.textMuted}>CONSISTENCY</Text>
               <Text fontSize={20} fontFamily={BIZLINK_FONTS.semibold} color={BIZLINK_ON_INK.solid} marginTop={4}>
-                — <Text fontSize={12} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_ON_INK.textMuted}>wala pang record</Text>
+                — <Text fontSize={12} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_ON_INK.textMuted}>no records yet</Text>
               </Text>
             </YStack>
           </XStack>
@@ -125,8 +125,8 @@ export default function ClockInOutScreen() {
           <MapPin size={13} color={BIZLINK_COLORS.muted} strokeWidth={1.75} />
           <Text flex={1} fontSize={12} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} lineHeight={17}>
             {mode === 'office'
-              ? 'Office — GPS-verified lang, walang photo na kailangan.'
-              : 'Event — kailangan ng photo + GPS + event name (F-006).'}
+              ? 'Office — the app checks your location; no photo needed.'
+              : 'Event — you take a photo, the app uses your location, and you add the event name.'}
           </Text>
         </XStack>
 
@@ -136,11 +136,11 @@ export default function ClockInOutScreen() {
         <YStack backgroundColor={BIZLINK_COLORS.card} borderRadius={20} padding={16} gap="$2.5">
           <XStack alignItems="center" gap="$2">
             <MapPin size={15} color={BIZLINK_COLORS.muted} strokeWidth={1.75} />
-            <Text fontSize={13} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted}>GPS — hindi pa available (preview lang)</Text>
+            <Text fontSize={13} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted}>Location — not available yet</Text>
           </XStack>
           <XStack alignItems="center" gap="$2">
             <Hourglass size={15} color={BIZLINK_COLORS.muted} strokeWidth={1.75} />
-            <Text fontSize={13} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted}>Date & time — hindi pa available (preview lang)</Text>
+            <Text fontSize={13} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted}>Date & time — not available yet</Text>
           </XStack>
           {mode === 'event' ? (
             <XStack alignItems="center" gap="$2.5">
@@ -149,7 +149,7 @@ export default function ClockInOutScreen() {
               </View>
               <YStack flex={1}>
                 <Text fontSize={12} fontFamily={BIZLINK_FONTS.semibold} color={BIZLINK_COLORS.text}>Event photo — camera only</Text>
-                <Text fontSize={11} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted}>Kailangan para sa Event mode (F-006)</Text>
+                <Text fontSize={11} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted}>Needed for an Event check-in.</Text>
               </YStack>
             </XStack>
           ) : null}
@@ -174,7 +174,7 @@ export default function ClockInOutScreen() {
         <YStack alignItems="center" padding="$6" gap="$2.5">
           <History size={36} color={BIZLINK_COLORS.muted} strokeWidth={1.75} />
           <Text fontSize={13} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} textAlign="center">
-            Wala pang history — F-006 kailangan pa ng buong spec bago magkaroon ng totoong records dito.
+            There's no clock history yet. It will appear here once this feature is working.
           </Text>
         </YStack>
       </ScrollView>

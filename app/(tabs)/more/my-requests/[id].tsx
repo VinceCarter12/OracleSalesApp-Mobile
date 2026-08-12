@@ -69,7 +69,7 @@ export default function MyRequestDetailScreen() {
     return (
       <YStack flex={1} justifyContent="center" alignItems="center" backgroundColor={BIZLINK_COLORS.canvas} gap="$3" paddingHorizontal="$5">
         <Text fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} textAlign="center">{error}</Text>
-        <BizButton small label="Ulitin" variant="white" onPress={reload} />
+        <BizButton small label="Try again" variant="white" onPress={reload} />
       </YStack>
     );
   }
@@ -80,7 +80,7 @@ export default function MyRequestDetailScreen() {
         <BizTopBar title="Request detail" fallbackHref="/(tabs)/more/my-requests" />
         <YStack flex={1} justifyContent="center" alignItems="center" paddingHorizontal="$5">
           <Text fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} textAlign="center">
-            Hindi ma-hanap ang request.
+            The request couldn't be found.
           </Text>
         </YStack>
       </YStack>
@@ -178,7 +178,7 @@ export default function MyRequestDetailScreen() {
         ) : null}
 
         <Text fontSize={12} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} textAlign="center" marginTop="$4">
-          View-only status. Manager decision ang server-authoritative.
+          View-only status. The manager's decision is what the server keeps.
         </Text>
       </ScrollView>
     </YStack>

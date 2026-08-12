@@ -52,7 +52,7 @@ function buildJourneyItems(client: Client, meetings: Meeting[]): JourneyItem[] {
   ];
 
   meetings.forEach((meeting) => {
-    const outcomeLabel = meeting.outcome ?? 'Photo visit (fast path)';
+    const outcomeLabel = meeting.outcome ?? 'Photo visit';
     // DEVIATION from the wireframe's literal check (Wireframe-Sales-
     // BizLink.html:2124, `done:m.outcome==='success'`, a single clause with
     // no null case): the wireframe's mock data has no concept of a fast-path
@@ -187,7 +187,7 @@ export default function ClientJourneyScreen() {
 
         {meetings.length === 0 ? (
           <Text fontSize={12.5} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} marginBottom="$2">
-            Wala pang meetings sa client na ito.
+            There are no meetings for this client yet.
           </Text>
         ) : null}
 

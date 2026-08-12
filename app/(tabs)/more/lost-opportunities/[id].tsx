@@ -78,7 +78,7 @@ export default function LostOpportunityDetailScreen() {
       showToast(mapLostOpportunityClaimCode(code));
       await reload();
     } catch (err) {
-      setClaimError(err instanceof Error ? err.message : 'Hindi na-proseso ang claim. Subukan ulit.');
+      setClaimError(err instanceof Error ? err.message : "The claim couldn't be processed. Try again.");
     } finally {
       setClaiming(false);
     }
@@ -96,7 +96,7 @@ export default function LostOpportunityDetailScreen() {
     return (
       <YStack flex={1} justifyContent="center" alignItems="center" backgroundColor={BIZLINK_COLORS.canvas} gap="$3" paddingHorizontal="$5">
         <Text fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} textAlign="center">{error}</Text>
-        <BizButton small label="Ulitin" variant="white" onPress={reload} />
+        <BizButton small label="Try again" variant="white" onPress={reload} />
       </YStack>
     );
   }
@@ -107,7 +107,7 @@ export default function LostOpportunityDetailScreen() {
         <BizTopBar title="Opportunity detail" fallbackHref="/(tabs)/more/lost-opportunities" />
         <YStack flex={1} justifyContent="center" alignItems="center" paddingHorizontal="$5">
           <Text fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} textAlign="center">
-            Hindi na available ang opportunity na ito.
+            This opportunity is no longer available.
           </Text>
         </YStack>
       </YStack>
@@ -154,7 +154,7 @@ export default function LostOpportunityDetailScreen() {
           <XStack alignItems="center" gap="$2.5"><User size={16} color={BIZLINK_COLORS.navy} strokeWidth={1.75} /><Text fontSize={13} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.text}>Contact: {item.contactPerson ?? '—'}{item.contactPosition ? ` · ${item.contactPosition}` : ''}</Text></XStack>
           <XStack alignItems="center" gap="$2.5"><Building2 size={16} color={BIZLINK_COLORS.navy} strokeWidth={1.75} /><Text fontSize={13} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.text}>Address: {item.officeAddress ?? '—'}</Text></XStack>
         </BizCard>
-        {item.officeLat != null && item.officeLng != null ? <BizCard gap="$1" marginTop="$3"><XStack alignItems="center" gap="$2.5"><Map size={16} color={BIZLINK_COLORS.navy} strokeWidth={1.75} /><Text fontSize={13} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.text}>Office pin: {item.officeLat}, {item.officeLng}</Text><MapPin size={16} color={BIZLINK_COLORS.muted} strokeWidth={1.75} /></XStack></BizCard> : null}
+        {item.officeLat != null && item.officeLng != null ? <BizCard gap="$1" marginTop="$3"><XStack alignItems="center" gap="$2.5"><Map size={16} color={BIZLINK_COLORS.navy} strokeWidth={1.75} /><Text fontSize={13} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.text}>Office location: {item.officeLat}, {item.officeLng}</Text><MapPin size={16} color={BIZLINK_COLORS.muted} strokeWidth={1.75} /></XStack></BizCard> : null}
 
         {canClaim ? (
           <>
@@ -165,7 +165,7 @@ export default function LostOpportunityDetailScreen() {
             ) : null}
             {!online ? (
               <Text fontSize={12} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} marginTop="$3" textAlign="center">
-                Online-only ang claim. Gagana kapag may signal.
+                Claiming needs an internet connection. It will work once there's a signal.
               </Text>
             ) : null}
             <BizButton

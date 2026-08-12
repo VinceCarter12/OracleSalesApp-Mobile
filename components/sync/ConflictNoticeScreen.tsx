@@ -5,6 +5,7 @@ import { AlertCircle, ArrowLeft, GitBranch } from 'lucide-react-native';
 import { Text, View, XStack, YStack } from 'tamagui';
 import { BIZLINK_COLORS, BIZLINK_FONTS } from '../../lib/theme';
 import { COMPANY_NAME_MAX_LENGTH } from '../../lib/field-validation';
+import { KeyboardAwareScrollView } from '../ui/KeyboardAwareScrollView';
 
 // T-014 Phase 1 (ADR-022 §6 + ADR-024 Phase 1): the Conflict Notice screen was
 // only ever built in the wireframes (Wireframe-Sales-BizLink.html's
@@ -64,8 +65,8 @@ export function ConflictNoticeScreen({
 
   const isConflict = variant === 'conflict';
   const bannerText = isConflict
-    ? 'May kaparehong company name na naitala na ng ibang agent. Piliin kung anong gagawin.'
-    : 'Hindi na-upload ang record na ito pagkatapos ng 10 subok. Kailangan ng manual na pag-retry.';
+    ? 'Another agent already created a client with this company name. Choose what to do.'
+    : "This record couldn't be uploaded after 10 tries. It needs a manual retry.";
 
   async function handleRetry(): Promise<void> {
     if (!onRetry) return;
@@ -75,7 +76,7 @@ export function ConflictNoticeScreen({
       await onRetry();
       onClose();
     } catch (err) {
-      setRetryError(err instanceof Error ? err.message : 'Hindi na-retry — subukan ulit.');
+      setRetryError(err instanceof Error ? err.message : "Couldn't retry — try again.");
     } finally {
       setRetrying(false);
     }
@@ -110,7 +111,7 @@ export function ConflictNoticeScreen({
           </Text>
         </XStack>
 
-        <ScrollView contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 32 }}>
+        <KeyboardAwareScrollView contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 32 }}>
           <YStack backgroundColor={BIZLINK_COLORS.card} borderRadius={24} padding={18}>
             <XStack alignItems="center" gap="$2.5">
               {isConflict ? (
@@ -142,7 +143,7 @@ export function ConflictNoticeScreen({
                 }}
               >
                 <Text fontSize={13} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.text}>
-                  {showCompare ? 'Itago ang comparison' : 'Compare'}
+                  {showCompare ? 'Hide the comparison' : 'Compare'}
                 </Text>
               </Pressable>
             ) : null}
@@ -257,12 +258,12 @@ export function ConflictNoticeScreen({
                 }}
               >
                 <Text fontSize={15} fontFamily={BIZLINK_FONTS.semibold} color={BIZLINK_COLORS.card}>
-                  I-save ang bagong pangalan
+                  Save the new name
                 </Text>
               </Pressable>
             </YStack>
           ) : null}
-        </ScrollView>
+        </KeyboardAwareScrollView>
       </YStack>
     </Modal>
   );

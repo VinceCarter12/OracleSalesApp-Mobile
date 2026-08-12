@@ -1,7 +1,6 @@
 import type { SQLiteDatabase } from 'expo-sqlite';
 import { enqueueOutboxRow } from './sync/entity-registry';
 import { insertMeetingCompanionRequests } from './tag-along-service';
-import { insertAcceptedMeetingCompanions } from './tag-along-manager-service';
 import { writeOfficePinLocal } from './office-pin-service';
 import { withInsertTransactionRetry } from './sync/with-transaction-retry';
 import type { ClientStatus, MeetingValidityStatus } from '../types';
@@ -97,10 +96,7 @@ export async function insertMeetingRecord(params: InsertMeetingRecordParams): Pr
       // insert + its outbox row above, so a crash between the two can never
       // strand a companion request without its outbox row, or vice versa.
       if (record.companions?.length && record.client_id) {
-        const insertCompanions = record.companionsPreAccepted
-          ? insertAcceptedMeetingCompanions
-          : insertMeetingCompanionRequests;
-        await insertCompanions(db, {
+        await insertMeetingCompanionRequests(db, {
           clientId: record.client_id,
           meetingId: id,
           requesterId: record.agent_id,

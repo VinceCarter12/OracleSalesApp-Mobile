@@ -77,17 +77,7 @@ export default function ManagerClientDetailScreen() {
         <BizCard flexDirection="row" alignItems="flex-start" gap="$3.5">
           <ProgressRing percent={progress} />
           <YStack flex={1} gap="$1.5">
-            <XStack alignItems="flex-start" justifyContent="space-between" gap="$2">
-              <Text fontFamily={BIZLINK_FONTS.semibold} fontSize={17} color={BIZLINK_COLORS.text} lineHeight={20} flex={1}>{client.name}</Text>
-              <BizButton
-                label="Reassign"
-                variant="white"
-                small
-                icon={<Repeat size={14} color={BIZLINK_COLORS.text} strokeWidth={1.75} />}
-                style={{ paddingHorizontal: 14 }}
-                onPress={() => router.push(`/(manager)/more/clients/reassign?clientId=${encodeURIComponent(client.id)}`)}
-              />
-            </XStack>
+            <Text fontFamily={BIZLINK_FONTS.semibold} fontSize={17} color={BIZLINK_COLORS.text} lineHeight={20}>{client.name}</Text>
             <XStack gap="$1.5">
               <StatusBadge {...CLIENT_STATUS_BADGES[client.status]} />
               {client.channel !== '—' ? (
@@ -101,7 +91,7 @@ export default function ManagerClientDetailScreen() {
                 outcome, not an info-completion score (B-001, corrected
                 2026-07-11 — info completion has zero weight here). */}
             <StatusBadge
-              label={presented ? 'Product presentation done (Record Meeting)' : 'Walang product presentation pa — 0%'}
+              label={presented ? 'Product presentation done (Record Meeting)' : 'No product presentation yet — 0%'}
               background={presented ? BIZLINK_COLORS.tintA : BIZLINK_COLORS.soft}
               color={presented ? BIZLINK_COLORS.brand : BIZLINK_COLORS.muted}
             />
@@ -121,7 +111,8 @@ export default function ManagerClientDetailScreen() {
 
         <BizSectionHeader title="Info completion" helper={client.status === 'prospect' ? `· deadline: ${client.deadline}` : undefined} />
         <Text fontSize={12} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} marginTop={-6} marginBottom="$2">
-          Para lang ito sa 1-month data-quality rule — hiwalay na sa progress % sa taas (B-001).
+          This only tracks the 1-month deadline for completing the client's information. It's separate from
+          the progress percentage shown above.
         </Text>
         <BizCard>
           {(Object.keys(CHECKLIST_LABELS) as (keyof typeof CHECKLIST_LABELS)[]).map((key, index, arr) => {
@@ -147,16 +138,25 @@ export default function ManagerClientDetailScreen() {
         <YStack alignItems="center" paddingHorizontal="$4" paddingTop="$3">
           <Text fontSize={12} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} textAlign="center">
             {isManagerOwned
-              ? 'Manager-owned record: direct apply allowed, pero version-checked pa rin sa sync.'
-              : 'Team record ito. Sales edit requests ang papasok sa Approvals; hindi ito tahimik na ma-o-overwrite.'}
+              ? "Manager-owned record: changes apply directly, but they're still version-checked on upload."
+              : "This is a team record. Sales edit requests go through Approvals; it won't be silently overwritten."}
           </Text>
+        </YStack>
+
+        <YStack marginTop="$3">
+          <BizButton
+            label="Reassign client"
+            variant="navy"
+            icon={<Repeat size={17} color="#FFFFFF" strokeWidth={1.75} />}
+            onPress={() => router.push(`/(manager)/more/clients/reassign?clientId=${encodeURIComponent(client.id)}`)}
+          />
         </YStack>
 
         <BizSectionHeader title="Meeting history" />
         {clientMeetings.length === 0 ? (
           <YStack alignItems="center" paddingVertical="$5" gap="$2">
             <Handshake size={26} color={BIZLINK_COLORS.muted} strokeWidth={1.75} />
-            <Text fontSize={13} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted}>Wala pang meeting na naitala.</Text>
+            <Text fontSize={13} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted}>No meeting has been recorded yet.</Text>
           </YStack>
         ) : (
           clientMeetings.map((m) => (
@@ -180,7 +180,7 @@ export default function ManagerClientDetailScreen() {
                   {m.tagAlong ? (
                     <XStack alignItems="center" gap="$0.5">
                       <UsersIcon size={10} color={BIZLINK_COLORS.navy} strokeWidth={1.75} />
-                      <Text fontSize={10.5} fontFamily={BIZLINK_FONTS.semibold} color={BIZLINK_COLORS.navy}>tag-along</Text>
+                      <Text fontSize={10.5} fontFamily={BIZLINK_FONTS.semibold} color={BIZLINK_COLORS.navy}>companion</Text>
                     </XStack>
                   ) : null}
                 </XStack>

@@ -1,5 +1,6 @@
 import { useCallback, useMemo, useState } from 'react';
 import { Pressable, ScrollView, TextInput } from 'react-native';
+import { KeyboardAwareScrollView } from '../../../components/ui/KeyboardAwareScrollView';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router, useFocusEffect } from 'expo-router';
 import type { Href } from 'expo-router';
@@ -110,9 +111,9 @@ export default function NotificationsScreen() {
   return (
     <YStack flex={1} backgroundColor={BIZLINK_COLORS.canvas} paddingTop={insets.top}>
       <BizTopBar title="Notifications" fallbackHref="/(tabs)" />
-      <ScrollView contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 24 }}>
+      <KeyboardAwareScrollView contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 24 }} keyboardShouldPersistTaps="handled">
         <Text fontSize={13} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} marginBottom="$2.5" lineHeight={18}>
-          Mga update na naka-sync sa phone mo. Action needed ang inuuna para walang makaligtaan.
+          Updates sent to your phone. Items needing action come first so nothing gets missed.
         </Text>
         <TextInput
           value={search}
@@ -143,7 +144,7 @@ export default function NotificationsScreen() {
           <YStack alignItems="center" padding="$8" gap="$2.5">
             <Bell size={40} color={BIZLINK_COLORS.muted} strokeWidth={1.75} />
             <Text fontSize={13} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} textAlign="center">
-              {feedItems.length === 0 ? 'Wala pang sync alerts.' : 'Walang notification na tumugma sa search/filter.'}
+              {feedItems.length === 0 ? 'No notifications yet.' : 'No notification matches your search or filter.'}
             </Text>
           </YStack>
         ) : (
@@ -182,7 +183,7 @@ export default function NotificationsScreen() {
             );
           })
         )}
-      </ScrollView>
+      </KeyboardAwareScrollView>
     </YStack>
   );
 }

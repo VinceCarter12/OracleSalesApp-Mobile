@@ -1,4 +1,5 @@
 import { DAY_MS } from './team-remote-mappers';
+import { manilaCalendarDate } from './manila-calendar';
 import type { ClientStatus } from '../types';
 
 // B-060 addendum, split from lib/team-remote-mappers.ts 2026-07-22
@@ -43,13 +44,14 @@ function endOfDay(d: Date): Date {
  * set). Kept as the single source of truth for the three fixed chips.
  */
 export function timeframeStart(timeframe: ReportTimeframe, now: Date): Date | null {
+  const [year, month] = manilaCalendarDate(now.toISOString()).split('-').map(Number);
   switch (timeframe) {
     case 'This month':
-      return new Date(now.getFullYear(), now.getMonth(), 1);
+      return new Date(`${year}-${String(month).padStart(2, '0')}-01T00:00:00+08:00`);
     case 'Last 30 days':
       return new Date(now.getTime() - 30 * DAY_MS);
     case 'This quarter':
-      return new Date(now.getFullYear(), Math.floor(now.getMonth() / 3) * 3, 1);
+      return new Date(`${year}-${String(Math.floor((month - 1) / 3) * 3 + 1).padStart(2, '0')}-01T00:00:00+08:00`);
     case 'Custom':
       return null;
   }

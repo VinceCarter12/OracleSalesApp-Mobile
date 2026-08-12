@@ -22,7 +22,7 @@ export function MeetingModeToggle({ mode, onChange }: MeetingModeToggleProps) {
   const BIZLINK_COLORS = useBizlinkColors();
   return (
     <>
-      <BizSectionHeader title="Meeting mode" helper="· ADR-012" />
+      <BizSectionHeader title="Meeting mode" />
       <XStack gap="$2">
         <BizChip label="In-person" selected={mode === 'in_person'} onPress={() => onChange('in_person')} />
         <BizChip label="Online" selected={mode === 'online'} onPress={() => onChange('online')} />
@@ -31,8 +31,8 @@ export function MeetingModeToggle({ mode, onChange }: MeetingModeToggleProps) {
         <XStack gap="$1.5" alignItems="flex-start" marginTop="$1.5">
           <AlertTriangle size={13} color={BIZLINK_COLORS.orange} strokeWidth={1.75} style={{ marginTop: 2 }} />
           <Text fontSize={11.5} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} flex={1} lineHeight={16}>
-            Online meeting — ang GPS na makukuha ay sa lokasyon MO, hindi sa client. Hindi ito bibilangin bilang
-            client-site visit sa maps/reports.
+            For an Online meeting, the location saved is your location, not the client's. The meeting is
+            still recorded and shown in your history.
           </Text>
         </XStack>
       ) : null}

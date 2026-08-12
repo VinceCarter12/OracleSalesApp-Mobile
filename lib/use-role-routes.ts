@@ -45,11 +45,8 @@ export interface ClientFlowRoutes {
   recordMeeting: (clientId: string) => Href;
   /**
    * Fast-path record (New/Existing) — mirrors `recordMeeting`'s URL-building
-   * pattern, but unlike `recordMeeting`, this one is `(tabs)`-only today:
-   * there is no `app/(manager)/clients/record-visit.tsx` re-export yet.
-   * Add that file (mirroring `app/(manager)/clients/record.tsx`) before
-   * wiring any Manager entry point through `isFastPathEligible()`, or this
-   * will resolve to a real `Href` that 404s at runtime for Manager.
+   * pattern. Manager has a matching `clients/record-visit.tsx` re-export, so
+   * this resolves to a real route for both role groups.
    */
   recordVisit: (clientId: string) => Href;
   meetingDetail: (id: string) => Href;

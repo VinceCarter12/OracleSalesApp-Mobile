@@ -36,7 +36,7 @@ export function AvatarStatusRing({ children }: AvatarStatusRingProps) {
       .then((next) => {
         setConnectivity((prev) => {
           if (hasCheckedOnce.current && prev === 'online' && next !== 'online') {
-            showToast('Wala kang internet — offline mode, mase-save pa rin lahat locally.');
+            showToast("You have no internet — offline mode, everything is still saved on this phone.");
           }
           hasCheckedOnce.current = true;
           return next;

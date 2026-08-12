@@ -222,20 +222,20 @@ export default function AgentHomeScreen() {
         {/* Wireframe-Sales-BizLink.html#a-home "Mga Gawain" — two dominant
             wide action cards (2026-08-03 visual-parity redesign, replaces
             the previous 4-equal-circle Quick Actions row). */}
-        <BizSectionHeader title="Mga Gawain" />
+        <BizSectionHeader title="Your tasks" />
         <XStack gap="$2.5">
           <BizPrimaryActionCard
             variant="dark"
             icon={<Plus size={18} color="#FFFFFF" strokeWidth={1.75} />}
-            title="Gumawa ng client"
-            subtitle="Company at city muna"
+            title="Create a client"
+            subtitle="Company and city first"
             onPress={() => router.push(getDashboardActionHref('create-client', role))}
           />
           <BizPrimaryActionCard
             variant="alt"
             icon={<Handshake size={18} color={BIZLINK_COLORS.ink} strokeWidth={1.75} />}
-            title="I-record ang meeting"
-            subtitle="Pumili muna ng client"
+            title="Record a meeting"
+            subtitle="Pick a client first"
             onPress={() => router.push(getDashboardActionHref('record-meeting', role))}
             active={activeMeetingDrafts.length > 0}
           />
@@ -244,14 +244,14 @@ export default function AgentHomeScreen() {
         {/* Wireframe "Iba pang gawain" — full secondary action hub, 3-column
             grid on phone width, previously hidden behind the More tab. Every
             tile keeps its existing real destination/route. */}
-        <BizSectionHeader title="Iba pang gawain" />
+        <BizSectionHeader title="More tools" />
         {/* Wireframe `.qa` is `grid-template-columns: repeat(3,1fr)` at phone
             width, 16dp row gap / 8dp column gap — but a real CSS grid
             reflows to more columns as the viewport grows. Rowed manually
             (not flexWrap+space-between) using `quickActionColumns` so wider
-            screens grow past 3 instead of leaving dead space, and a partial
-            last row still aligns to column 1 instead of spreading edge to
-            edge (2026-08-03 responsive-grid fix). */}
+            screens grow past 3 instead of leaving dead space. Complete rows
+            spread across the width; a partial final row stays grouped from
+            the left. */}
         <YStack gap={16}>
           {(() => {
             const tiles: ReactNode[] = [
@@ -269,7 +269,11 @@ export default function AgentHomeScreen() {
             const rows: ReactNode[][] = [];
             for (let i = 0; i < tiles.length; i += quickActionColumns) rows.push(tiles.slice(i, i + quickActionColumns));
             return rows.map((row, index) => (
-              <XStack key={index} gap={QUICK_ACTION_GAP} justifyContent="flex-start">
+              <XStack
+                key={index}
+                gap={QUICK_ACTION_GAP}
+                justifyContent={row.length === quickActionColumns ? 'space-between' : 'flex-start'}
+              >
                 {row}
               </XStack>
             ));
@@ -287,8 +291,8 @@ export default function AgentHomeScreen() {
           <BizDashboardAlert
             tone="red"
             icon={<Hourglass size={18} color={BIZLINK_COLORS.red} strokeWidth={1.75} />}
-            title={`${prospects.length} prospect${prospects.length > 1 ? 's' : ''} na kailangan kumpletuhin`}
-            caption="1-month rule — kumpletuhin o auto-delete"
+            title={`${prospects.length} possible client${prospects.length > 1 ? 's' : ''} still need their information completed`}
+            caption="They have 1 month from being created — complete it or the record is auto-removed"
             onPress={() => router.push('/(tabs)/clients')}
           />
         ) : null}
@@ -302,7 +306,7 @@ export default function AgentHomeScreen() {
             tone="amber"
             icon={<Hourglass size={18} color={BIZLINK_COLORS.orange} strokeWidth={1.75} />}
             title={`${waitingManagerApprovalProspects.length} prospect${waitingManagerApprovalProspects.length > 1 ? 's' : ''} waiting for manager approval`}
-            caption="Hinihintay ang sagot ng manager sa tag-along bago mag-progress"
+            caption="Waiting for your manager to accept the visit invite before this client can move forward"
             onPress={() => router.push('/(tabs)/clients')}
           />
         ) : null}

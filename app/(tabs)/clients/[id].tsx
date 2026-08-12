@@ -130,7 +130,7 @@ export default function ClientDetailScreen() {
   return (
     <YStack flex={1} backgroundColor={BIZLINK_COLORS.canvas} paddingTop={insets.top}>
       <BizTopBar title="Client" fallbackHref={routes.clientList()} />
-      <ScrollView contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 24 }}>
+      <ScrollView contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 24 }} keyboardShouldPersistTaps="handled">
         <BizCard flexDirection="row" alignItems="center" gap="$3.5">
           <ProgressRing
             percent={progress}
@@ -168,7 +168,7 @@ export default function ClientDetailScreen() {
                 outcome, not an info-completion score (B-001, corrected
                 2026-07-11 — info completion has zero weight here). */}
             <StatusBadge
-              label={presented ? 'Product presentation done (Record Meeting)' : 'Walang product presentation pa — 0%'}
+              label={presented ? 'Product presentation done (Record Meeting)' : 'No product presentation yet — 0%'}
               background={presented ? BIZLINK_COLORS.tintA : BIZLINK_COLORS.soft}
               color={presented ? BIZLINK_COLORS.ink : BIZLINK_COLORS.muted}
             />
@@ -191,7 +191,7 @@ export default function ClientDetailScreen() {
             screen) rather than any new control. */}
         {companionRequests.length > 0 ? (
           <>
-            <BizSectionHeader title="Kasama sa visit" />
+            <BizSectionHeader title="Visit companions" />
             <BizCard gap="$2">
               {companionRequests.map((request) => {
                 const displayStatus = companionRequestDisplayStatus(request);
@@ -199,7 +199,7 @@ export default function ClientDetailScreen() {
                 return (
                   <XStack key={request.id} alignItems="center" justifyContent="space-between" gap="$2.5">
                     <Text fontSize={13.5} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.text} flex={1}>
-                      {request.inviteeName ?? 'Kasama'}
+                      {request.inviteeName ?? 'Companion'}
                     </Text>
                     <StatusBadge
                       label={COMPANION_REQUEST_STATUS_LABELS[displayStatus]}
@@ -215,10 +215,11 @@ export default function ClientDetailScreen() {
 
         <BizSectionHeader
           title="Info completion"
-          helper={status === 'prospect' ? '1-month rule' : undefined}
+          helper={status === 'prospect' ? '1-month deadline' : undefined}
         />
         <Text fontSize={12} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} marginTop={-6} marginBottom="$2">
-          Para lang ito sa 1-month data-quality rule — hiwalay na sa progress % sa taas (B-001).
+          This only tracks your 1-month deadline for completing the client's information. It's separate from
+          the progress percentage shown above.
         </Text>
         <BizCard>
           {checklist.map((item, index) => (
@@ -290,7 +291,7 @@ export default function ClientDetailScreen() {
           {status === 'in_progress' || status === 'new' || status === 'existing' ? (
             <YStack flex={1} minWidth={140}>
               <BizButton
-                label={hasOfficePin(client.office_lat, client.office_lng) ? 'Update pin' : 'Set pin'}
+                label={hasOfficePin(client.office_lat, client.office_lng) ? 'Update location' : 'Set location'}
                 variant="white"
                 icon={<MapPin size={15} color={BIZLINK_COLORS.text} strokeWidth={1.75} />}
                 onPress={() => router.push(routes.officeLocation(client.id))}
@@ -302,7 +303,7 @@ export default function ClientDetailScreen() {
         <BizSectionHeader title="Meeting history" />
         {meetings.length === 0 ? (
           <Text fontSize={13} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted}>
-            Wala pang meetings sa client na ito.
+            This client doesn't have any meetings yet.
           </Text>
         ) : (
           meetings.map((meeting) => {

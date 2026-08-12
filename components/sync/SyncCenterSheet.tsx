@@ -43,10 +43,10 @@ const ENTRY_STATUS_ICON: Record<PendingSyncEntry['status'], typeof RefreshCw> = 
  * those don't resolve just by coming online.
  */
 function currentStateLabel(status: PendingSyncEntry['status'], isOnline: boolean): string {
-  if (status === 'failed') return 'Kailangan ng manual retry';
-  if (status === 'conflict') return 'May conflict — hihintayin ang admin';
-  if (status === 'syncing') return 'Sina-sync ngayon…';
-  return isOnline ? 'Online — susunod na i-sync' : 'Offline pa rin — naghihintay';
+  if (status === 'failed') return 'Needs your attention';
+  if (status === 'conflict') return 'Needs your choice — waiting for you to pick a version';
+  if (status === 'syncing') return 'Uploading now…';
+  return isOnline ? 'Online — uploading next' : 'Still offline — waiting';
 }
 
 function PendingEntryRow({ entry, isOnline }: { entry: PendingSyncEntry; isOnline: boolean }) {
@@ -75,10 +75,10 @@ function PendingEntryRow({ entry, isOnline }: { entry: PendingSyncEntry; isOnlin
 const CONNECTIVITY_COPY: Partial<
   Record<ConnectivityState, { icon: typeof WifiOff; background: string; color: string; text: string }>
 > = {
-  offline: { icon: WifiOff, background: BIZLINK_COLORS.soft, color: BIZLINK_COLORS.muted, text: 'Offline — saved sa device' },
-  no_internet: { icon: CloudOff, background: BIZLINK_COLORS.soft, color: BIZLINK_COLORS.muted, text: 'May signal, walang internet' },
-  backend_unreachable: { icon: ServerOff, background: BIZLINK_COLORS.tintA, color: BIZLINK_COLORS.navy, text: 'Hindi maabot ang server — susubukan ulit' },
-  auth_required: { icon: KeyRound, background: BIZLINK_COLORS.tintB, color: BIZLINK_COLORS.red, text: 'Mag-sign in ulit para mag-sync' },
+  offline: { icon: WifiOff, background: BIZLINK_COLORS.soft, color: BIZLINK_COLORS.muted, text: 'Offline — saved on this phone' },
+  no_internet: { icon: CloudOff, background: BIZLINK_COLORS.soft, color: BIZLINK_COLORS.muted, text: 'Connected, no internet' },
+  backend_unreachable: { icon: ServerOff, background: BIZLINK_COLORS.tintA, color: BIZLINK_COLORS.navy, text: "The server can't be reached — will try again" },
+  auth_required: { icon: KeyRound, background: BIZLINK_COLORS.tintB, color: BIZLINK_COLORS.red, text: 'Sign in again to upload' },
 };
 
 function ConnectivityPill({ state }: { state: ConnectivityState | null }) {
@@ -116,28 +116,28 @@ function ConnectivityPill({ state }: { state: ConnectivityState | null }) {
  * alongside `pending` (Vince-confirmed 2026-07-19).
  */
 function lastSyncedText(lastSyncAt: string | null): string {
-  if (!lastSyncAt) return 'Hindi pa nakaka-sync sa device na ito';
+  if (!lastSyncAt) return 'Not uploaded on this phone yet';
   const elapsedMs = Date.now() - new Date(lastSyncAt).getTime();
   const minutes = Math.floor(elapsedMs / 60000);
-  if (minutes < 1) return 'Huling sync: kanina lang';
-  if (minutes < 60) return `Huling sync: ${minutes}m ago`;
+  if (minutes < 1) return 'Last upload: just now';
+  if (minutes < 60) return `Last upload: ${minutes}m ago`;
   const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `Huling sync: ${hours}h ago`;
+  if (hours < 24) return `Last upload: ${hours}h ago`;
   const days = Math.floor(hours / 24);
-  return `Huling sync: ${days}d ago`;
+  return `Last upload: ${days}d ago`;
 }
 
 function summaryText(counts: OutboxCounts): string {
   const pendingTotal = counts.pending + counts.syncing;
   if (counts.conflict === 0 && counts.failed === 0 && pendingTotal === 0) {
-    return 'Naka-sync na lahat, walang naghihintay';
+    return 'Everything is uploaded; nothing waiting';
   }
   const nonempty: string[] = [];
-  if (counts.conflict > 0) nonempty.push(`${counts.conflict} may salungatan`);
-  if (counts.failed > 0) nonempty.push(`${counts.failed} nabigo`);
-  if (pendingTotal > 0) nonempty.push(`${pendingTotal} naghihintay`);
+  if (counts.conflict > 0) nonempty.push(`${counts.conflict} need attention`);
+  if (counts.failed > 0) nonempty.push(`${counts.failed} failed`);
+  if (pendingTotal > 0) nonempty.push(`${pendingTotal} waiting`);
   if (nonempty.length <= 2) return nonempty.join(', ');
-  return `${nonempty.slice(0, -1).join(', ')}, at ${pendingTotal} pa`;
+  return `${nonempty.slice(0, -1).join(', ')}, and ${pendingTotal} more`;
 }
 
 interface SyncCenterSheetProps {
@@ -239,7 +239,8 @@ export function SyncCenterSheet({ visible, onClose }: SyncCenterSheetProps) {
               Sync Center
             </Text>
             <Text fontSize={12} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} marginTop={4}>
-              Offline-first: naka-save na sa phone mo lahat. Kusang aakyat sa server pag may signal.
+              Everything you enter is saved on your phone first. It is uploaded to the system automatically
+              once there's a signal.
             </Text>
 
             <ConnectivityPill state={connectivity} />
@@ -264,7 +265,7 @@ export function SyncCenterSheet({ visible, onClose }: SyncCenterSheetProps) {
 
             <YStack backgroundColor={BIZLINK_COLORS.card} borderRadius={20} padding={16} marginTop={12}>
               <Text fontSize={14} fontFamily={BIZLINK_FONTS.semibold} color={BIZLINK_COLORS.text}>
-                {counts ? summaryText(counts) : 'Kinukuha ang status…'}
+                {counts ? summaryText(counts) : 'Getting the status…'}
               </Text>
               {entries.length > 0 ? (
                 <ScrollView style={{ maxHeight: 180, marginTop: 8 }} showsVerticalScrollIndicator={false}>
@@ -283,7 +284,7 @@ export function SyncCenterSheet({ visible, onClose }: SyncCenterSheetProps) {
 
             {counts && counts.failed > 0 ? (
               <BizButton
-                label={retrying ? 'Ni-retry…' : `Retry lahat (${counts.failed})`}
+                label={retrying ? 'Retrying…' : `Retry all (${counts.failed})`}
                 variant="white"
                 onPress={handleRetryAll}
                 disabled={retrying}

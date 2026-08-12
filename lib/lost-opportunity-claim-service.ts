@@ -46,7 +46,7 @@ export interface ClaimLostOpportunityResult {
 export async function claimLostOpportunity(clientId: string): Promise<ClaimLostOpportunityResult> {
   const online = await isLikelyOnline();
   if (!online) {
-    throw new Error('Kailangan ng internet connection para mag-claim ng lost opportunity.');
+    throw new Error('You need an internet connection to claim a lost opportunity.');
   }
 
   const { data, error } = await withTimeout(
@@ -63,7 +63,7 @@ export async function claimLostOpportunity(clientId: string): Promise<ClaimLostO
   if (code !== 'claimed') return { code, clientId: null };
   const freshClientId = parseFreshProspectId(decoded.client);
   if (!freshClientId) {
-    throw new Error('Hindi ma-claim ang opportunity: kailangan ng bagong prospect record mula sa server.');
+    throw new Error('The opportunity could not be claimed: the app needs a fresh prospect record from the server.');
   }
   return { code, clientId: freshClientId };
 }

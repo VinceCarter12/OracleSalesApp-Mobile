@@ -61,6 +61,11 @@ interface LeafletWebViewMapProps {
   height?: number;
   tileType?: MapTileType;
   focusedMarkerId?: string | null;
+  /** Optional single pin editor. This is deliberately separate from meeting markers. */
+  editablePin?: { lat: number; lng: number; label: string } | null;
+  onPinDragEnd?: (position: { lat: number; lng: number }) => void;
+  /** Animate the map to a newly selected coordinate without rebuilding the WebView. */
+  focusCoordinate?: { lat: number; lng: number } | null;
 }
 
 interface LeafletWebViewMapWithControlsProps {
@@ -74,7 +79,7 @@ interface LeafletWebViewMapWithControlsProps {
   onMarkerPress?: (id: string) => void;
 }
 
-function buildMapHtml(markers: LeafletMapMarker[], tileType: MapTileType, focusedMarkerId?: string | null): string {
+function buildMapHtml(markers: LeafletMapMarker[], tileType: MapTileType, focusedMarkerId?: string | null, editablePin?: { lat: number; lng: number; label: string } | null): string {
   // `<` is escaped to `<` (valid inside a JS string literal, decodes to
   // the same character at runtime) so a company/location name containing a
   // literal `</script>` can never break out of the inline <script> block —
@@ -82,9 +87,10 @@ function buildMapHtml(markers: LeafletMapMarker[], tileType: MapTileType, focuse
   // nesting. Marker labels are still rendered as `textContent` (never
   // innerHTML) below, so this is defense in depth, not the only guard.
   const markersJson = JSON.stringify(markers).replace(/</g, '\\u003c');
+  const focusedMarker = focusedMarkerId ? markers.find((marker) => marker.id === focusedMarkerId) : null;
+  const focusedMarkerIdJson = JSON.stringify(focusedMarker ? focusedMarkerId : null).replace(/</g, '\\u003c');
   const tileUrl = TILE_URLS[tileType];
   const tileMaxZoom = TILE_MAX_ZOOM[tileType];
-  const focusedMarker = focusedMarkerId ? markers.find((m) => m.id === focusedMarkerId) : null;
   
   return `<!DOCTYPE html>
 <html>
@@ -100,11 +106,17 @@ function buildMapHtml(markers: LeafletMapMarker[], tileType: MapTileType, focuse
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script>
     var markers = ${markersJson};
-    var focusedMarkerId = ${focusedMarker ? `"${focusedMarkerId}"` : 'null'};
+    var focusedMarkerId = ${focusedMarkerIdJson};
     var map = L.map('map', { zoomControl: true, attributionControl: false, maxZoom: ${tileMaxZoom} });
     L.tileLayer('${tileUrl}', { attribution: '${CARTO_ATTRIBUTION}', maxZoom: ${tileMaxZoom} }).addTo(map);
 
-    if (focusedMarkerId) {
+    // JSON.stringify(undefined) returns undefined (not a string), which made
+    // the controls-only map crash while constructing its memoized HTML.
+    // Normalize the optional pin to JSON null before applying HTML escaping.
+    var editablePin = ${JSON.stringify(editablePin ?? null).replace(/</g, '\\u003c')};
+    if (editablePin) {
+      map.setView([editablePin.lat, editablePin.lng], 16);
+    } else if (focusedMarkerId) {
       var focused = markers.find(function (m) { return m.id === focusedMarkerId; });
       if (focused) {
         map.setView([focused.lat, focused.lng], 16);
@@ -166,6 +178,30 @@ function buildMapHtml(markers: LeafletMapMarker[], tileType: MapTileType, focuse
         }
       });
     });
+    if (editablePin) {
+      var editorMarker = L.marker([editablePin.lat, editablePin.lng], { draggable: true }).addTo(map);
+      var editorPopup = document.createElement('div');
+      editorPopup.textContent = editablePin.label;
+      editorMarker.bindPopup(editorPopup).openPopup();
+      editorMarker.on('dragend', function () {
+        var point = editorMarker.getLatLng();
+        if (window.ReactNativeWebView) {
+          window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'pin-drag-end', lat: point.lat, lng: point.lng }));
+        }
+      });
+    }
+    function handleNativeMapMessage(event) {
+      try {
+        var target = JSON.parse(event.data);
+        if (target && Number.isFinite(target.lat) && Number.isFinite(target.lng)) {
+          map.flyTo([target.lat, target.lng], target.zoom || 16, { animate: true, duration: 0.8 });
+        }
+      } catch (_) {
+        // Ignore malformed native bridge messages.
+      }
+    }
+    window.addEventListener('message', handleNativeMapMessage);
+    document.addEventListener('message', handleNativeMapMessage);
   </script>
 </body>
 </html>`;
@@ -179,9 +215,9 @@ function buildMapHtml(markers: LeafletMapMarker[], tileType: MapTileType, focuse
  * `window.ReactNativeWebView.postMessage`. Supports map type switching
  * (light/dark/terrain) and focused marker view (2026-08-05 redesign).
  */
-export function LeafletWebViewMap({ markers, onMarkerPress, height = 300, tileType = 'light', focusedMarkerId = null }: LeafletWebViewMapProps) {
+export function LeafletWebViewMap({ markers, onMarkerPress, height = 300, tileType = 'light', focusedMarkerId = null, editablePin = null, onPinDragEnd, focusCoordinate = null }: LeafletWebViewMapProps) {
   const webViewRef = useRef<WebView>(null);
-  const html = useMemo(() => buildMapHtml(markers, tileType, focusedMarkerId), [markers, tileType, focusedMarkerId]);
+  const html = useMemo(() => buildMapHtml(markers, tileType, focusedMarkerId, editablePin), [markers, tileType, focusedMarkerId, editablePin]);
   // The map's Leaflet lib/CSS + tile images load over the network from
   // unpkg.com/basemaps.cartocdn.com — this is the one part of the screen
   // that structurally cannot be offline-first, so it needs its own
@@ -197,9 +233,18 @@ export function LeafletWebViewMap({ markers, onMarkerPress, height = 300, tileTy
     }
   }, [tileType, focusedMarkerId]);
 
+  useEffect(() => {
+    if (!focusCoordinate || !webViewRef.current) return;
+    webViewRef.current.postMessage(JSON.stringify({ ...focusCoordinate, zoom: 16 }));
+  }, [focusCoordinate]);
+
   function handleMessage(event: WebViewMessageEvent): void {
     try {
-      const payload = JSON.parse(event.nativeEvent.data) as { id?: string };
+      const payload = JSON.parse(event.nativeEvent.data) as { id?: string; type?: string; lat?: number; lng?: number };
+      if (payload.type === 'pin-drag-end' && Number.isFinite(payload.lat) && Number.isFinite(payload.lng)) {
+        onPinDragEnd?.({ lat: payload.lat!, lng: payload.lng! });
+        return;
+      }
       if (payload.id) onMarkerPress(payload.id);
     } catch {
       // Malformed bridge payload — ignore, never crash the screen over a tap.
@@ -226,9 +271,9 @@ export function LeafletWebViewMap({ markers, onMarkerPress, height = 300, tileTy
       />
       {loadFailed ? (
         <View style={styles.overlay}>
-          <Text style={styles.overlayText}>Hindi ma-load ang mapa. I-check ang internet connection.</Text>
+          <Text style={styles.overlayText}>The map couldn't be loaded. Check your internet connection.</Text>
           <TouchableOpacity onPress={handleRetry} style={styles.retryButton}>
-            <Text style={styles.retryText}>Subukan ulit</Text>
+            <Text style={styles.retryText}>Try again</Text>
           </TouchableOpacity>
         </View>
       ) : null}
@@ -441,9 +486,9 @@ export function LeafletWebViewMapWithControls({
 
       {loadFailed ? (
         <View style={styles.overlay}>
-          <Text style={styles.overlayText}>Hindi ma-load ang mapa. I-check ang internet connection.</Text>
+          <Text style={styles.overlayText}>The map couldn't be loaded. Check your internet connection.</Text>
           <TouchableOpacity onPress={handleRetry} style={styles.retryButton}>
-            <Text style={styles.retryText}>Subukan ulit</Text>
+            <Text style={styles.retryText}>Try again</Text>
           </TouchableOpacity>
         </View>
       ) : null}

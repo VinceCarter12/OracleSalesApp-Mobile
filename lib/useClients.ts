@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { useSQLiteContext } from 'expo-sqlite';
+import { useAppDb } from './app-db-provider';
 import { useSession } from './session-store';
 import { rowToClient, type LocalClientRow } from './local-client-mapper';
 import { subscribeSyncComplete } from './sync/sync-events';
@@ -13,7 +13,7 @@ import type { Client } from '../types';
 // Supabase call at all.
 
 export function useClients() {
-  const db = useSQLiteContext();
+  const db = useAppDb();
   const { profileId } = useSession();
   const [clients, setClients] = useState<Client[]>([]);
   const [loading, setLoading] = useState(true);

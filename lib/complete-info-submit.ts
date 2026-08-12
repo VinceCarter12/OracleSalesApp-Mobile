@@ -2,10 +2,20 @@ import { updateClientInfo } from './client-service';
 import { createClientEditRequest, type ClientEditRequest } from './client-edit-request-service';
 import { computeClientEditChanges } from './client-edit-request-payload';
 import { determineCompleteInfoSubmitBranch, type CompleteInfoSubmitBranch } from './complete-info-branch';
-import { CLIENT_EDITABLE_FIELDS, CLIENT_APPROVAL_EXEMPT_FIELDS, getFieldsRequiringApproval } from './policies/approval-policy';
-import { toRemoteSalesChannel, toRemoteCustomerType } from './remote-client-mapping';
+import {
+  buildBeforeAfter,
+  buildHeldWriteInput,
+  splitCompleteInfoChanges,
+  type CompleteInfoFieldSplit,
+  type CompleteInfoFormValues,
+} from './complete-info-field-split';
 import { isValidContactNumber, CONTACT_NUMBER_INVALID_MESSAGE } from './field-validation';
-import type { Client, SalesChannel } from '../types';
+import type { Client } from '../types';
+
+// Re-exported so existing callers (the screen) can keep importing these
+// from this module — the actual implementation is the pure,
+// I/O-free lib/complete-info-field-split.ts (see that file's header for why).
+export { buildBeforeAfter, splitCompleteInfoChanges, type CompleteInfoFormValues, type CompleteInfoFieldSplit };
 
 // Batch 6 PR D: orchestration split out of app/(tabs)/clients/complete.tsx
 // (which only renders + owns form state) to keep that file under the
@@ -18,50 +28,65 @@ import type { Client, SalesChannel } from '../types';
 // call. Company name became view-only here (no longer part of this form),
 // so DuplicateCompanyNameError can no longer surface from this path.
 
-export interface CompleteInfoFormValues {
-  contactPerson: string;
-  position: string;
-  contactNumber: string;
-  officeAddress: string;
-  channel: SalesChannel;
-  existingOverride: boolean;
-  minorNotes: string;
-}
-
 export interface SubmitCompleteInfoInput {
   client: Client;
   clientId: string;
   profileId: string;
   pendingRequest: ClientEditRequest | null;
-  firstTime: boolean;
   isManagerOwnClient: boolean;
   form: CompleteInfoFormValues;
 }
 
-// Company name is view-only on this screen (not in the wireframe's a-complete
-// form — only Create Client's Phase A collects it) so it's never part of the
-// before/after diff here.
-function buildBeforeAfter(client: Client, form: CompleteInfoFormValues): { before: Record<string, unknown>; after: Record<string, unknown> } {
-  return {
-    before: {
-      contact_person: client.contact_person,
-      contact_position: client.position ?? null,
-      contact_number: client.contact_number ?? null,
-      office_address: client.office_address ?? null,
-      sales_channel: toRemoteSalesChannel(client.sales_channel),
-      customer_type: toRemoteCustomerType(client.status),
-      minor_notes: client.minor_notes ?? null,
-    },
-    after: {
-      contact_person: form.contactPerson.trim(),
-      contact_position: form.position.trim() || null,
-      contact_number: form.contactNumber.trim() || null,
-      office_address: form.officeAddress.trim() || null,
-      sales_channel: toRemoteSalesChannel(form.channel),
-      customer_type: form.existingOverride ? 'existing' : toRemoteCustomerType(client.status),
-      minor_notes: form.minorNotes.trim() || null,
-    },
-  };
+// direct_first_time/direct_manager_owns/direct_exempt_only: nothing needs
+// approval, so every field is written straight from the form. Only
+// exempt_only (a true no-op save) omits markExisting — the other two
+// branches apply it whenever the user toggled "Existing client".
+async function writeDirectBranch(
+  clientId: string,
+  profileId: string,
+  form: CompleteInfoFormValues,
+  branch: 'direct_first_time' | 'direct_manager_owns' | 'direct_exempt_only'
+): Promise<void> {
+  await updateClientInfo({
+    clientId,
+    agentId: profileId,
+    contactPerson: form.contactPerson,
+    position: form.position,
+    contactNumber: form.contactNumber,
+    officeAddress: form.officeAddress,
+    salesChannel: form.channel,
+    minorNotes: form.minorNotes,
+    ...(branch === 'direct_exempt_only' ? {} : { markExisting: form.existingOverride || undefined }),
+  });
+}
+
+// sales_specialist/rsr, at least one already-set field changed. Every
+// directApplyFields entry is written FIRST with its NEW form value; every
+// approvalRequiredFields entry is held at its OLD client value
+// (buildHeldWriteInput) so the pending change isn't applied early. This
+// write must land before createClientEditRequest() reads clients.updated_at
+// as base_updated_at, or our own write would look like a conflicting edit
+// at decision time (see client-edit-request-payload.ts's baseUpdatedAt doc
+// comment).
+async function writeRequestApprovalBranch(
+  client: Client,
+  clientId: string,
+  profileId: string,
+  form: CompleteInfoFormValues,
+  before: Record<string, unknown>,
+  after: Record<string, unknown>,
+  directApplyFields: readonly string[],
+  approvalRequiredFields: readonly string[]
+): Promise<void> {
+  if (directApplyFields.length > 0) {
+    await updateClientInfo({
+      clientId,
+      agentId: profileId,
+      ...buildHeldWriteInput(client, form, approvalRequiredFields),
+    });
+  }
+  const approvalChanges = computeClientEditChanges(before, after, approvalRequiredFields);
+  await createClientEditRequest(clientId, profileId, approvalChanges);
 }
 
 /**
@@ -83,65 +108,21 @@ export async function submitCompleteInfo(input: SubmitCompleteInfoInput): Promis
   }
 
   const { before, after } = buildBeforeAfter(client, form);
-  const fullDiff = computeClientEditChanges(before, after, CLIENT_EDITABLE_FIELDS);
+  const { directApplyFields, approvalRequiredFields } = splitCompleteInfoChanges(client, form);
   const branch = determineCompleteInfoSubmitBranch({
     hasPendingRequest: input.pendingRequest !== null,
-    firstTime: input.firstTime,
     isManagerOwnClient: input.isManagerOwnClient,
-    changedFields: Object.keys(fullDiff),
-    exemptFields: CLIENT_APPROVAL_EXEMPT_FIELDS,
+    directApplyFields,
+    approvalRequiredFields,
   });
 
   if (branch === 'blocked_pending') return branch;
 
-  if (branch === 'direct_first_time' || branch === 'direct_manager_owns') {
-    await updateClientInfo({
-      clientId,
-      agentId: profileId,
-      contactPerson: form.contactPerson,
-      position: form.position,
-      contactNumber: form.contactNumber,
-      officeAddress: form.officeAddress,
-      salesChannel: form.channel,
-      markExisting: form.existingOverride || undefined,
-      minorNotes: form.minorNotes,
-    });
+  if (branch === 'direct_first_time' || branch === 'direct_manager_owns' || branch === 'direct_exempt_only') {
+    await writeDirectBranch(clientId, profileId, form, branch);
     return branch;
   }
 
-  if (branch === 'direct_exempt_only') {
-    await updateClientInfo({
-      clientId,
-      agentId: profileId,
-      contactPerson: form.contactPerson,
-      position: form.position,
-      contactNumber: form.contactNumber,
-      officeAddress: form.officeAddress,
-      salesChannel: form.channel,
-      minorNotes: form.minorNotes,
-    });
-    return branch;
-  }
-
-  // branch === 'request_approval': sales_specialist/rsr, at least one
-  // approval-required field changed. minor_notes (if also dirty) is
-  // written FIRST — it must land before createClientEditRequest() reads
-  // clients.updated_at as base_updated_at, or our own write would look
-  // like a conflicting edit at decision time (see
-  // client-edit-request-payload.ts's baseUpdatedAt doc comment).
-  if (Object.prototype.hasOwnProperty.call(fullDiff, 'minor_notes')) {
-    await updateClientInfo({
-      clientId,
-      agentId: profileId,
-      contactPerson: client.contact_person,
-      position: client.position ?? '',
-      contactNumber: client.contact_number ?? '',
-      officeAddress: client.office_address ?? '',
-      salesChannel: client.sales_channel,
-      minorNotes: form.minorNotes,
-    });
-  }
-  const approvalChanges = computeClientEditChanges(before, after, getFieldsRequiringApproval('clients'));
-  await createClientEditRequest(clientId, profileId, approvalChanges);
+  await writeRequestApprovalBranch(client, clientId, profileId, form, before, after, directApplyFields, approvalRequiredFields);
   return branch;
 }

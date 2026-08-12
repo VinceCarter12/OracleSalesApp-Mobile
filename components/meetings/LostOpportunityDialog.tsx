@@ -1,8 +1,9 @@
-import { Modal, Pressable } from 'react-native';
+import { KeyboardAvoidingView, Modal, Platform, Pressable } from 'react-native';
 import { Text, XStack, YStack } from 'tamagui';
 import { useBizlinkColors, BIZLINK_FONTS } from '../../lib/theme';
 import { BizButton } from '../bizlink/BizButton';
 import { BizField } from '../bizlink/BizField';
+import { KeyboardAwareScrollView } from '../ui/KeyboardAwareScrollView';
 import { MINOR_NOTES_MAX_LENGTH } from '../../lib/field-validation';
 
 interface LostOpportunityDialogProps {
@@ -37,6 +38,10 @@ export function LostOpportunityDialog({
   const showReasonField = reason !== undefined && onReasonChange !== undefined;
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onCancel}>
+      <KeyboardAvoidingView
+        style={{ flex: 1 }}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      >
       <Pressable
         onPress={onCancel}
         style={{
@@ -47,6 +52,11 @@ export function LostOpportunityDialog({
           padding: 24,
         }}
       >
+        <KeyboardAwareScrollView
+          style={{ alignSelf: 'stretch', maxHeight: '100%' }}
+          contentContainerStyle={{ flexGrow: 1, justifyContent: 'center' }}
+          keyboardShouldPersistTaps="handled"
+        >
         <Pressable onPress={(e) => e.stopPropagation()}>
           <YStack backgroundColor={BIZLINK_COLORS.card} borderRadius={24} padding="$4.5" width={320}>
             <Text fontSize={18} fontFamily={BIZLINK_FONTS.semibold} color={BIZLINK_COLORS.red}>Lost opportunity?</Text>
@@ -56,7 +66,7 @@ export function LostOpportunityDialog({
                   label="LOST OPPORTUNITY REASON *"
                   value={reason ?? ''}
                   onChangeText={onReasonChange ?? (() => {})}
-                  placeholder="Ilagay kung bakit naging Lost ang client"
+                  placeholder="Why did this client become Lost?"
                   multiline
                   maxLength={MINOR_NOTES_MAX_LENGTH}
                   hint={
@@ -70,12 +80,12 @@ export function LostOpportunityDialog({
               </YStack>
             ) : null}
             <Text fontSize={13} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.text} marginTop="$2">
-              Kapag kinumpirma:
+              When you confirm:
             </Text>
             <Text fontSize={13} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} marginTop="$1" lineHeight={19}>
-              • Matatanggal ang client sa listahan mo{'\n'}
-              • Mapupunta sa admin-side list{'\n'}
-              • Kapag ni-release ulit, ibang agents lang ang pwedeng kumuha
+              • The client will be removed from your list{'\n'}
+              • It goes to the admin-side list{'\n'}
+              • If it's released again, only other agents can take it
             </Text>
             <XStack gap="$2.5" marginTop="$4.5">
               <YStack flex={1}><BizButton label="Cancel" variant="white" onPress={onCancel} /></YStack>
@@ -83,7 +93,9 @@ export function LostOpportunityDialog({
             </XStack>
           </YStack>
         </Pressable>
+        </KeyboardAwareScrollView>
       </Pressable>
+      </KeyboardAvoidingView>
     </Modal>
   );
 }

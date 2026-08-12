@@ -20,6 +20,7 @@ interface VisitStartPanelProps {
   onStart: () => void;
   /** "New Customer Visit" / "Existing Customer Visit" (record-visit.tsx's `visitActionName()`) — status-differentiates the Start button per the audit's "Align" section instead of the generic "Start visit". */
   actionName: string;
+  showCompanionPicker?: boolean;
 }
 
 /**
@@ -40,12 +41,13 @@ export function VisitStartPanel({
   starting,
   onStart,
   actionName,
+  showCompanionPicker = true,
 }: VisitStartPanelProps) {
   const BIZLINK_COLORS = useBizlinkColors();
   return (
     <YStack marginTop="$4" gap="$4">
       <MeetingModeToggle mode={mode} onChange={onModeChange} />
-      <CompanionPicker roster={roster} selected={selectedCompanions} onToggle={onToggleCompanion} />
+      {showCompanionPicker ? <CompanionPicker roster={roster} selected={selectedCompanions} onToggle={onToggleCompanion} /> : null}
       <ClientCutoffAllowanceBlock client={client} compact />
 
       <BizSectionHeader title="Start meeting" />
@@ -58,15 +60,15 @@ export function VisitStartPanel({
             <MapPin size={18} color={BIZLINK_ON_INK.solid} strokeWidth={1.75} />
           </YStack>
           <YStack flex={1}>
-            <Text fontSize={12.5} fontFamily={BIZLINK_FONTS.semibold} color={BIZLINK_ON_INK.solid}>GPS lang — walang photo</Text>
+            <Text fontSize={12.5} fontFamily={BIZLINK_FONTS.semibold} color={BIZLINK_ON_INK.solid}>Location only — no photo</Text>
             <Text fontSize={11} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_ON_INK.textMuted}>
-              GPS + timestamp ang naka-bind dito; magsisimula ang running timer
+              The location and time are saved here; the running timer starts now
             </Text>
           </YStack>
         </XStack>
       </YStack>
 
-      <BizButton label={starting ? 'Capturing GPS…' : `Start ${actionName}`} onPress={onStart} disabled={starting} />
+      <BizButton label={starting ? 'Capturing your location…' : `Start ${actionName}`} onPress={onStart} disabled={starting} />
       <Text fontSize={12} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} textAlign="center">
         Binds GPS + timestamp to the start of the meeting — no photo needed here anymore.
       </Text>

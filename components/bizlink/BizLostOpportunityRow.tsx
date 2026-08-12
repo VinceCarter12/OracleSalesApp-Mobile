@@ -1,9 +1,8 @@
-import { ChevronRight, RotateCcw } from 'lucide-react-native';
+import { ChevronRight } from 'lucide-react-native';
 import { Text, XStack, YStack } from 'tamagui';
 import { useBizlinkColors, BIZLINK_FONTS } from '../../lib/theme';
 import type { LostOpportunityListItem } from '../../lib/lost-opportunity-list-service';
 import { BizCard } from './BizCard';
-import { StatusBadge } from '../ui/StatusBadge';
 
 interface BizLostOpportunityRowProps {
   item: LostOpportunityListItem;
@@ -31,19 +30,24 @@ export function BizLostOpportunityRow({ item, rowNumber, onPress }: BizLostOppor
     <BizCard onPress={onPress} pressStyle={{ opacity: 0.85 }} marginBottom={10} gap="$1.5">
       <XStack alignItems="center" gap="$2.5">
         <YStack
-          width={36}
-          height={36}
+          width={26}
+          height={26}
           borderRadius={18}
-          backgroundColor={BIZLINK_COLORS.soft}
+          backgroundColor={BIZLINK_COLORS.tintA}
           alignItems="center"
           justifyContent="center"
         >
-          <RotateCcw size={16} color={BIZLINK_COLORS.navy} strokeWidth={1.75} />
+          <Text fontFamily={BIZLINK_FONTS.semibold} fontSize={12} color={BIZLINK_COLORS.ink}>
+            {rowNumber}
+          </Text>
         </YStack>
         <YStack flex={1} gap="$0.5">
           <XStack alignItems="center" gap="$2">
             <Text fontFamily={BIZLINK_FONTS.semibold} fontSize={14} color={BIZLINK_COLORS.text}>
-              {rowNumber}. {item.companyName}
+              {item.companyName}{' '}
+              <Text fontFamily={BIZLINK_FONTS.medium} fontSize={11} color={BIZLINK_COLORS.muted}>
+                Inactive
+              </Text>
             </Text>
           </XStack>
           <Text fontSize={11.5} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted}>
@@ -56,7 +60,6 @@ export function BizLostOpportunityRow({ item, rowNumber, onPress }: BizLostOppor
         <Text fontSize={11} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} flex={1}>
           Lost: {formatDate(item.lostAt)}{item.reason ? ` · ${item.reason}` : ''}
         </Text>
-        <StatusBadge label="INACTIVE" background={BIZLINK_COLORS.soft} color={BIZLINK_COLORS.muted} />
       </XStack>
     </BizCard>
   );

@@ -74,13 +74,7 @@ export interface NewMeetingRecord {
   } | null;
   /** ADR-030 Pass 2.5: 0–2 companions picked in Record Meeting's "Kasama sa visit" section — optional/omittable, never gates the save. */
   companions?: CompanionSelection[];
-  /**
-   * F-205 decision 2: true when the requester (`agent_id`) is a manager
-   * recording their own meeting — the companion rows insert pre-accepted
-   * (`insertAcceptedMeetingCompanions`) instead of pending
-   * (`insertMeetingCompanionRequests`), since there's no counterpart to
-   * approve a manager's own request. Omit/false for the normal agent path.
-   */
+  /** @deprecated Manager-side pre-accepted companion requests were removed; retained as an ignored compatibility field for old drafts/tests. */
   companionsPreAccepted?: boolean;
   /** ADR-044/046 point 7 (Batch 3, Slice 5): PO evidence for an In Progress client's 'Close deal' agenda. `cycleId` is `Client.cycle_id` (required NOT NULL by `po_confirmation_requests`); `userId` is the Auth uid, same split as `photoToQueue.userId`. Omitted when not applicable. */
   poEvidence?: { localPhotoUri: string; cycleId: string; userId: string } | null;
@@ -153,10 +147,7 @@ export async function createMeeting(record: NewMeetingRecord): Promise<string> {
   // companion selection used below to insert the tag_along_requests rows —
   // never recomputed later on-device (lifecycle/quota gating stays
   // server-reconciled, see lib/tag-along-validity-service.ts).
-  const validityStatus = computeMeetingValidityStatusOnCreate(
-    record.companions ?? [],
-    record.companionsPreAccepted ?? false
-  );
+  const validityStatus = computeMeetingValidityStatusOnCreate(record.companions ?? []);
 
   // 2026-08-09 fix: was a bare `db.withTransactionAsync(...)` — see
   // lib/meeting-record-insert.ts + lib/sync/with-transaction-retry.ts's

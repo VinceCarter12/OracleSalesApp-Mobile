@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Modal, Pressable, ScrollView, TextInput } from 'react-native';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Modal, Pressable, TextInput } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect, router } from 'expo-router';
 import { Search, SlidersHorizontal, X } from 'lucide-react-native';
@@ -16,10 +16,12 @@ import type { BizFilterOption } from '../../../components/bizlink/BizFilterScrol
 import { MapLegend, OfflineBanner } from '../../../components/maps/MapsScreenSections';
 import { BizFilterSheet } from '../../../components/bizlink/BizFilterSheet';
 import type { DateRange } from '../../../components/bizlink/DateRangePickerModal';
+import { KeyboardAwareScrollView } from '../../../components/ui/KeyboardAwareScrollView';
 import { MapsFilterPanel } from '../../../components/maps/MapsFilterPanel';
-import { MapsMeetingCardList } from '../../../components/maps/MapsMeetingCardList';
+import { MapsListSection } from '../../../components/maps/MapsListSection';
 import { LeafletWebViewMapWithControls, type MapTileType } from '../../../components/maps/LeafletWebViewMap';
 import { BizFloatingPager } from '../../../components/bizlink/BizFloatingPager';
+import { MAPS_DATE_PRESET_OPTIONS, makeMapsPresetRange, toMapsDateWindow, type MapsDatePreset } from '../../../lib/maps-date-preset';
 
 const MEETING_TYPE_FILTER_OPTIONS: BizFilterOption<MeetingTypeFilterValue>[] = [
   { value: 'all', label: 'All' },
@@ -38,22 +40,6 @@ const MEETING_STATUS_FILTER_OPTIONS: BizFilterOption<MeetingStatusFilterValue>[]
 ];
 
 const ITEMS_PER_PAGE = 10;
-type DatePreset = 'today' | 'last7' | 'last30' | 'custom';
-const DATE_PRESET_OPTIONS: BizFilterOption<DatePreset>[] = [
-  { value: 'today', label: 'Today' }, { value: 'last7', label: 'Last 7 days' },
-  { value: 'last30', label: 'Last 30 days' }, { value: 'custom', label: 'Custom range' },
-];
-function makePresetRange(preset: Exclude<DatePreset, 'custom'>): DateRange {
-  const end = new Date();
-  const start = new Date(end);
-  start.setDate(start.getDate() - (preset === 'today' ? 0 : preset === 'last7' ? 6 : 29));
-  return { start, end };
-}
-function toDateWindow(range: DateRange | null): { startAt?: string; endAtExclusive?: string } | undefined {
-  if (!range) return undefined;
-  const end = new Date(range.end.getFullYear(), range.end.getMonth(), range.end.getDate() + 1);
-  return { startAt: new Date(range.start.getFullYear(), range.start.getMonth(), range.start.getDate()).toISOString(), endAtExclusive: end.toISOString() };
-}
 
 /**
  * Wireframe `a-maps` (Wireframe-Sales-BizLink.html ~line 1009) —
@@ -71,11 +57,10 @@ export default function AgentMapsScreen() {
   const [selectedMarkerIds, setSelectedMarkerIds] = useState<Set<string>>(new Set());
   const [currentPage, setCurrentPage] = useState(0);
   const [mapExpanded, setMapExpanded] = useState(false);
-  const scrollViewRef = useRef<ScrollView>(null);
-  const [datePreset, setDatePreset] = useState<DatePreset>('last7');
-  const [dateRange, setDateRange] = useState<DateRange>(() => makePresetRange('last7'));
+  const [datePreset, setDatePreset] = useState<MapsDatePreset>('last7');
+  const [dateRange, setDateRange] = useState<DateRange>(() => makeMapsPresetRange('last7'));
   const [filterOpen, setFilterOpen] = useState(false);
-  const state = useMapsScreen(MEETING_MARKER_TYPE_LABEL, toDateWindow(dateRange), searchQuery);
+  const state = useMapsScreen(MEETING_MARKER_TYPE_LABEL, toMapsDateWindow(dateRange), searchQuery);
 
   const { session } = useAuth();
   const { fullName } = useSession();
@@ -97,29 +82,43 @@ export default function AgentMapsScreen() {
   // Date filtering now happens inside useMapsScreen so the map markers and this card list stay in sync.
   const displayedMeetings = state.filteredMeetingMarkers;
 
+  // Office-only view (Vince 2026-08-10): Meeting Type = 'Client Office' swaps
+  // the meeting cards for selectable office pin cards.
+  const officeOnlyView = state.meetingTypeFilter === 'client_office';
+  const activeListLength = officeOnlyView ? state.filteredPins.length : displayedMeetings.length;
+
   // Pagination logic
-  const totalPages = Math.ceil(displayedMeetings.length / ITEMS_PER_PAGE);
+  const totalPages = Math.ceil(activeListLength / ITEMS_PER_PAGE);
+  const paginatedOffices = state.filteredPins.slice(
+    currentPage * ITEMS_PER_PAGE,
+    (currentPage + 1) * ITEMS_PER_PAGE
+  );
   const paginatedMeetings = displayedMeetings.slice(
     currentPage * ITEMS_PER_PAGE,
     (currentPage + 1) * ITEMS_PER_PAGE
   );
 
-  function handleCardPress(meetingId: string) {
+  function handleCardSelect(kind: 'meeting' | 'office', id: string) {
     const newSelected = new Set(selectedMarkerIds);
-    const markerId = `meeting:${meetingId}`;
-    
+    const markerId = `${kind}:${id}`;
+
     if (newSelected.has(markerId)) {
       newSelected.delete(markerId);
     } else {
       newSelected.add(markerId);
     }
-    
+
     setSelectedMarkerIds(newSelected);
   }
 
-  function handlePresetChange(value: DatePreset) {
+  function handleMeetingTypeChange(value: MeetingTypeFilterValue) {
+    state.setMeetingTypeFilter(value);
+    setCurrentPage(0);
+  }
+
+  function handlePresetChange(value: MapsDatePreset) {
     setDatePreset(value);
-    if (value !== 'custom') setDateRange(makePresetRange(value));
+    if (value !== 'custom') setDateRange(makeMapsPresetRange(value));
     setCurrentPage(0);
   }
 
@@ -141,7 +140,7 @@ export default function AgentMapsScreen() {
   return (
     <YStack flex={1} backgroundColor={BIZLINK_COLORS.canvas} paddingTop={insets.top}>
       <BizTopBar title="Maps" fallbackHref="/(tabs)" />
-      <ScrollView ref={scrollViewRef} contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 120 }}>
+      <KeyboardAwareScrollView contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 120 }} keyboardShouldPersistTaps="handled">
         {!online ? <OfflineBanner /> : null}
 
         {/* Search Bar + Filters pill */}
@@ -192,9 +191,9 @@ export default function AgentMapsScreen() {
             onDatePresetChange={handlePresetChange}
             dateRange={dateRange}
             onDateRangeApply={(range) => { if (range) setDateRange(range); setCurrentPage(0); }}
-            datePresetOptions={DATE_PRESET_OPTIONS}
+            datePresetOptions={MAPS_DATE_PRESET_OPTIONS}
             meetingTypeFilter={state.meetingTypeFilter}
-            onMeetingTypeChange={state.setMeetingTypeFilter}
+            onMeetingTypeChange={handleMeetingTypeChange}
             meetingTypeOptions={MEETING_TYPE_FILTER_OPTIONS}
             meetingStatusFilter={state.meetingStatusFilter}
             onMeetingStatusChange={state.setMeetingStatusFilter}
@@ -218,24 +217,20 @@ export default function AgentMapsScreen() {
         </Text>
 <MapLegend />
 
-        {/* Meetings Section */}
-        <Text fontSize={14} fontFamily={BIZLINK_FONTS.semibold} color={BIZLINK_COLORS.text} marginTop="$4" marginBottom="$2">
-          Meetings
-        </Text>
-
-        <Text fontSize={14} fontFamily={BIZLINK_FONTS.semibold} color={BIZLINK_COLORS.brand} marginBottom="$3">
-          {displayedMeetings.length} meeting{displayedMeetings.length === 1 ? '' : 's'}
-        </Text>
-
-        {/* Meeting Cards with Pagination */}
-        <MapsMeetingCardList
+        {/* Meetings / Offices Section — office pin cards when Meeting Type = Client Office */}
+        <MapsListSection
+          officeView={officeOnlyView}
+          offices={paginatedOffices}
+          officeTotal={state.filteredPins.length}
           meetings={paginatedMeetings}
+          meetingTotal={displayedMeetings.length}
           startIndex={currentPage * ITEMS_PER_PAGE}
           selectedMarkerIds={selectedMarkerIds}
-          onCardPress={handleCardPress}
+          onMeetingPress={(id) => handleCardSelect('meeting', id)}
+          onOfficePress={(id) => handleCardSelect('office', id)}
         />
 
-      </ScrollView>
+      </KeyboardAwareScrollView>
 
       {totalPages > 0 && (
         <BizFloatingPager

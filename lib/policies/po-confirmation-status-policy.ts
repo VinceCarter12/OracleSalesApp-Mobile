@@ -66,12 +66,12 @@ export function canAttemptSubmission(status: LocalPoConfirmationStatus, isOnline
 }
 
 export const PO_CONFIRMATION_STATUS_LABELS: Record<PoConfirmationDisplayStatus, string> = {
-  submission_required: 'Hindi pa naisusumite — mag-sync kapag online',
-  pending: 'Naghihintay ng approval ng Manager',
-  approved: 'Na-approve ang PO evidence',
-  rejected: 'Na-reject ang PO evidence',
-  cancelled: 'Kinansela ang PO request',
-  superseded: 'Hindi na maisusumite — kontakin ang admin/IT',
+  submission_required: 'Not sent yet — the app sends it automatically when you\'re online',
+  pending: 'Waiting for your manager\'s decision',
+  approved: 'Purchase order photos approved',
+  rejected: 'Purchase order photos not accepted',
+  cancelled: 'Purchase order request cancelled',
+  superseded: 'This can no longer be sent — contact your office administrator',
 };
 
 /** Badge tone tokens (BIZLINK_COLORS keys, matching COMPANION_REQUEST_BADGE_TONES's convention in lib/tag-along-service.ts). */

@@ -53,7 +53,7 @@ export function InAppCameraOverlay({ visible, title, facing = 'front', onCancel,
           <View style={styles.iconButton} />
         </View>
         <View style={[styles.bottom, { paddingBottom: Math.max(insets.bottom, 16) + 12 }]}>
-          <Text style={styles.helper}>Camera only · walang gallery</Text>
+          <Text style={styles.helper}>Camera only · no gallery</Text>
           <Pressable
             accessibilityRole="button"
             accessibilityLabel="Take photo"

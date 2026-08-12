@@ -155,7 +155,7 @@ export function CityMunicipalitySelector({ value, onSelect }: CityMunicipalitySe
               paddingHorizontal={12}
               paddingVertical={11}
             >
-              Walang nahanap na city/municipality.
+              No city/municipality found.
             </Text>
           ) : (
             <ScrollView

@@ -23,7 +23,7 @@ export function useMyRequestStatuses(): UseMyRequestStatuses {
       setRows(data);
     } catch (err) {
       console.error('[use-my-request-statuses] load failed:', err instanceof Error ? err.message : String(err));
-      setError('Hindi na-load ang My Requests. Subukan ulit.');
+      setError("Your requests couldn't be loaded. Try again.");
     } finally {
       setLoading(false);
     }
