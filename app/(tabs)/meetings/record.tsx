@@ -90,8 +90,8 @@ export default function RecordMeetingScreen() {
 
   const controller = useMeetingRecordingController({ clientId, flow: 'full' });
   const {
-    client, visibleRoster, profileId, markSuspended,
-    selectedCompanions, toggleCompanion, companionSelections, companionsPreAccepted,
+    client, visibleRoster, profileId, role, markSuspended,
+    selectedCompanions, toggleCompanion, companionSelections,
     mode, setMode, start, starting, elapsedSeconds, startConfirmOpen,
     requestStartMeeting, cancelStartMeeting, closeOngoingMeetingWarning, confirmStartMeeting, updateStartGps, updateDraftAgendas,
     ongoingMeetingWarning,
@@ -277,7 +277,6 @@ export default function RecordMeetingScreen() {
           mode,
           agendas: selectedAgendas,
           companions: companionSelections,
-          companionsPreAccepted,
           selfieUri: photoUri,
           selfieEvidence: selfieEvidence ?? undefined,
           outcome,
@@ -351,11 +350,11 @@ export default function RecordMeetingScreen() {
           fallbackHref={routes.home()}
         />
 
-        <CompanionPicker
+        {role !== 'sales_manager' ? <CompanionPicker
           roster={visibleRoster}
           selected={selectedCompanions}
           onToggle={toggleCompanion}
-        />
+        /> : null}
 
         {/* Wireframe-Sales-BizLink.html:688-695 — "Meeting location" is the
             first thing inside #a-recordBody, ABOVE #a-recordBeforeStart's

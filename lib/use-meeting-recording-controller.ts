@@ -5,7 +5,7 @@ import { useSession } from './session-store';
 import { captureGps } from './gps';
 import { useElapsedTimer } from './use-elapsed-timer';
 import { showToast } from './toast';
-import { getCompanionRosterForViewer, getTeamRoster, inviteeKindForRole } from './team-roster';
+import { getCompanionRosterForViewer, getTeamRoster } from './team-roster';
 import { MAX_COMPANIONS_PER_REQUEST, type CompanionSelection } from './tag-along-service';
 import {
   companionsForDraft,
@@ -19,6 +19,7 @@ import { markLiveSession, hasLiveSession, clearLiveSession } from './meeting-liv
 import { checkMeetingStartAllowed } from './meeting-ongoing-guard';
 import { OngoingMeetingLimitError } from './meeting-drafts';
 import type { Client, MeetingMode, TeamRosterEntry } from '../types';
+import { companionSelectionsForRecording } from './policies/manager-companion-policy';
 
 export interface MeetingStartCapture {
   capturedAt: string;
@@ -39,7 +40,7 @@ export interface UseMeetingRecordingControllerInput {
  * `record-visit.tsx` (fast path) use for their common behavioral logic —
  * client + roster loading, the Start confirm-dialog + GPS/timestamp lock,
  * the elapsed-meeting timer, companion toggle/limit, the F-205
- * `companionsPreAccepted` rule, and (new, both flows now) same-day draft
+ * role-scoped companion selection, and (new, both flows now) same-day draft
  * crash-recovery via `lib/meeting-drafts.ts`. The two screens' visually
  * distinct component trees (AutoCapturedPanel/MeetingWrapUpSection/
  * PoEvidenceCard vs PhotoCapture/VisitStartPanel/VisitInProgressPanel,
@@ -186,6 +187,7 @@ export function useMeetingRecordingController({ clientId, flow }: UseMeetingReco
   }
 
   const toggleCompanion = useCallback((entry: TeamRosterEntry): void => {
+    if (role === 'sales_manager') return;
     setSelectedCompanions((prev) => {
       const alreadySelected = prev.some((p) => p.profileId === entry.profileId);
       if (alreadySelected) return prev.filter((p) => p.profileId !== entry.profileId);
@@ -361,20 +363,10 @@ export function useMeetingRecordingController({ clientId, flow }: UseMeetingReco
     if (profileId) clearLiveSession(profileId, clientId);
   }, [clientId, profileId]);
 
-  const companionSelections: CompanionSelection[] = selectedCompanions
-    .filter((entry) => visibleRoster.some((visibleEntry) => visibleEntry.profileId === entry.profileId))
-    .map((entry) => ({
-      profileId: entry.profileId,
-      kind: inviteeKindForRole(entry.role),
-    }));
+  const companionSelections: CompanionSelection[] = companionSelectionsForRecording(role, selectedCompanions, visibleRoster);
 
-  // F-205 decision 2: a manager requesting companions on their OWN meeting
   // has no counterpart to approve it — those rows insert pre-accepted
-  // instead of pending. Role-based (not route-based) so this stays correct
-  // regardless of which route group renders the screen (see
-  // app/(manager)/clients/record.tsx's re-export).
-  const companionsPreAccepted = role === 'sales_manager';
-
+  // Historical Manager pre-accepted requests are no longer created.
   return {
     client,
     clientLoading,
@@ -388,7 +380,6 @@ export function useMeetingRecordingController({ clientId, flow }: UseMeetingReco
     selectedCompanions,
     toggleCompanion,
     companionSelections,
-    companionsPreAccepted,
     mode,
     setMode,
     start,

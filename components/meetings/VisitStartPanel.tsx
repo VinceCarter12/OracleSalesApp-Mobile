@@ -20,6 +20,7 @@ interface VisitStartPanelProps {
   onStart: () => void;
   /** "New Customer Visit" / "Existing Customer Visit" (record-visit.tsx's `visitActionName()`) — status-differentiates the Start button per the audit's "Align" section instead of the generic "Start visit". */
   actionName: string;
+  showCompanionPicker?: boolean;
 }
 
 /**
@@ -40,12 +41,13 @@ export function VisitStartPanel({
   starting,
   onStart,
   actionName,
+  showCompanionPicker = true,
 }: VisitStartPanelProps) {
   const BIZLINK_COLORS = useBizlinkColors();
   return (
     <YStack marginTop="$4" gap="$4">
       <MeetingModeToggle mode={mode} onChange={onModeChange} />
-      <CompanionPicker roster={roster} selected={selectedCompanions} onToggle={onToggleCompanion} />
+      {showCompanionPicker ? <CompanionPicker roster={roster} selected={selectedCompanions} onToggle={onToggleCompanion} /> : null}
       <ClientCutoffAllowanceBlock client={client} compact />
 
       <BizSectionHeader title="Start meeting" />

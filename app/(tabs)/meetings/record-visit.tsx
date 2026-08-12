@@ -56,8 +56,8 @@ export default function RecordVisitScreen() {
 
   const controller = useMeetingRecordingController({ clientId, flow: 'visit' });
   const {
-    client, clientLoading, profileId, markSuspended, visibleRoster,
-    selectedCompanions, toggleCompanion, companionSelections, companionsPreAccepted,
+    client, clientLoading, profileId, role, markSuspended, visibleRoster,
+    selectedCompanions, toggleCompanion, companionSelections,
     mode, setMode, start, starting, elapsedSeconds, startConfirmOpen,
     requestStartMeeting, cancelStartMeeting, closeOngoingMeetingWarning, confirmStartMeeting, updateDraftAgendas,
     ongoingMeetingWarning,
@@ -108,7 +108,6 @@ export default function RecordVisitScreen() {
           mode,
           agendas: selectedAgendas,
           companions: companionSelections,
-          companionsPreAccepted,
           endPhoto: {
             uri: endPhoto.uri,
             capturedAt: endPhoto.capturedAt,
@@ -212,6 +211,7 @@ export default function RecordVisitScreen() {
             starting={starting}
             onStart={requestStartMeeting}
             actionName={visitActionName(getClientStatus(client))}
+            showCompanionPicker={role !== 'sales_manager'}
           />
         ) : (
           <VisitInProgressPanel

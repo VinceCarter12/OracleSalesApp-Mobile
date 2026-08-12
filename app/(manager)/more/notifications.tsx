@@ -2,7 +2,7 @@ import { useCallback, useMemo, useState } from 'react';
 import { Alert, Pressable, ScrollView } from 'react-native';
 import { router, useFocusEffect } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { AlertTriangle, Archive, Bell, PencilLine, RefreshCw, RotateCcw, SlidersHorizontal, Users } from 'lucide-react-native';
+import { AlertTriangle, Archive, Bell, PencilLine, RefreshCw, RotateCcw, SlidersHorizontal } from 'lucide-react-native';
 import { Spinner, Text, XStack, YStack } from 'tamagui';
 import { BizTopBar } from '../../../components/bizlink/BizTopBar';
 import { BizFilterScroll, type BizFilterOption } from '../../../components/bizlink/BizFilterScroll';
@@ -28,7 +28,6 @@ const QUICK_FILTERS: BizFilterOption<Filter>[] = [
 ];
 const CATEGORY_FILTERS: BizFilterOption<Filter>[] = [
   { value: 'all', label: 'All' },
-  { value: 'tagalong', label: 'Tag-Along' },
   { value: 'lost', label: 'Lost' },
   { value: 'sync', label: 'Sync' },
 ];
@@ -69,19 +68,14 @@ export default function ManagerNotificationsScreen() {
 
   function icon(item: ManagerNotificationFeedItem): React.ReactNode {
     if (item.category === 'approvals') return <PencilLine size={18} color={colors.brand} strokeWidth={1.8} />;
-    if (item.category === 'tagalong') return <Users size={18} color={colors.brand} strokeWidth={1.8} />;
     if (item.category === 'lost') return <RotateCcw size={18} color={colors.orange} strokeWidth={1.8} />;
     return item.syncKind === 'failed' ? <AlertTriangle size={18} color={colors.red} strokeWidth={1.8} /> : <RefreshCw size={18} color={colors.brand} strokeWidth={1.8} />;
   }
   function press(item: ManagerNotificationFeedItem): void {
     if (!readIds.has(item.id)) { setReadIds((prev) => new Set(prev).add(item.id)); markNotificationRead(item.id).catch(() => undefined); }
-    // A manager's own tag-along ask to a teammate is inserted pre-accepted
-    // (lib/tag-along-manager-service.ts) — there is never a pending decision
-    // to check on, so this notification is informational only; tapping it
-    // just marks it read, same as any other already-resolved item.
     if (item.category === 'approvals') router.push('/(manager)/approvals');
     else if (item.category === 'sync') router.push('/(manager)/more/sync-history');
-    else if (item.category !== 'tagalong') router.push('/(manager)/more/lost-opportunities/index');
+    else router.push('/(manager)/more/lost-opportunities/index');
   }
   function confirmArchive(ids: string[]): void {
     if (ids.length === 0) return;

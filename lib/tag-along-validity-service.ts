@@ -7,7 +7,7 @@ import { shouldMeetingBecomeValid } from './policies/tag-along-validity-policy';
 // repo's node-only vitest config. Split into its own file (rather than
 // growing lib/sync/entity-appliers.ts or the already-291-line
 // lib/tag-along-service.ts past the 300-line cap) — same precedent as
-// lib/tag-along-manager-service.ts's split for F-205 decision 2.
+// the same small-service split used by other tag-along persistence helpers.
 
 interface ManagerTagAlongCounts {
   pending: number | null;

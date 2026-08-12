@@ -161,8 +161,8 @@ interface RecentManagerTagRow {
 }
 
 /**
- * F-205 item 5 (quality-gate fix): reads this agent's own `tag_along_requests`
- * rows where they're the invitee AND the row was pre-accepted by a manager
+ * Reads historical `tag_along_requests` rows for Sales/RSR notification history;
+ * new Manager recording no longer creates these rows.
  * tagging themselves in as requester (`insertAcceptedMeetingCompanions()`,
  * F-205 decision 2) — NOT a normal request the agent accepted themselves via
  * `updateCompanionRequestStatus()`.

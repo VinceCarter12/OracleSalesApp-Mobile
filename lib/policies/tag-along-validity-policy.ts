@@ -22,7 +22,8 @@ import type { RemoteTagAlongInviteeKind } from '../../types/database';
  */
 export function computeMeetingValidityStatusOnCreate(
   companions: readonly { kind: RemoteTagAlongInviteeKind }[],
-  companionsPreAccepted: boolean
+  /** @deprecated retained only for compatibility with historical pure-policy tests; Manager recording no longer supplies this flag. */
+  companionsPreAccepted = false
 ): MeetingValidityStatus {
   if (companionsPreAccepted) return 'valid';
   const hasPendingManagerCompanion = companions.some((companion) => companion.kind === 'manager');
