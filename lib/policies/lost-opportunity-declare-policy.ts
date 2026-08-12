@@ -15,18 +15,18 @@ export type LostOpportunityDeclareCode =
   | 'pending_edit_request'
   | 'pending_po_confirmation';
 
-// Vince's locked decision (2026-08-11): distinct, explanatory English copy
+// Vince's locked decision (2026-08-11): distinct, explanatory Tagalog copy
 // for the two pending-request codes, not a generic block message.
 const DECLARE_MESSAGES: Record<LostOpportunityDeclareCode, string> = {
-  declared: 'This client has been declared a Lost Opportunity.',
-  reason_required: 'Enter a Lost Opportunity reason before confirming.',
-  not_found: 'This client could not be found.',
-  role_not_eligible: 'You don\'t have permission to declare this client lost.',
-  already_lost: 'This client was already declared lost before.',
+  declared: 'Naideklara ang client bilang Lost Opportunity.',
+  reason_required: 'Ilagay ang Lost Opportunity reason bago kumpirmahin.',
+  not_found: 'Hindi nahanap ang client na ito.',
+  role_not_eligible: 'Hindi ka pinapayagang i-declare lost ang client na ito.',
+  already_lost: 'Naideklara na dati ang client na ito bilang lost.',
   pending_edit_request:
-    'This client still has pending changes waiting for your manager\'s approval. It can\'t be declared lost until that is decided.',
+    'May nakabinbing pagbabago pa sa impormasyon ng client na ito na naghihintay ng approval ng manager. Hindi muna pwedeng i-declare lost hangga’t hindi ito na-desisyunan.',
   pending_po_confirmation:
-    'This client still has a pending purchase order confirmation waiting for approval. It can\'t be declared lost until that is decided.',
+    'May nakabinbing PO confirmation approval pa ang client na ito. Hindi muna pwedeng i-declare lost hangga’t hindi ito na-desisyunan.',
 };
 
 /** Maps a `declare_client_lost()` response `code` to a user-facing message. */

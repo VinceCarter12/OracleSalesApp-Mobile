@@ -6,7 +6,7 @@ import { Text, XStack, YStack } from 'tamagui';
 import { BIZLINK_COLORS, BIZLINK_FONTS } from '../../../lib/theme';
 import { BizMoreTile } from '../../../components/bizlink/BizMoreTile';
 
-/** Wireframe x-more — Executive-only features hub (walang lock: read-only aggregates). */
+/** Wireframe x-more — Executive-only features hub (no lock: read-only aggregates). */
 export default function ExecutiveMoreScreen() {
   const insets = useSafeAreaInsets();
   return (
@@ -16,7 +16,7 @@ export default function ExecutiveMoreScreen() {
       </XStack>
       <ScrollView contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 24 }}>
         <Text fontSize={13} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} marginBottom="$3.5" lineHeight={19}>
-          Executive-level lang ang mga feature na ito — hindi makikita ng manager o agent.
+          These features are Executive-only — not visible to managers or agents.
         </Text>
         <XStack flexWrap="wrap" gap="$3">
           <BizMoreTile
@@ -34,13 +34,13 @@ export default function ExecutiveMoreScreen() {
           <BizMoreTile
             icon={<BarChart3 size={19} color={BIZLINK_COLORS.text} strokeWidth={1.75} />}
             title="Reports"
-            subtitle={<Text fontSize={10.5} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted}>Company-wide, i-download lahat</Text>}
+            subtitle={<Text fontSize={10.5} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted}>Company-wide — download everything</Text>}
             onPress={() => router.push('/(executive)/more/reports')}
           />
           <BizMoreTile
             icon={<Map size={19} color={BIZLINK_COLORS.text} strokeWidth={1.75} />}
             title="Maps"
-            subtitle={<Text fontSize={10.5} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted}>Pins ng meeting locations, company-wide</Text>}
+            subtitle={<Text fontSize={10.5} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted}>Meeting-location pins, company-wide</Text>}
             onPress={() => router.push('/(executive)/more/maps')}
           />
           <BizMoreTile

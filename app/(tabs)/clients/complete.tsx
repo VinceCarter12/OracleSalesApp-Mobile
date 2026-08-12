@@ -97,6 +97,17 @@ export default function CompleteInfoScreen() {
   // fully filled," independent of the per-field approval gating below.
   const firstTime = !isInfoComplete(client);
   const isManagerOwnClient = role === 'sales_manager' && client.agent_id === profileId;
+  // Vince's locked decision (2026-08-11): the owning agent of any role, which
+  // already includes a sales_manager on a client they directly own (the same
+  // `isManagerOwnClient` carve-out edits above use — `client.agent_id ===
+  // profileId` is a superset). Manager stays read-only for every other
+  // agent's client. No local lost/deleted check is possible here: mobile's
+  // ClientStatus domain (types/index.ts CLIENT_STATUSES) has no 'lost'
+  // value — a lost client is deleted from local SQLite entirely on
+  // sync-down (ADR-026 P1, lib/sync/entity-appliers.ts::
+  // removeLostOrDeletedClient), so any client this screen can even load is,
+  // by construction, never already lost.
+  const canDeclareLost = client.agent_id === profileId;
 
   // Per-field approval gating (2026-08-11, fixes B-10x): recomputed live from
   // current form state on every render, using the exact same split
@@ -110,17 +121,6 @@ export default function CompleteInfoScreen() {
       : splitCompleteInfoChanges(client, { contactPerson, position, contactNumber, officeAddress, channel, existingOverride, minorNotes })
           .approvalRequiredFields;
   const needsApproval = approvalRequiredFields.length > 0 && !isManagerOwnClient;
-  // Vince's locked decision (2026-08-11): the owning agent of any role, which
-  // already includes a sales_manager on a client they directly own (the same
-  // `isManagerOwnClient` carve-out edits above use — `client.agent_id ===
-  // profileId` is a superset). Manager stays read-only for every other
-  // agent's client. No local lost/deleted check is possible here: mobile's
-  // ClientStatus domain (types/index.ts CLIENT_STATUSES) has no 'lost'
-  // value — a lost client is deleted from local SQLite entirely on
-  // sync-down (ADR-026 P1, lib/sync/entity-appliers.ts::
-  // removeLostOrDeletedClient), so any client this screen can even load is,
-  // by construction, never already lost.
-  const canDeclareLost = client.agent_id === profileId;
 
   // Contact number is OPTIONAL (blank allowed), but when provided it must be
   // a valid 11-digit 09-format Philippine mobile number (lib/field-validation).
@@ -308,6 +308,15 @@ export default function CompleteInfoScreen() {
           />
         </YStack>
 
+        {canDeclareLost ? (
+          <DeclareLostOpportunityAction
+            clientId={client.id}
+            profileId={profileId}
+            teamId={teamId}
+            onSuspended={markSuspended}
+            onDeclared={() => router.back()}
+          />
+        ) : null}
       </KeyboardAwareScrollView>
     </YStack>
   );

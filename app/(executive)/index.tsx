@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Pressable, RefreshControl, ScrollView } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
-import { Bell, Building2, Map, RefreshCw, Users } from 'lucide-react-native';
+import { BarChart3, Bell, Building2, Map, PencilLine, Pin, RefreshCw, User, Users } from 'lucide-react-native';
 import { Spinner, Text, XStack, YStack } from 'tamagui';
 import { BIZLINK_COLORS, BIZLINK_FONTS } from '../../lib/theme';
 import { useExecutiveOverview } from '../../lib/use-executive-overview';
@@ -51,7 +51,7 @@ export default function ExecutiveHomeScreen() {
     return (
       <YStack flex={1} justifyContent="center" alignItems="center" backgroundColor={BIZLINK_COLORS.canvas} gap="$3" paddingHorizontal="$5">
         <Text fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} textAlign="center">{error}</Text>
-        <BizButton small label="Ulitin" variant="white" onPress={reload} />
+        <BizButton small label="Retry" variant="white" onPress={reload} />
       </YStack>
     );
   }
@@ -78,12 +78,12 @@ export default function ExecutiveHomeScreen() {
       <XStack alignItems="center" gap="$1.5" paddingHorizontal="$4" paddingBottom="$1">
         <RefreshCw size={11} color={BIZLINK_COLORS.muted} strokeWidth={1.75} />
         <Text fontSize={10.5} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted}>
-          Data as of {freshnessTime} · updated automatically
+          Company-wide data · as of {freshnessTime}
         </Text>
       </XStack>
 
       <ScrollView
-        contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 96 }}
+        contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 40 }}
         refreshControl={
           <RefreshControl
             refreshing={isRefreshing}
@@ -118,6 +118,26 @@ export default function ExecutiveHomeScreen() {
             />
           </YStack>
         </XStack>
+        <XStack gap={10} marginTop={10}>
+          <YStack flex={1}>
+            <BizStatCard
+              tone="white"
+              value={managers.length}
+              label="Teams"
+              caption={`${totals.agents} agents`}
+              onPress={() => router.push('/(executive)/teams')}
+            />
+          </YStack>
+          <YStack flex={1}>
+            <BizStatCard
+              tone="tintB"
+              value={totals.lostCompanyWide}
+              label="Lost Opportunities"
+              caption="company-wide"
+              onPress={() => router.push('/(executive)/more/lost-opportunity')}
+            />
+          </YStack>
+        </XStack>
 
         <BizHeroCard
           value={totals.meetingsThisMonth}
@@ -127,8 +147,10 @@ export default function ExecutiveHomeScreen() {
           onPress={() => router.push('/(executive)/more/reports')}
         />
 
+        {/* 2026-08-10: with the bottom tab bar removed, this grid is the
+            Executive's single navigation hub — every destination lives here. */}
         <BizSectionHeader title="Quick Actions" />
-        <XStack gap="$2.5" flexWrap="wrap">
+        <XStack gap="$2.5" flexWrap="wrap" rowGap="$3">
           <BizQuickAction
             icon={<Users size={20} color={BIZLINK_COLORS.ink} strokeWidth={1.75} />}
             label="Teams"
@@ -140,40 +162,33 @@ export default function ExecutiveHomeScreen() {
             onPress={() => router.push(getDashboardActionHref('executive-clients', 'executive'))}
           />
           <BizQuickAction
+            icon={<BarChart3 size={20} color={BIZLINK_COLORS.ink} strokeWidth={1.75} />}
+            label="Reports"
+            onPress={() => router.push(getDashboardActionHref('executive-reports', 'executive'))}
+          />
+          <BizQuickAction
             icon={<Map size={20} color={BIZLINK_COLORS.ink} strokeWidth={1.75} />}
             label="Maps"
             onPress={() => router.push(getDashboardActionHref('executive-maps', 'executive'))}
           />
           <BizQuickAction
-            icon={<Building2 size={20} color={BIZLINK_COLORS.ink} strokeWidth={1.75} />}
-            label="Reports"
-            onPress={() => router.push(getDashboardActionHref('executive-reports', 'executive'))}
+            icon={<Pin size={20} color={BIZLINK_COLORS.ink} strokeWidth={1.75} />}
+            label="Lost Opps"
+            onPress={() => router.push('/(executive)/more/lost-opportunity')}
+          />
+          <BizQuickAction
+            icon={<PencilLine size={20} color={BIZLINK_COLORS.ink} strokeWidth={1.75} />}
+            label="Tag-Along"
+            onPress={() => router.push('/(executive)/more/approvals-log')}
+          />
+          <BizQuickAction
+            icon={<User size={20} color={BIZLINK_COLORS.ink} strokeWidth={1.75} />}
+            label="Account"
+            onPress={() => router.push('/(executive)/more/account')}
           />
         </XStack>
 
-        <BizSectionHeader title="Company Overview" actionLabel="Reports" onAction={() => router.push('/(executive)/more/reports')} />
-        <XStack gap={10}>
-          <YStack flex={1}>
-            <BizStatCard
-              tone="white"
-              value={managers.length}
-              label={`Teams / Managers · ${totals.agents} agents total`}
-              caption="company-wide"
-              onPress={() => router.push('/(executive)/teams')}
-            />
-          </YStack>
-          <YStack flex={1}>
-            <BizStatCard
-              tone="tintB"
-              value={totals.lostCompanyWide}
-              label="Lost Opportunities · Company-wide"
-              caption="bantayan"
-              onPress={() => router.push('/(executive)/more/lost-opportunity')}
-            />
-          </YStack>
-        </XStack>
-
-        <BizSectionHeader title="Teams" actionLabel="Tingnan lahat" onAction={() => router.push('/(executive)/teams')} />
+        <BizSectionHeader title="Teams" actionLabel="View all" onAction={() => router.push('/(executive)/teams')} />
         {managers.map((manager) => {
           const color = avatarPaletteFor(manager.id);
           return (

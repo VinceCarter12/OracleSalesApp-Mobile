@@ -11,12 +11,37 @@ import type { ClientStatus } from '../types';
 export type ReportTimeframe = 'This month' | 'Last 30 days' | 'This quarter' | 'Custom';
 
 /**
+ * User-picked bounds for the 'Custom' timeframe. Either end may be `null` when
+ * the user has only filled one side; a `null` bound is simply not applied
+ * (open-ended on that side). Both `null` = all-time, same as the pre-picker
+ * fallback below. The Executive Reports screen now supplies a lightweight
+ * from/to UI (2026-08-10); Manager still passes nothing and keeps the
+ * all-time behavior.
+ */
+export interface CustomDateRange {
+  start: Date | null;
+  end: Date | null;
+}
+
+/** Inclusive `[start, end]` window (either bound `null` = open-ended on that side). */
+export interface ResolvedTimeframe {
+  start: Date | null;
+  end: Date | null;
+}
+
+function startOfDay(d: Date): Date {
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate(), 0, 0, 0, 0);
+}
+
+function endOfDay(d: Date): Date {
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate(), 23, 59, 59, 999);
+}
+
+/**
  * Inclusive start-of-window boundary for a Reports timeframe chip. 'Custom'
- * has no date-range picker anywhere in the wireframes (chip-only, no
- * supporting UI) — falls back to `null` (all-time) until real custom-range
- * UI is designed; a deliberate tradeoff, not a bug. Both Reports screens show
- * an "(all-time)" caption next to the chips whenever this resolves to `null`
- * so the fallback is never silent.
+ * has no fixed start — it comes from `CustomDateRange` via `resolveTimeframe()`
+ * instead — so this returns `null` for it (all-time when no picker range is
+ * set). Kept as the single source of truth for the three fixed chips.
  */
 export function timeframeStart(timeframe: ReportTimeframe, now: Date): Date | null {
   const [year, month] = manilaCalendarDate(now.toISOString()).split('-').map(Number);
@@ -33,6 +58,36 @@ export function timeframeStart(timeframe: ReportTimeframe, now: Date): Date | nu
 }
 
 /**
+ * Resolves any timeframe chip to an inclusive `{ start, end }` window. The
+ * three fixed chips have a computed start and no end (open-ended to now);
+ * 'Custom' uses the supplied `CustomDateRange`, snapped to whole-day bounds
+ * (start-of-day / end-of-day) so a same-day from==to range still includes
+ * that day's meetings. Both bounds `null` = all-time.
+ */
+export function resolveTimeframe(
+  timeframe: ReportTimeframe,
+  now: Date,
+  custom?: CustomDateRange
+): ResolvedTimeframe {
+  if (timeframe === 'Custom') {
+    return {
+      start: custom?.start ? startOfDay(custom.start) : null,
+      end: custom?.end ? endOfDay(custom.end) : null,
+    };
+  }
+  return { start: timeframeStart(timeframe, now), end: null };
+}
+
+/** True when `iso` falls inside the inclusive `[start, end]` window (missing `iso` always passes — see mock-fixture note on `filterMeetingsByTimeframe`). */
+function isWithin(iso: string | undefined, start: Date | null, end: Date | null): boolean {
+  if (!iso) return true;
+  const t = new Date(iso).getTime();
+  if (start && t < start.getTime()) return false;
+  if (end && t > end.getTime()) return false;
+  return true;
+}
+
+/**
  * Reports screens' "New clients acquired" stat — count of clients whose
  * status is new/existing AND whose `createdAt` falls within the selected
  * timeframe. `clients` has no separate status-transition timestamp, so
@@ -44,13 +99,13 @@ export function timeframeStart(timeframe: ReportTimeframe, now: Date): Date | nu
 export function countNewClientsAcquired(
   clients: { status: ClientStatus; createdAt?: string }[],
   timeframe: ReportTimeframe,
-  now: Date
+  now: Date,
+  custom?: CustomDateRange
 ): number {
-  const start = timeframeStart(timeframe, now);
+  const { start, end } = resolveTimeframe(timeframe, now, custom);
   return clients.filter((c) => {
     if (c.status !== 'new' && c.status !== 'existing') return false;
-    if (!start || !c.createdAt) return true;
-    return new Date(c.createdAt).getTime() >= start.getTime();
+    return isWithin(c.createdAt, start, end);
   }).length;
 }
 
@@ -70,9 +125,10 @@ export function countNewClientsAcquired(
 export function filterMeetingsByTimeframe<T extends { meetingDateIso?: string }>(
   meetings: T[],
   timeframe: ReportTimeframe,
-  now: Date
+  now: Date,
+  custom?: CustomDateRange
 ): T[] {
-  const start = timeframeStart(timeframe, now);
-  if (!start) return meetings;
-  return meetings.filter((m) => !m.meetingDateIso || new Date(m.meetingDateIso).getTime() >= start.getTime());
+  const { start, end } = resolveTimeframe(timeframe, now, custom);
+  if (!start && !end) return meetings;
+  return meetings.filter((m) => isWithin(m.meetingDateIso, start, end));
 }

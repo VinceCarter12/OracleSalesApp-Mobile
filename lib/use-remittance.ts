@@ -5,9 +5,22 @@ import type { RemitDestination } from './remittance-write';
 
 // F-007 remittances READ side (2026-07-29): computes "on hand" from the synced
 // local mirror, not mock arrays. Collection on-hand = this collector's collected
-// visits not yet covered by any remittance (visit_ids); COD on-hand = this
-// driver's delivered COD POs with cod_remitted still 0. Both re-fetch on
+// AND partial visits not yet covered by any remittance (visit_ids); COD on-hand
+// = this driver's delivered COD POs with cod_remitted still 0. Both re-fetch on
 // sync-complete, mirroring use-collection-delivery.ts.
+//
+// 2026-08-10 (Bug 2a): `partial` visits are now included. A partial visit's cash
+// is already physically in the collector's bag (web 070 rolls its payments into
+// `amount_collected`), so it must be remittable — previously the `status =
+// 'collected'`-only filter dropped it, and the web recorded only the fully-paid
+// visits' cash. See getCollectionSummary's own "cash on hand INCLUDES partial"
+// note in lib/collection-delivery-data.ts.
+//
+// ⚠️ KNOWN INTERIM LIMITATION (tracked in REMITTANCE_CONTRACT.md): remittance
+// coverage is per-VISIT (visit_ids), so once a partial visit is remitted, a
+// LATER installment on that same visit is stranded (its id is already in a past
+// remittance). The correct fix is per-PAYMENT remittance coverage, which needs
+// the web schema change described in that contract.
 
 export interface OnHandSummary {
   /** Total peso amount on hand (sum across all methods). */
@@ -30,7 +43,7 @@ interface CollectedRow {
   payment_method: string | null;
 }
 
-/** Collection "collections on hand" — collected visits by this collector not yet in a remittance. */
+/** Collection "collections on hand" — collected + partial visits by this collector not yet in a remittance. */
 export function useCollectionOnHand(collectorId: string | null | undefined) {
   const db = useAppDb();
   const [summary, setSummary] = useState<OnHandSummary>(emptySummary);
@@ -44,7 +57,7 @@ export function useCollectionOnHand(collectorId: string | null | undefined) {
     }
     const collected = await db.getAllAsync<CollectedRow>(
       `SELECT id, amount_collected, payment_method FROM collection_visits
-       WHERE status = 'collected' AND collector_id = ?`,
+       WHERE status IN ('collected', 'partial') AND collector_id = ?`,
       [collectorId],
     );
     const remittances = await db.getAllAsync<{ visit_ids: string }>(

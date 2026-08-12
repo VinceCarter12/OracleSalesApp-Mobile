@@ -10,7 +10,6 @@ interface LostOpportunityDialogProps {
   visible: boolean;
   onCancel: () => void;
   onConfirm: () => void;
-  title?: string;
   /**
    * Batch: Complete Info "Declare lost opportunity" (Migration 088). When
    * provided, this dialog also renders the wireframe `a-lostDlg`/
@@ -30,7 +29,6 @@ export function LostOpportunityDialog({
   visible,
   onCancel,
   onConfirm,
-  title = 'Lost opportunity?',
   reason,
   onReasonChange,
   reasonError,
@@ -61,14 +59,14 @@ export function LostOpportunityDialog({
         >
         <Pressable onPress={(e) => e.stopPropagation()}>
           <YStack backgroundColor={BIZLINK_COLORS.card} borderRadius={24} padding="$4.5" width={320}>
-            <Text fontSize={18} fontFamily={BIZLINK_FONTS.semibold} color={BIZLINK_COLORS.red}>{title}</Text>
+            <Text fontSize={18} fontFamily={BIZLINK_FONTS.semibold} color={BIZLINK_COLORS.red}>Lost opportunity?</Text>
             {showReasonField ? (
               <YStack marginTop="$2.5">
                 <BizField
                   label="LOST OPPORTUNITY REASON *"
                   value={reason ?? ''}
                   onChangeText={onReasonChange ?? (() => {})}
-                  placeholder="Why did this client become Lost?"
+                  placeholder="Ilagay kung bakit naging Lost ang client"
                   multiline
                   maxLength={MINOR_NOTES_MAX_LENGTH}
                   hint={

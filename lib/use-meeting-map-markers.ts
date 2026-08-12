@@ -84,7 +84,12 @@ export function useMeetingMapMarkers(dateWindow?: MeetingMapDateWindow): UseMeet
     if (startAt) args.push(startAt);
     if (endAtExclusive) args.push(endAtExclusive);
     const rows = await db.getAllAsync<MeetingMapMarkerRow>(
-      `SELECT m.id, m.client_id, c.company_name as client_name, m.gps_lat, m.gps_lng,
+      // Explicit column list (no `m.*`), so coalescing straight into
+      // `client_name` is unambiguous here — unlike useMeetings. This query
+      // never had the client-exists guard: it already showed meetings for
+      // removed clients, just as "Unknown Client". Now they keep their name.
+      `SELECT m.id, m.client_id, COALESCE(c.company_name, m.client_name) as client_name,
+              m.gps_lat, m.gps_lng,
               m.start_captured_at, m.meeting_mode, m.location_type, m.location_name,
               m.client_status_at_meeting
          FROM meetings m LEFT JOIN clients c ON c.id = m.client_id

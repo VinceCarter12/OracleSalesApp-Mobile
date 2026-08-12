@@ -376,8 +376,11 @@ export function getCollectionSummary(stores: CollectionStore[] = COLLECTION_STOR
     visitedCount: collected.length,
     pendingCount: open.length,
     collectedTotal,
-    // First draft: everything collected today is still on-hand (nothing
-    // remitted yet in the mock dataset).
+    // ⚠️ NOT remittance-aware and today-scoped only — kept for back-compat but
+    // no longer drives the dashboard hero. The "For remittance" hero now reads
+    // the real cross-day on-hand from useCollectionOnHand (Bug 1 fix,
+    // 2026-08-10), which subtracts what's already been remitted. Don't reintroduce
+    // this as "cash on hand".
     forRemittance: collectedTotal,
     visitedPct: stores.length === 0 ? 0 : Math.round((collected.length / stores.length) * 100),
   };

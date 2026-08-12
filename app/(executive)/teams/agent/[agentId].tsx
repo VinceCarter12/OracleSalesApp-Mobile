@@ -32,7 +32,7 @@ export default function ExecutiveAgentDetailScreen() {
     return (
       <YStack flex={1} justifyContent="center" alignItems="center" backgroundColor={BIZLINK_COLORS.canvas} gap="$3" paddingHorizontal="$5">
         <Text fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} textAlign="center">{error}</Text>
-        <BizButton small label="Ulitin" variant="white" onPress={reload} />
+        <BizButton small label="Retry" variant="white" onPress={reload} />
       </YStack>
     );
   }
@@ -78,7 +78,7 @@ export default function ExecutiveAgentDetailScreen() {
 
         <BizSectionHeader title="Clients" />
         {clients.length === 0 ? (
-          <Text fontSize={13} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} paddingVertical="$3">Walang clients.</Text>
+          <Text fontSize={13} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} paddingVertical="$3">No clients.</Text>
         ) : null}
         {clients.map((client) => {
           const badge = CLIENT_STATUS_BADGES[client.status];
@@ -106,7 +106,7 @@ export default function ExecutiveAgentDetailScreen() {
 
         <BizSectionHeader title="Recent meetings" />
         {meetings.length === 0 ? (
-          <Text fontSize={13} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} paddingVertical="$3">Wala pang meetings.</Text>
+          <Text fontSize={13} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} paddingVertical="$3">No meetings yet.</Text>
         ) : null}
         {meetings.map((meeting) => {
           const client = clients.find((c) => c.id === meeting.clientId);

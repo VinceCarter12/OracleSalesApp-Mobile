@@ -41,7 +41,7 @@ export default function ExecutiveClientDetailScreen() {
     return (
       <YStack flex={1} justifyContent="center" alignItems="center" backgroundColor={BIZLINK_COLORS.canvas} gap="$3" paddingHorizontal="$5">
         <Text fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} textAlign="center">{error}</Text>
-        <BizButton small label="Ulitin" variant="white" onPress={reload} />
+        <BizButton small label="Retry" variant="white" onPress={reload} />
       </YStack>
     );
   }
@@ -92,8 +92,7 @@ export default function ExecutiveClientDetailScreen() {
 
         <BizSectionHeader title="Info completion" />
         <Text fontSize={12} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} marginTop={-8} marginBottom={10} lineHeight={17}>
-          This only tracks the 1-month deadline for completing the client's information. It's separate from
-          the progress percentage shown above.
+          This is only for the 1-month data-quality rule — separate from the progress % above (B-001).
         </Text>
         <BizCard>
           {CHECKLIST_ITEMS.map(([key, label]) => {
@@ -120,7 +119,7 @@ export default function ExecutiveClientDetailScreen() {
 
         <BizSectionHeader title="Meeting history" />
         {meetings.length === 0 ? (
-          <Text fontSize={13} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} paddingVertical="$3">Wala pang meeting.</Text>
+          <Text fontSize={13} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} paddingVertical="$3">No meetings yet.</Text>
         ) : null}
         {meetings.map((meeting) => (
           <XStack
@@ -148,7 +147,7 @@ export default function ExecutiveClientDetailScreen() {
         <XStack alignItems="center" justifyContent="center" gap="$1.5" paddingVertical="$3.5">
           <Eye size={13} color={BIZLINK_COLORS.muted} strokeWidth={1.75} />
           <Text fontSize={12} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted}>
-            View-only — ang pag-edit/approve ay nasa manager pa rin.
+            View-only — editing and approving still happen at the manager level.
           </Text>
         </XStack>
       </ScrollView>

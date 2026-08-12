@@ -1316,6 +1316,38 @@ export async function migrateDbIfNeeded(db: SQLiteDatabase): Promise<void> {
     currentVersion = 31;
   }
 
+  // Lost Opportunity history (web migration 082, 2026-08-10): a client that
+  // becomes `lost` is DELETED from this device by removeLostOrDeletedClient()
+  // — that is the correct "remove from the agent's list" behavior and is not
+  // changing. But the agent's meetings with that client were collateral: the
+  // meeting rows survive (no FK, no cascade), while every read path resolved
+  // the company name through `JOIN clients`, so useMeetings had to exclude any
+  // meeting whose client row was gone or it would render nameless rows. Net
+  // effect, once losses start happening routinely: the agent's whole history
+  // with that client silently disappears, and the Reports screen's "Lost"
+  // filter can never match anything by construction.
+  //
+  // Denormalizing the name onto the meeting is how this app already handles
+  // the same problem elsewhere — see collection_visits.client_name and
+  // purchase_orders.client_name (v12, mirroring web migration 045), and
+  // meetings.client_status_at_meeting (v25) for snapshot-on-meeting itself.
+  // No new lifecycle state and no new UI, so no ADR-010 wireframe pass.
+  //
+  // The backfill matters more than it looks: it can only recover names for
+  // clients whose rows are still on THIS device. Any client already deleted by
+  // an earlier sync is unrecoverable locally, which is why this needs to ship
+  // BEFORE web's 082 starts producing losses.
+  if (currentVersion === 31) {
+    await addColumnIfMissing(db, 'meetings', 'client_name', 'TEXT');
+    await db.runAsync(`
+      UPDATE meetings SET client_name = (
+        SELECT company_name FROM clients WHERE clients.id = meetings.client_id
+      )
+      WHERE client_name IS NULL AND client_id IS NOT NULL
+    `);
+    currentVersion = 32;
+  }
+
   // Keep this unconditional as a final defensive check for databases that
   // traversed an older path with a partially-applied v30 block.
   await ensureSelfieProofColumns(db);

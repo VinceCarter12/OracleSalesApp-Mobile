@@ -30,7 +30,7 @@ export function useExecutiveOverview(): UseExecutiveOverview {
       setOverview(data);
     } catch (err) {
       console.error('[use-executive-overview] load failed:', err instanceof Error ? err.message : String(err));
-      setError("The company-wide data couldn't be loaded. Try again.");
+      setError('Couldn’t load company-wide data. Please try again.');
     } finally {
       setLoading(false);
     }

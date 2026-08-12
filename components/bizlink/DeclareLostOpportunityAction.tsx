@@ -37,7 +37,6 @@ export function DeclareLostOpportunityAction({
         visible={visible}
         onCancel={close}
         onConfirm={confirm}
-        title="Are you sure?"
         reason={reason}
         onReasonChange={setReason}
         reasonError={reasonError}

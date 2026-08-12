@@ -56,7 +56,7 @@ export default function MeetingDetailScreen() {
   useEffect(() => {
     if (!id) return;
     db.getFirstAsync<LocalMeetingRow>(
-      `SELECT m.*, c.company_name as client_name
+      `SELECT m.*, c.company_name as joined_client_name
        FROM meetings m LEFT JOIN clients c ON c.id = m.client_id
        WHERE m.id = ?`,
       [id]
