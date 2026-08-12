@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { router, type Href } from 'expo-router';
+import { router } from 'expo-router';
 import { useWindowDimensions } from 'react-native';
 import {
   Bell,
@@ -7,7 +7,6 @@ import {
   CalendarDays,
   ChartNoAxesCombined,
   CircleOff,
-  ClipboardCheck,
   Handshake,
   History,
   MapPinned,
@@ -29,8 +28,6 @@ interface ManagerHomeActionsSectionProps {
   activeMeeting: boolean;
   pendingApprovalCount: number;
   pendingTagAlongCount: number;
-  /** Pending count across the manager's OWN outgoing requests — see "My Requests" tile below. */
-  myRequestsBadgeCount: number;
 }
 
 /**
@@ -50,7 +47,6 @@ export function ManagerHomeActionsSection({
   activeMeeting,
   pendingApprovalCount,
   pendingTagAlongCount,
-  myRequestsBadgeCount,
 }: ManagerHomeActionsSectionProps) {
   const { width: windowWidth } = useWindowDimensions();
   const quickActionColumns = Math.max(3, Math.floor((windowWidth - 32 + 8) / (78 + 8)));
@@ -86,11 +82,6 @@ export function ManagerHomeActionsSection({
             // Requests inbox: client-edit, PO-confirmation, and tag-along rows
             // share one destination. The badge covers all pending requests.
             <BizQuickAction key="approvals" icon={<PenLine size={20} color={BIZLINK_COLORS.ink} strokeWidth={1.75} />} label="Approvals" badgeCount={pendingApprovalCount + pendingTagAlongCount} onPress={() => router.push(getDashboardActionHref('manager-approvals', role))} />,
-            // Outgoing counterpart of "Approvals" above — a manager also acts as
-            // a requester (own client visits, tag-alongs, PO confirmations,
-            // client edits on a client they don't own); this shows the status
-            // of THEIR OWN requests, same Sales/RSR "My Requests" precedent.
-            <BizQuickAction key="my-requests" icon={<ClipboardCheck size={20} color={BIZLINK_COLORS.ink} strokeWidth={1.75} />} label="My Requests" badgeCount={myRequestsBadgeCount} onPress={() => router.push('/(manager)/more/my-requests' as Href)} />,
             <BizQuickAction key="my-team" icon={<UserRound size={20} color={BIZLINK_COLORS.ink} strokeWidth={1.75} />} label="My Team" onPress={() => router.push(getDashboardActionHref('manager-team', role))} />,
             <BizQuickAction key="clients" icon={<Building2 size={20} color={BIZLINK_COLORS.ink} strokeWidth={1.75} />} label="Clients" onPress={() => router.push(getDashboardActionHref('manager-clients', role))} />,
             <BizQuickAction key="meeting-details" icon={<CalendarDays size={20} color={BIZLINK_COLORS.ink} strokeWidth={1.75} />} label="Meeting Details" onPress={() => router.push(getDashboardActionHref('manager-sales-history', role))} />,
