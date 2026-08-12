@@ -1,6 +1,6 @@
 import { ScrollView } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useLocalSearchParams } from 'expo-router';
+import { useLocalSearchParams, type Href } from 'expo-router';
 import { FileCheck2, PencilLine, Users } from 'lucide-react-native';
 import { Spinner, Text, XStack, YStack } from 'tamagui';
 import { BIZLINK_COLORS, BIZLINK_FONTS } from '../../../../lib/theme';
@@ -76,7 +76,7 @@ export default function ManagerMyRequestDetailScreen() {
   if (!row) {
     return (
       <YStack flex={1} backgroundColor={BIZLINK_COLORS.canvas} paddingTop={insets.top}>
-        <BizTopBar title="Request detail" fallbackHref="/(manager)/more/my-requests/index" />
+        <BizTopBar title="Request detail" fallbackHref={'/(manager)/more/my-requests' as Href} />
         <YStack flex={1} justifyContent="center" alignItems="center" paddingHorizontal="$5">
           <Text fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} textAlign="center">
             The request couldn't be found.
@@ -103,7 +103,7 @@ export default function ManagerMyRequestDetailScreen() {
 
   return (
     <YStack flex={1} backgroundColor={BIZLINK_COLORS.canvas} paddingTop={insets.top}>
-      <BizTopBar title="Request detail" fallbackHref="/(manager)/more/my-requests/index" />
+      <BizTopBar title="Request detail" fallbackHref={'/(manager)/more/my-requests' as Href} />
       <ScrollView contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 32 }}>
         <BizCard gap="$1.5">
           <XStack alignItems="flex-start" gap="$2">

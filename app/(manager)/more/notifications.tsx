@@ -1,6 +1,6 @@
 import { useCallback, useMemo, useState } from 'react';
 import { Pressable, ScrollView } from 'react-native';
-import { router, useFocusEffect } from 'expo-router';
+import { router, useFocusEffect, type Href } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AlertTriangle, Bell, PencilLine, RefreshCw, RotateCcw, Users } from 'lucide-react-native';
 import { Spinner, Text, XStack, YStack } from 'tamagui';
@@ -47,7 +47,7 @@ export default function ManagerNotificationsScreen() {
   function press(item: ManagerNotificationFeedItem): void {
     if (!readIds.has(item.id)) { setReadIds((prev) => new Set(prev).add(item.id)); markNotificationRead(item.id).catch(() => undefined); }
     if (item.category === 'approvals') router.push('/(manager)/approvals');
-    else if (item.category === 'tagalong') router.push('/(manager)/more/my-requests/index');
+    else if (item.category === 'tagalong') router.push('/(manager)/more/my-requests' as Href);
     else if (item.category === 'sync') router.push('/(manager)/more/sync-history');
     else router.push('/(manager)/more/lost-opportunities/index');
   }
