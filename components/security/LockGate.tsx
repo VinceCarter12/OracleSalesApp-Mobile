@@ -5,6 +5,7 @@ import { useAppLock } from '../../lib/app-lock/lock-provider';
 import { useSession } from '../../lib/session-store';
 import { isExemptFromRootLock } from '../../lib/app-lock/lock-route-exemptions';
 import { LockScreen } from './LockScreen';
+import { AndroidBackHandler } from '../navigation/AndroidBackHandler';
 
 /**
  * Batch 5 Slice 3 (ADR-051): single global lock overlay, mounted in
@@ -31,6 +32,7 @@ export function LockGate({ children }: { children: ReactNode }) {
 
   return (
     <View flex={1}>
+      <AndroidBackHandler />
       {children}
       {showLockScreen ? (
         <View position="absolute" top={0} left={0} right={0} bottom={0}>

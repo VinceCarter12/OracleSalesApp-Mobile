@@ -1,25 +1,28 @@
 import { useCallback, useMemo, useState } from 'react';
-import { Pressable, ScrollView } from 'react-native';
+import { Alert, Pressable, ScrollView } from 'react-native';
 import { router, useFocusEffect } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { AlertTriangle, Bell, PencilLine, RefreshCw, RotateCcw, Users } from 'lucide-react-native';
+import { AlertTriangle, Archive, Bell, PencilLine, RefreshCw, RotateCcw, SlidersHorizontal, Users } from 'lucide-react-native';
 import { Spinner, Text, XStack, YStack } from 'tamagui';
 import { BizTopBar } from '../../../components/bizlink/BizTopBar';
 import { BizFilterScroll, type BizFilterOption } from '../../../components/bizlink/BizFilterScroll';
+import { BizFilterSheet } from '../../../components/bizlink/BizFilterSheet';
+import { BizFilterSheetRow } from '../../../components/bizlink/BizFilterSheetRow';
+import { DateRangeFilterRow } from '../../../components/bizlink/DateRangeFilterRow';
+import type { DateRange } from '../../../components/bizlink/DateRangePickerModal';
 import { useBizlinkColors, BIZLINK_FONTS } from '../../../lib/theme';
 import { useSession } from '../../../lib/session-store';
 import { getManagerNotificationFeedItems, type ManagerNotificationCategory, type ManagerNotificationFeedItem } from '../../../lib/manager-notification-feed-service';
-import { getReadNotificationIds, markNotificationRead } from '../../../lib/notification-unread';
+import { archiveNotifications, clearNotifications, getArchivedNotificationIds, getClearedNotificationIds, getReadNotificationIds, markNotificationRead } from '../../../lib/notification-unread';
+import { isWithinDateRange } from '../../../lib/date-range';
 import { timeAgo } from '../../../lib/time-ago';
 
 type Filter = 'all' | ManagerNotificationCategory;
+type StatusFilter = 'all' | 'archived';
 const FILTERS: BizFilterOption<Filter>[] = [
-  { value: 'all', label: 'All' },
-  { value: 'approvals', label: 'Approvals' },
-  { value: 'tagalong', label: 'Tag-Along' },
-  { value: 'lost', label: 'Lost' },
-  { value: 'sync', label: 'Sync' },
+  { value: 'all', label: 'All' }, { value: 'approvals', label: 'Approvals' }, { value: 'tagalong', label: 'Tag-Along' }, { value: 'lost', label: 'Lost' }, { value: 'sync', label: 'Sync' },
 ];
+const STATUS_FILTERS: BizFilterOption<StatusFilter>[] = [{ value: 'all', label: 'All' }, { value: 'archived', label: 'Archived' }];
 
 export default function ManagerNotificationsScreen() {
   const insets = useSafeAreaInsets();
@@ -27,17 +30,33 @@ export default function ManagerNotificationsScreen() {
   const { profileId } = useSession();
   const [feed, setFeed] = useState<ManagerNotificationFeedItem[]>([]);
   const [readIds, setReadIds] = useState<Set<string>>(new Set());
+  const [archivedIds, setArchivedIds] = useState<Set<string>>(new Set());
+  const [clearedIds, setClearedIds] = useState<Set<string>>(new Set());
   const [filter, setFilter] = useState<Filter>('all');
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
+  const [dateRange, setDateRange] = useState<DateRange | null>(null);
+  const [filterOpen, setFilterOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
   const load = useCallback(() => {
-    setLoading(true);
-    setError(null);
-    Promise.all([getManagerNotificationFeedItems(profileId), getReadNotificationIds()]).then(([items, ids]) => { setFeed(items); setReadIds(ids); }).catch((err: unknown) => { setError(err instanceof Error ? err.message : 'Could not load notifications.'); }).finally(() => { setLoading(false); setLoaded(true); });
+    setLoading(true); setError(null);
+    Promise.all([getManagerNotificationFeedItems(profileId), getReadNotificationIds(), getArchivedNotificationIds(), getClearedNotificationIds()])
+      .then(([items, ids, archived, cleared]) => { setFeed(items); setReadIds(ids); setArchivedIds(archived); setClearedIds(cleared); })
+      .catch((err: unknown) => { setError(err instanceof Error ? err.message : 'Could not load notifications.'); })
+      .finally(() => { setLoading(false); setLoaded(true); });
   }, [profileId]);
   useFocusEffect(useCallback(() => { load(); }, [load]));
-  const visible = useMemo(() => filter === 'all' ? feed : feed.filter((item) => item.category === filter), [feed, filter]);
+
+  const visible = useMemo(() => feed.filter((item) => {
+    if (clearedIds.has(item.id)) return false;
+    if (statusFilter === 'archived' ? !archivedIds.has(item.id) : archivedIds.has(item.id)) return false;
+    if (filter !== 'all' && item.category !== filter) return false;
+    return isWithinDateRange(new Date(item.timestamp), dateRange);
+  }), [archivedIds, clearedIds, dateRange, feed, filter, statusFilter]);
+  const filtersActive = dateRange !== null || statusFilter !== 'all';
+
   function icon(item: ManagerNotificationFeedItem): React.ReactNode {
     if (item.category === 'approvals') return <PencilLine size={18} color={colors.brand} strokeWidth={1.8} />;
     if (item.category === 'tagalong') return <Users size={18} color={colors.brand} strokeWidth={1.8} />;
@@ -51,14 +70,39 @@ export default function ManagerNotificationsScreen() {
     else if (item.category === 'sync') router.push('/(manager)/more/sync-history');
     else router.push('/(manager)/more/lost-opportunities/index');
   }
+  function confirmArchive(ids: string[]): void {
+    if (ids.length === 0) return;
+    Alert.alert('Archive notifications?', `Hide ${ids.length === 1 ? 'this notification' : `${ids.length} notifications`} from the active list?`, [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Archive', onPress: () => { archiveNotifications(ids).then(() => setArchivedIds((prev) => new Set([...prev, ...ids]))).catch(() => undefined); } },
+    ]);
+  }
+  function confirmClear(ids: string[]): void {
+    if (ids.length === 0) return;
+    Alert.alert('Clear notifications?', `Permanently hide ${ids.length === 1 ? 'this notification' : `${ids.length} notifications`} on this device?`, [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Clear', style: 'destructive', onPress: () => { clearNotifications(ids).then(() => setClearedIds((prev) => new Set([...prev, ...ids]))).catch(() => undefined); } },
+    ]);
+  }
+  function resetFilters(): void { setDateRange(null); setStatusFilter('all'); }
+
   return <YStack flex={1} backgroundColor={colors.canvas} paddingTop={insets.top}>
     <BizTopBar title="Notifications" fallbackHref="/(manager)" />
     <ScrollView contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 24 }} keyboardShouldPersistTaps="handled">
-      <Text fontSize={13} fontFamily={BIZLINK_FONTS.medium} color={colors.muted} lineHeight={18} marginBottom="$2.5">
-        Requests, approval outcomes, Tag-Along responses, and sync alerts. A local action is never presented as server-final until sync confirms it.
-      </Text>
+      <XStack alignItems="flex-start" justifyContent="space-between" gap="$3" marginBottom="$2.5">
+        <Text flex={1} fontSize={13} fontFamily={BIZLINK_FONTS.medium} color={colors.muted} lineHeight={18}>Requests, approval outcomes, Tag-Along responses, and sync alerts. A local action is never presented as server-final until sync confirms it.</Text>
+        <Pressable accessibilityRole="button" accessibilityLabel="Open notification filters" onPress={() => setFilterOpen(true)} style={{ minWidth: 44, minHeight: 44, alignItems: 'center', justifyContent: 'center', borderRadius: 14, backgroundColor: colors.card, borderWidth: 1, borderColor: colors.line }}><SlidersHorizontal size={18} color={colors.brand} strokeWidth={1.8} /></Pressable>
+      </XStack>
       <YStack marginBottom="$3"><BizFilterScroll options={FILTERS} value={filter} onChange={setFilter} /></YStack>
-      {loading && !loaded ? <YStack alignItems="center" padding="$8"><Spinner size="large" color={colors.brand} /></YStack> : error ? <YStack alignItems="center" padding="$8" gap="$2.5"><Text fontSize={13} fontFamily={BIZLINK_FONTS.medium} color={colors.red} textAlign="center">{error}</Text><Pressable onPress={load} hitSlop={8}><Text fontSize={13} fontFamily={BIZLINK_FONTS.semibold} color={colors.brand}>Retry</Text></Pressable></YStack> : visible.length === 0 ? <YStack alignItems="center" padding="$8" gap="$2.5"><Bell size={40} color={colors.muted} strokeWidth={1.75} /><Text fontSize={13} fontFamily={BIZLINK_FONTS.medium} color={colors.muted} textAlign="center">Wala pang notification sa filter na ito.</Text></YStack> : visible.map((item) => { const unread = !readIds.has(item.id); return <Pressable key={item.id} onPress={() => press(item)} hitSlop={4}><XStack gap="$3" alignItems="flex-start" backgroundColor={unread ? colors.tintA : colors.card} borderRadius={20} padding={16} marginBottom={10} minHeight={44}><YStack width={36} height={36} borderRadius={18} alignItems="center" justifyContent="center" backgroundColor={colors.soft}>{icon(item)}</YStack><YStack flex={1} gap="$1"><XStack alignItems="center" gap="$1.5"><Text fontFamily={BIZLINK_FONTS.semibold} fontSize={13.5} color={colors.text}>{item.title}</Text>{unread ? <YStack width={7} height={7} borderRadius={3.5} backgroundColor={colors.brand} /> : null}</XStack><Text fontSize={12} fontFamily={BIZLINK_FONTS.medium} color={colors.muted} lineHeight={17}>{item.body}</Text><Text fontSize={11} fontFamily={BIZLINK_FONTS.regular} color={colors.muted} marginTop="$1">{timeAgo(item.timestamp)}</Text></YStack></XStack></Pressable>; })}
+      {loading && !loaded ? <YStack alignItems="center" padding="$8"><Spinner size="large" color={colors.brand} /></YStack> : error ? <YStack alignItems="center" padding="$8" gap="$2.5"><Text fontSize={13} fontFamily={BIZLINK_FONTS.medium} color={colors.red} textAlign="center">{error}</Text><Pressable onPress={load} hitSlop={8}><Text fontSize={13} fontFamily={BIZLINK_FONTS.semibold} color={colors.brand}>Retry</Text></Pressable></YStack> : visible.length === 0 ? <YStack alignItems="center" padding="$8" gap="$2.5"><Bell size={40} color={colors.muted} strokeWidth={1.75} /><Text fontSize={13} fontFamily={BIZLINK_FONTS.medium} color={colors.muted} textAlign="center">Wala pang notification sa filter na ito.</Text></YStack> : visible.map((item) => { const unread = !readIds.has(item.id); return <Pressable key={item.id} onPress={() => press(item)} hitSlop={4}><XStack gap="$3" alignItems="flex-start" backgroundColor={unread ? colors.tintA : colors.card} borderRadius={20} padding={16} marginBottom={10} minHeight={44}><YStack width={36} height={36} borderRadius={18} alignItems="center" justifyContent="center" backgroundColor={colors.soft}>{icon(item)}</YStack><YStack flex={1} gap="$1"><XStack alignItems="center" gap="$1.5"><Text flex={1} fontFamily={BIZLINK_FONTS.semibold} fontSize={13.5} color={colors.text}>{item.title}</Text>{unread ? <YStack width={7} height={7} borderRadius={3.5} backgroundColor={colors.brand} /> : null}<Pressable accessibilityRole="button" accessibilityLabel={`Archive ${item.title}`} onPress={(event) => { event.stopPropagation(); confirmArchive([item.id]); }} hitSlop={8} style={{ minWidth: 44, minHeight: 44, alignItems: 'center', justifyContent: 'center' }}><Archive size={17} color={colors.muted} strokeWidth={1.75} /></Pressable></XStack><Text fontSize={12} fontFamily={BIZLINK_FONTS.medium} color={colors.muted} lineHeight={17}>{item.body}</Text><Text fontSize={11} fontFamily={BIZLINK_FONTS.regular} color={colors.muted} marginTop="$1">{timeAgo(item.timestamp)}</Text></YStack></XStack></Pressable>; })}
     </ScrollView>
+    <BizFilterSheet visible={filterOpen} onClose={() => setFilterOpen(false)} filtersActive={filtersActive} onReset={resetFilters}>
+      <DateRangeFilterRow range={dateRange} onApply={setDateRange} />
+      <BizFilterSheetRow label="Status" value={statusFilter === 'archived' ? 'Archived' : 'All'}><BizFilterScroll options={STATUS_FILTERS} value={statusFilter} onChange={setStatusFilter} /></BizFilterSheetRow>
+      <YStack gap="$2" paddingTop="$4">
+        <Pressable accessibilityRole="button" onPress={() => confirmArchive(visible.filter((item) => !archivedIds.has(item.id)).map((item) => item.id))} disabled={!visible.some((item) => !archivedIds.has(item.id))} style={{ minHeight: 48, borderRadius: 16, backgroundColor: colors.soft, alignItems: 'center', justifyContent: 'center', opacity: visible.some((item) => !archivedIds.has(item.id)) ? 1 : 0.45 }}><Text fontFamily={BIZLINK_FONTS.semibold} fontSize={14} color={colors.text}>Archive visible notifications</Text></Pressable>
+        <Pressable accessibilityRole="button" onPress={() => confirmClear(visible.map((item) => item.id))} disabled={visible.length === 0} style={{ minHeight: 48, borderRadius: 16, backgroundColor: colors.card, borderWidth: 1, borderColor: colors.red, alignItems: 'center', justifyContent: 'center', opacity: visible.length > 0 ? 1 : 0.45 }}><Text fontFamily={BIZLINK_FONTS.semibold} fontSize={14} color={colors.red}>Clear visible notifications</Text></Pressable>
+      </YStack>
+    </BizFilterSheet>
   </YStack>;
 }
