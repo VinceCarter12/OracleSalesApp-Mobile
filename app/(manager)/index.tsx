@@ -144,9 +144,11 @@ export default function ManagerDashboardScreen() {
   return (
     <YStack flex={1} backgroundColor={BIZLINK_COLORS.canvas} paddingTop={insets.top}>
       <XStack alignItems="center" gap="$3" paddingHorizontal="$4" paddingTop="$2.5" paddingBottom="$1.5">
-        <AvatarStatusRing>
-          <Avatar initials={initials} background={BIZLINK_COLORS.tintA} color={BIZLINK_COLORS.ink} />
-        </AvatarStatusRing>
+        <Pressable onPress={() => router.push('/(manager)/more/account')} hitSlop={4}>
+          <AvatarStatusRing>
+            <Avatar initials={initials} background={BIZLINK_COLORS.tintA} color={BIZLINK_COLORS.ink} />
+          </AvatarStatusRing>
+        </Pressable>
         <YStack gap="$1">
           <Text fontFamily={BIZLINK_FONTS.semibold} fontSize={15.5} color={BIZLINK_COLORS.text}>
             Good morning, {greetingName}!
