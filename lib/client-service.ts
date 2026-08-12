@@ -175,6 +175,15 @@ export interface UpdateClientInfoInput {
   // Wireframe-Sales-BizLink ~line 623's "Existing client" tile — one-way
   // flag only, never reverts an already-'existing' client back down.
   markExisting?: boolean;
+  /** ADR-052 manager self-edit local version guard. */
+  expectedUpdatedAt?: string;
+}
+
+export class ClientUpdateConflictError extends Error {
+  constructor() {
+    super('This client changed on another device. Refresh the client and try again.');
+    this.name = 'ClientUpdateConflictError';
+  }
 }
 
 /**
@@ -241,11 +250,11 @@ export async function updateClientInfo(input: UpdateClientInfoInput): Promise<vo
   const createdOnline = await isLikelyOnline();
 
   await db.withTransactionAsync(async () => {
-    await db.runAsync(
+    const updateResult = await db.runAsync(
       `UPDATE clients
         SET company_name = ?, normalized_name = ?, contact_person = ?, position = ?, contact_number = ?, office_address = ?,
             sales_channel = ?, status = ?, details_completed_at = ?, minor_notes = ?, updated_at = ?, local_updated_at = ?, sync_status = 'pending'
-       WHERE id = ?`,
+       WHERE id = ?${input.expectedUpdatedAt !== undefined ? ' AND updated_at = ?' : ''}`,
       [
         resolved.companyName,
         resolved.normalizedName,
@@ -260,8 +269,12 @@ export async function updateClientInfo(input: UpdateClientInfoInput): Promise<vo
         now,
         now,
         input.clientId,
+        ...(input.expectedUpdatedAt !== undefined ? [input.expectedUpdatedAt] : []),
       ]
     );
+    if (input.expectedUpdatedAt !== undefined && updateResult.changes !== 1) {
+      throw new ClientUpdateConflictError();
+    }
     await enqueueOutboxRow(db, {
       outboxId,
       recordId: input.clientId,

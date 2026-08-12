@@ -1,5 +1,6 @@
 import * as SecureStore from 'expo-secure-store';
 import { getDb } from './db';
+import { TABLES_TO_WIPE } from './wipe-local-data-tables';
 
 // B-061: local SQLite is NOT scoped by profileId (ADR-001 assumes one device
 // = one agent), so a second account signing in on a device previously used
@@ -21,7 +22,7 @@ const LAST_PROFILE_ID_KEY = 'oracle_sales_last_profile_id';
 // statements by hand — every new agent-scoped local table added in a future
 // schema migration (LATEST_SCHEMA_VERSION bump) must be added here too, or
 // this exact leak (B-061) can silently reintroduce itself for that table.
-const TABLES_TO_WIPE = [
+const LEGACY_TABLES_TO_WIPE = [
   'clients',
   'meetings',
   'meeting_drafts',
@@ -52,7 +53,7 @@ async function countUnsyncedOutboxRows(): Promise<number> {
 
 async function wipeAgentOwnedTables(): Promise<void> {
   const db = await getDb();
-  for (const table of TABLES_TO_WIPE) {
+  for (const table of [...TABLES_TO_WIPE, ...LEGACY_TABLES_TO_WIPE]) {
     await db.runAsync(`DELETE FROM ${table}`);
   }
 }

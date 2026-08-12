@@ -12,7 +12,7 @@ export const DATABASE_NAME = 'oracle-sales-app.db';
 
 // Bump this and add a new `case` below whenever the schema changes — never
 // edit an already-shipped case, since devices may have already run it.
-const LATEST_SCHEMA_VERSION = 31;
+const LATEST_SCHEMA_VERSION = 34;
 
 const SELFIE_PROOF_COLUMNS: readonly (readonly [string, string])[] = [
   ['selfie_captured_at', 'TEXT'],
@@ -112,6 +112,32 @@ async function ensureCriticalTablesExist(db: SQLiteDatabase): Promise<void> {
   `);
 }
 
+async function ensureJointManagerTablesExist(db: SQLiteDatabase): Promise<void> {
+  await db.execAsync(`
+    CREATE TABLE IF NOT EXISTS joint_manager_requests (
+      id TEXT PRIMARY KEY NOT NULL, client_id TEXT NOT NULL, requester_id TEXT NOT NULL,
+      origin_team_id TEXT, manager_ids TEXT NOT NULL, action_kind TEXT NOT NULL,
+      action_payload TEXT NOT NULL DEFAULT '{}', base_updated_at TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'pending', required_count INTEGER NOT NULL,
+      created_at TEXT NOT NULL, updated_at TEXT NOT NULL, applied_at TEXT,
+      sync_status TEXT NOT NULL DEFAULT 'pending', sync_error TEXT
+    );
+    CREATE TABLE IF NOT EXISTS joint_manager_request_decisions (
+      id TEXT PRIMARY KEY NOT NULL, request_id TEXT NOT NULL, manager_id TEXT NOT NULL,
+      decision TEXT NOT NULL DEFAULT 'pending', decided_at TEXT, synced_at TEXT
+    );
+    CREATE TABLE IF NOT EXISTS client_record_holders (
+      client_id TEXT NOT NULL, manager_id TEXT NOT NULL, manager_name TEXT,
+      active INTEGER NOT NULL DEFAULT 1, origin_team_id TEXT, updated_at TEXT NOT NULL,
+      synced_at TEXT NOT NULL, PRIMARY KEY (client_id, manager_id)
+    );
+    CREATE TABLE IF NOT EXISTS manager_directory_snapshot (
+      profile_id TEXT PRIMARY KEY NOT NULL, full_name TEXT NOT NULL, team_id TEXT,
+      is_active INTEGER NOT NULL DEFAULT 1, synced_at TEXT NOT NULL
+    );
+  `);
+}
+
 /**
  * Runs once per app launch, inside `getDb()`'s `openDb()` (called by
  * `AppDbProvider` on boot — see `lib/app-db-provider.tsx` / app/_layout.tsx).
@@ -127,6 +153,7 @@ export async function migrateDbIfNeeded(db: SQLiteDatabase): Promise<void> {
   if (currentVersion >= LATEST_SCHEMA_VERSION) {
     await ensureSelfieProofColumns(db);
     await ensureCriticalTablesExist(db);
+    await ensureJointManagerTablesExist(db);
     return;
   }
 
@@ -1348,10 +1375,72 @@ export async function migrateDbIfNeeded(db: SQLiteDatabase): Promise<void> {
     currentVersion = 32;
   }
 
+  // Joint Manager record-holder mirrors (web migration 091). Requests and
+  // decisions are local read models; only request creation is queued through
+  // the normal outbox. Holder rows are server-authoritative sync-down data.
+  if (currentVersion === 32) {
+    await db.execAsync(`
+      CREATE TABLE IF NOT EXISTS joint_manager_requests (
+        id TEXT PRIMARY KEY NOT NULL,
+        client_id TEXT NOT NULL,
+        requester_id TEXT NOT NULL,
+        origin_team_id TEXT,
+        manager_ids TEXT NOT NULL,
+        action_kind TEXT NOT NULL,
+        action_payload TEXT NOT NULL DEFAULT '{}',
+        base_updated_at TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'pending',
+        required_count INTEGER NOT NULL,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        applied_at TEXT,
+        sync_status TEXT NOT NULL DEFAULT 'pending',
+        sync_error TEXT
+      );
+      CREATE INDEX IF NOT EXISTS idx_joint_manager_requests_requester ON joint_manager_requests(requester_id);
+      CREATE INDEX IF NOT EXISTS idx_joint_manager_requests_client ON joint_manager_requests(client_id);
+      CREATE TABLE IF NOT EXISTS joint_manager_request_decisions (
+        id TEXT PRIMARY KEY NOT NULL,
+        request_id TEXT NOT NULL,
+        manager_id TEXT NOT NULL,
+        decision TEXT NOT NULL DEFAULT 'pending',
+        decided_at TEXT,
+        synced_at TEXT
+      );
+      CREATE INDEX IF NOT EXISTS idx_joint_manager_decisions_request ON joint_manager_request_decisions(request_id);
+      CREATE TABLE IF NOT EXISTS client_record_holders (
+        client_id TEXT NOT NULL,
+        manager_id TEXT NOT NULL,
+        manager_name TEXT,
+        active INTEGER NOT NULL DEFAULT 1,
+        origin_team_id TEXT,
+        updated_at TEXT NOT NULL,
+        synced_at TEXT NOT NULL,
+        PRIMARY KEY (client_id, manager_id)
+      );
+    `);
+    currentVersion = 33;
+  }
+
+  if (currentVersion === 33) {
+    await db.execAsync(`
+      CREATE TABLE IF NOT EXISTS manager_directory_snapshot (
+        profile_id TEXT PRIMARY KEY NOT NULL,
+        full_name TEXT NOT NULL,
+        team_id TEXT,
+        is_active INTEGER NOT NULL DEFAULT 1,
+        synced_at TEXT NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_manager_directory_active ON manager_directory_snapshot(is_active);
+    `);
+    currentVersion = 34;
+  }
+
   // Keep this unconditional as a final defensive check for databases that
   // traversed an older path with a partially-applied v30 block.
   await ensureSelfieProofColumns(db);
   await ensureCriticalTablesExist(db);
+  await ensureJointManagerTablesExist(db);
 
 
   await db.execAsync(`PRAGMA user_version = ${currentVersion}`);

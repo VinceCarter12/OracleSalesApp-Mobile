@@ -16,6 +16,7 @@ import { uploadPendingAvatar } from './profile-avatar';
 import { retryFailedPendingUpload, type PendingUploadStatus } from './sync/pending-upload-status';
 import { createCoalescingRunner } from './sync/coalescing-runner';
 import { notifySyncComplete } from './sync/sync-events';
+import type { UserRole } from '../types';
 
 // T-002/T-005/T-014: pushes queued local writes (T-001's `outbox`) to
 // Supabase, dispatching per-table behavior via the entity registry
@@ -149,13 +150,13 @@ let hasRecoveredStuckRows = false;
  * makes concurrent calls safe — see `lib/sync/coalescing-runner.ts`'s doc
  * comment for the exact single-flight + one-coalesced-follow-up semantics.
  */
-const syncCoordinator = createCoalescingRunner<{ agentId: string; teamId?: string | null }, SyncResult>(
-  ({ agentId, teamId }) => runSyncOnce(agentId, teamId)
+const syncCoordinator = createCoalescingRunner<{ agentId: string; teamId?: string | null; role?: UserRole | null }, SyncResult>(
+  ({ agentId, teamId, role }) => runSyncOnce(agentId, teamId, role)
 );
 
 /** Entry point for use-sync.ts, write-services' post-write syncs, and the manual "Sync Now" button — see `syncCoordinator` above for concurrency handling. */
-export async function runSync(agentId: string, teamId?: string | null): Promise<SyncResult | null> {
-  return syncCoordinator.run({ agentId, teamId });
+export async function runSync(agentId: string, teamId?: string | null, role?: UserRole | null): Promise<SyncResult | null> {
+  return syncCoordinator.run({ agentId, teamId, role });
 }
 
 /**
@@ -164,7 +165,7 @@ export async function runSync(agentId: string, teamId?: string | null): Promise<
  * degraded connectivity check must skip the push pass entirely rather than
  * dead-lettering good records (T-014, ADR-022 #3).
  */
-async function runSyncOnce(agentId: string, teamId?: string | null): Promise<SyncResult> {
+async function runSyncOnce(agentId: string, teamId?: string | null, role?: UserRole | null): Promise<SyncResult> {
   const db = await getDb();
   if (!hasRecoveredStuckRows) {
     await recoverStuckSyncingRows(db);
@@ -231,7 +232,7 @@ async function runSyncOnce(agentId: string, teamId?: string | null): Promise<Syn
     console.error('processCodPayments failed', err);
     return { synced: 0, failed: 0 };
   });
-  await syncDown(agentId, teamId);
+  await syncDown(agentId, teamId, role);
   // F-007 Additional Collection (web 068/069): acknowledge additional stores
   // back to the server via the collector-only RPCs — received (just pulled) and
   // seen (collector opened it offline earlier). Best-effort: it manages its own

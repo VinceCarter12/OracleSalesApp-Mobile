@@ -45,7 +45,8 @@ async function writeDirectBranch(
   clientId: string,
   profileId: string,
   form: CompleteInfoFormValues,
-  branch: 'direct_first_time' | 'direct_manager_owns' | 'direct_exempt_only'
+  branch: 'direct_first_time' | 'direct_manager_owns' | 'direct_exempt_only',
+  expectedUpdatedAt: string | undefined
 ): Promise<void> {
   await updateClientInfo({
     clientId,
@@ -56,6 +57,7 @@ async function writeDirectBranch(
     officeAddress: form.officeAddress,
     salesChannel: form.channel,
     minorNotes: form.minorNotes,
+    ...(branch === 'direct_manager_owns' && expectedUpdatedAt !== undefined ? { expectedUpdatedAt } : {}),
     ...(branch === 'direct_exempt_only' ? {} : { markExisting: form.existingOverride || undefined }),
   });
 }
@@ -119,7 +121,7 @@ export async function submitCompleteInfo(input: SubmitCompleteInfoInput): Promis
   if (branch === 'blocked_pending') return branch;
 
   if (branch === 'direct_first_time' || branch === 'direct_manager_owns' || branch === 'direct_exempt_only') {
-    await writeDirectBranch(clientId, profileId, form, branch);
+    await writeDirectBranch(clientId, profileId, form, branch, branch === 'direct_manager_owns' ? client.updated_at : undefined);
     return branch;
   }
 
