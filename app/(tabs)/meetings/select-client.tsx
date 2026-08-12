@@ -17,6 +17,7 @@ import { BizFilterSheetRow } from '../../../components/bizlink/BizFilterSheetRow
 import { BizChip } from '../../../components/bizlink/BizChip';
 import { DateRangeFilterRow } from '../../../components/bizlink/DateRangeFilterRow';
 import type { DateRange } from '../../../components/bizlink/DateRangePickerModal';
+import { KeyboardAwareFlatList } from '../../../components/ui/KeyboardAwareScrollView';
 import { RecordPickerRow, RECORD_PICKER_FILTERS, type RecordPickerFilter } from '../../../components/meetings/RecordPickerRow';
 import { PAGINATION_PAGE_SIZE, usePagination } from '../../../lib/use-pagination';
 
@@ -102,7 +103,7 @@ export default function SelectClientScreen() {
       <BizTopBar title="Record Meeting" />
       <YStack paddingHorizontal="$4" paddingBottom="$2" gap="$1">
         <Text fontSize={13} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted}>
-          New at Existing clients go straight to photo capture — no form to re-fill.
+          New and Existing clients go straight to photo capture — no form to re-fill.
         </Text>
       </YStack>
 
@@ -176,8 +177,9 @@ export default function SelectClientScreen() {
           <Spinner size="large" color={BIZLINK_COLORS.brand} />
         </YStack>
       ) : (
-        <FlatList
+        <KeyboardAwareFlatList
           data={pageItems}
+          keyboardShouldPersistTaps="handled"
           keyExtractor={(item) => item.id}
           contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 120 + insets.bottom }}
           renderItem={({ item, index }) => (
@@ -191,7 +193,7 @@ export default function SelectClientScreen() {
           ListEmptyComponent={
             <YStack flex={1} justifyContent="center" alignItems="center" padding="$8">
               <Text color={BIZLINK_COLORS.muted}>
-                {clients.length === 0 ? 'No clients yet.' : 'Walang client dito.'}
+                {clients.length === 0 ? 'No clients yet.' : 'No client here.'}
               </Text>
             </YStack>
           }

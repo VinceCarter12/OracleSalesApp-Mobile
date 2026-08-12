@@ -17,7 +17,7 @@ export function PlaceholderNotice({
   screenTitle,
   icon,
   body,
-  heading = 'Hindi pa final ang feature na ito',
+  heading = "This feature isn't final yet",
   badgeLabel = 'Pending client confirmation',
 }: PlaceholderNoticeProps) {
   return (

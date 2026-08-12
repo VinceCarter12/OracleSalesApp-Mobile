@@ -39,7 +39,7 @@ export function useManagerDashboard(scope: ManagerScope = DEFAULT_MANAGER_SCOPE)
       setSummary(data);
     } catch (err) {
       console.error('[useManagerDashboard] load failed:', err instanceof Error ? err.message : String(err));
-      setError('Hindi na-load ang dashboard. Subukan ulit.');
+      setError("The dashboard couldn't be loaded. Try again.");
     } finally {
       setLoading(false);
     }

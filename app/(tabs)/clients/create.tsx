@@ -13,8 +13,10 @@ import { BizTopBar } from '../../../components/bizlink/BizTopBar';
 import { BizField } from '../../../components/bizlink/BizField';
 import { BizCard } from '../../../components/bizlink/BizCard';
 import { BizButton } from '../../../components/bizlink/BizButton';
+import { KeyboardAwareScrollView } from '../../../components/ui/KeyboardAwareScrollView';
 import { CityMunicipalitySelector } from '../../../components/bizlink/CityMunicipalitySelector';
 import { COMPANY_NAME_MAX_LENGTH } from '../../../lib/field-validation';
+import { useClientFlowRoutes } from '../../../lib/use-role-routes';
 import type { PsgcLocality } from '../../../lib/data/psgc-localities';
 
 // 'unknown' (offline, live check failed and nothing local matched) is
@@ -36,6 +38,7 @@ export default function CreateClientScreen() {
   const insets = useSafeAreaInsets();
   const BIZLINK_COLORS = useBizlinkColors();
   const { profileId, markSuspended } = useSession();
+  const routes = useClientFlowRoutes();
   const [companyName, setCompanyName] = useState('');
   const [selectedLocality, setSelectedLocality] = useState<PsgcLocality | null>(null);
   const [dupState, setDupState] = useState<DupState>('idle');
@@ -86,8 +89,12 @@ export default function CreateClientScreen() {
     try {
       const city = selectedLocality?.name.trim() ?? '';
       await createClient({ companyName, city, agentId: profileId });
-      showToast('✓ Client created — kumpletuhin ang info within 1 month');
-      router.back();
+      showToast('✓ Client created — complete the info within 1 month');
+      if (router.canGoBack()) {
+        router.back();
+      } else {
+        router.replace(routes.clientList());
+      }
     } catch (err) {
       if (err instanceof AccountSuspendedError) {
         // Batch 5 Slice 2 (ADR-051): route to AccountSuspendedScreen instead
@@ -108,17 +115,17 @@ export default function CreateClientScreen() {
 
   return (
     <YStack flex={1} backgroundColor={BIZLINK_COLORS.canvas} paddingTop={insets.top}>
-      <BizTopBar title="New Client" fallbackHref="/(tabs)/clients" />
-      <ScrollView contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 24 }}>
+      <BizTopBar title="New Client" fallbackHref={routes.clientList()} />
+      <KeyboardAwareScrollView contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 24 }} keyboardShouldPersistTaps="handled">
         <BizCard flat marginBottom="$4">
           <XStack gap="$2" alignItems="center">
             <ClipboardList size={15} color={BIZLINK_COLORS.text} strokeWidth={1.75} />
-            <Text fontSize={13} fontFamily={BIZLINK_FONTS.semibold} color={BIZLINK_COLORS.text}>Two-phase creation</Text>
+            <Text fontSize={13} fontFamily={BIZLINK_FONTS.semibold} color={BIZLINK_COLORS.text}>Create a client in two steps</Text>
           </XStack>
           <Text fontSize={13} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} marginTop="$1">
-            Company name at napiling city ang kailangan ngayon. May{' '}
-            <Text fontFamily={BIZLINK_FONTS.semibold} color={BIZLINK_COLORS.text}>1 buwan</Text> ka
-            para kumpletuhin ang buong info, o kumpletuhin ito sa unang meeting.
+            Only the company name and the city you picked are needed for now. You
+            have <Text fontFamily={BIZLINK_FONTS.semibold} color={BIZLINK_COLORS.text}>1 month</Text> to
+            complete the rest of the info, or finish it at the first meeting.
           </Text>
         </BizCard>
 
@@ -139,7 +146,7 @@ export default function CreateClientScreen() {
                 paddingHorizontal={13}
                 paddingVertical={9}
               >
-                May client nang ganitong pangalan sa city na ito — bawal ang duplicate.
+                A client with this name already exists in this city — duplicates aren't allowed.
               </Text>
             ) : dupState === 'available' ? (
               <Text
@@ -151,7 +158,7 @@ export default function CreateClientScreen() {
                 paddingHorizontal={13}
                 paddingVertical={9}
               >
-                ✓ Available ang pangalang ito.
+                ✓ This name is available.
               </Text>
             ) : null
           }
@@ -167,15 +174,15 @@ export default function CreateClientScreen() {
         <XStack gap="$2" alignItems="flex-start" marginBottom="$3">
           <Info size={14} color={BIZLINK_COLORS.muted} strokeWidth={1.75} style={{ marginTop: 2 }} />
           <Text fontSize={13} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} flex={1}>
-            Piliin ang city mula sa listahan. Hindi puwedeng mag-save ng free text.
+            Pick the city from the list. Free text can't be saved.
           </Text>
         </XStack>
 
         <XStack gap="$2" alignItems="flex-start" marginBottom="$4">
           <Lightbulb size={14} color={BIZLINK_COLORS.muted} strokeWidth={1.75} style={{ marginTop: 2 }} />
           <Text fontSize={13} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} flex={1}>
-            Bawal ang duplicate — pero pwede ang parehong company na may ibang area, hal.
-            &quot;Oracle Petroleum (Bataan)&quot; at &quot;Oracle Petroleum (Pampanga)&quot;.
+            Duplicates aren't allowed — but the same company can appear with a different area, e.g.
+            &quot;Oracle Petroleum (Bataan)&quot; and &quot;Oracle Petroleum (Pampanga)&quot;.
           </Text>
         </XStack>
 
@@ -188,7 +195,7 @@ export default function CreateClientScreen() {
         <Text fontSize={13} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} textAlign="center" marginTop="$3">
           Gagana kahit OFFLINE — sa sync queue mapupunta.
         </Text>
-      </ScrollView>
+      </KeyboardAwareScrollView>
     </YStack>
   );
 }

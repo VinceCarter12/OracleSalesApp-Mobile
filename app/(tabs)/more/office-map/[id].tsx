@@ -70,7 +70,7 @@ export default function OfficeMapDetailScreen() {
         <BizTopBar title="Office location" fallbackHref={backHref} />
         <YStack flex={1} justifyContent="center" alignItems="center" paddingHorizontal="$5">
           <Text fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} textAlign="center">
-            Wala pang office pin para dito.
+            There's no office location set for this client yet.
           </Text>
         </YStack>
       </YStack>
@@ -112,10 +112,10 @@ export default function OfficeMapDetailScreen() {
 
         <BizCard flat marginTop="$3" gap="$1.5">
           <Text fontSize={13} fontFamily={BIZLINK_FONTS.semibold} color={BIZLINK_COLORS.text}>
-            Pin data boundary
+            Location details
           </Text>
           <Text fontSize={13} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} lineHeight={18}>
-            Read-only detail ito. Hindi ito nag-a-adjust ng pin at hindi binabago ang meeting GPS.
+            This is read-only. It only shows the saved location — it doesn't adjust the location marker or change a meeting's location.
           </Text>
         </BizCard>
       </ScrollView>

@@ -92,7 +92,8 @@ export default function ExecutiveClientDetailScreen() {
 
         <BizSectionHeader title="Info completion" />
         <Text fontSize={12} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} marginTop={-8} marginBottom={10} lineHeight={17}>
-          Para lang ito sa 1-month data-quality rule — hiwalay na sa progress % sa taas (B-001).
+          This only tracks the 1-month deadline for completing the client's information. It's separate from
+          the progress percentage shown above.
         </Text>
         <BizCard>
           {CHECKLIST_ITEMS.map(([key, label]) => {

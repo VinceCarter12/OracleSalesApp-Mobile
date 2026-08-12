@@ -39,7 +39,7 @@ export function useLostOpportunities(): UseLostOpportunities {
       setItems(data);
     } catch (err) {
       console.error('[use-lost-opportunities] load failed:', err instanceof Error ? err.message : String(err));
-      setError('Hindi na-load ang listahan ng lost opportunities. Subukan ulit.');
+      setError("The lost opportunities list couldn't be loaded. Try again.");
     } finally {
       setLoading(false);
     }
@@ -107,7 +107,7 @@ export function useLostOpportunityDetail(clientId: string | undefined): UseLostO
       );
     } catch (err) {
       console.error('[use-lost-opportunities] detail load failed:', err instanceof Error ? err.message : String(err));
-      setError('Hindi na-load ang detalye ng opportunity. Subukan ulit.');
+      setError("The opportunity details couldn't be loaded. Try again.");
     } finally {
       setLoading(false);
     }

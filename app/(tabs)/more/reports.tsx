@@ -162,14 +162,14 @@ export default function MyPerformanceScreen() {
             ))}
             {(resultMeetings?.length === 0 || resultClients?.length === 0) ? (
               <Text fontSize={13} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} paddingVertical="$3">
-                Wala pang laman dito.
+                There's nothing here for this filter yet.
               </Text>
             ) : null}
           </FadeInPanel>
         ) : null}
 
         <Text fontSize={12.5} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} textAlign="center" marginTop="$4">
-          Sariling performance lang — hindi kasama ang ibang agents (yun ay para sa manager na).
+          Your own performance only — other agents aren't included (that's for your manager).
         </Text>
       </ScrollView>
     </YStack>

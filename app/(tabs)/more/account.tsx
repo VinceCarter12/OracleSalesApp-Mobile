@@ -16,6 +16,7 @@ import { BizChip } from '../../../components/bizlink/BizChip';
 import { BizButton } from '../../../components/bizlink/BizButton';
 import { LockToggleRow } from '../../../components/security/LockToggleRow';
 import { clearSnapshot } from '../../../lib/app-lock/session-snapshot';
+import { useTeamName } from '../../../lib/use-team-name';
 
 const APPEARANCE_OPTIONS: Array<{ value: ThemePreference; label: string }> = [
   { value: 'system', label: 'System' },
@@ -31,7 +32,8 @@ const APPEARANCE_OPTIONS: Array<{ value: ThemePreference; label: string }> = [
 /** Wireframe a-account — profile, security actions, session policy, sign out. */
 export default function AgentAccountScreen() {
   const insets = useSafeAreaInsets();
-  const { signOut, fullName, role } = useSession();
+  const { signOut, fullName, role, teamId } = useSession();
+  const teamName = useTeamName(teamId);
   const { session, signOut: signOutSupabase } = useAuth();
   const { avatarUri } = useProfileAvatar(session?.user.id);
   const BIZLINK_COLORS = useBizlinkColors();
@@ -70,7 +72,7 @@ export default function AgentAccountScreen() {
           <YStack>
             <Text fontFamily={BIZLINK_FONTS.semibold} fontSize={17} color={BIZLINK_COLORS.text}>{fullName ?? '—'}</Text>
             <Text fontSize={13} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted}>
-              {role === 'rsr' ? 'RSR' : 'Sales Specialist'}
+              {role === 'rsr' ? 'RSR' : 'Sales Specialist'} · {teamName}
             </Text>
           </YStack>
         </BizCard>
@@ -102,15 +104,17 @@ export default function AgentAccountScreen() {
           ))}
         </XStack>
         <Text fontSize={11.5} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} marginTop="$1">
-          Light mode lang muna ang available sa ngayon.
+          Only light mode is available for now.
         </Text>
 
         <BizCard flat marginTop="$4">
           <XStack alignItems="center" gap="$2">
-            <Text fontSize={12.5} fontFamily={BIZLINK_FONTS.semibold} color={BIZLINK_COLORS.text}>Session policy</Text>
+            <Text fontSize={12.5} fontFamily={BIZLINK_FONTS.semibold} color={BIZLINK_COLORS.text}>Staying signed in</Text>
           </XStack>
           <Text fontSize={13} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} marginTop="$1" lineHeight={18}>
-            Naka-login ka buong araw kahit offline. Walang midnight auto-logout — kapag naka-background ang app ng mahigit 1 oras, kailangan ng fingerprint o device credential para ma-unlock ulit.
+            You stay signed in all day, even without internet. There's no automatic sign-out at midnight. If the
+            app is left in the background for more than 1 hour, you'll need your fingerprint or your phone's
+            PIN, pattern, or password to open it again.
           </Text>
         </BizCard>
 

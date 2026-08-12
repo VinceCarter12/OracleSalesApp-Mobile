@@ -17,6 +17,7 @@ import { BizChip } from '../../../components/bizlink/BizChip';
 import { BizFilterSheet } from '../../../components/bizlink/BizFilterSheet';
 import { DateRangeFilterRow } from '../../../components/bizlink/DateRangeFilterRow';
 import type { DateRange } from '../../../components/bizlink/DateRangePickerModal';
+import { KeyboardAwareFlatList } from '../../../components/ui/KeyboardAwareScrollView';
 import { BizFloatingPager } from '../../../components/bizlink/BizFloatingPager';
 import { BizTopBar } from '../../../components/bizlink/BizTopBar';
 import { PAGINATION_PAGE_SIZE, usePagination } from '../../../lib/use-pagination';
@@ -245,8 +246,9 @@ export default function MeetingsScreen() {
           <Spinner size="large" color={BIZLINK_COLORS.brand} />
         </YStack>
       ) : (
-        <FlatList
+          <KeyboardAwareFlatList
           data={pageItems}
+          keyboardShouldPersistTaps="handled"
           keyExtractor={(item) => item.id}
           style={{ flex: 1 }}
           contentContainerStyle={{ paddingHorizontal: 16, paddingTop: 8, paddingBottom: 120 + insets.bottom }}
@@ -264,7 +266,7 @@ export default function MeetingsScreen() {
             <YStack alignItems="center" padding="$8" gap="$2.5">
               <Handshake size={40} color={BIZLINK_COLORS.muted} strokeWidth={1.75} />
               <Text fontSize={13} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} textAlign="center">
-                {meetings.length === 0 ? 'No meetings recorded yet.' : 'Walang tumugma sa filter.'}
+                {meetings.length === 0 ? 'No meetings recorded yet.' : 'No meeting matches these filters.'}
               </Text>
             </YStack>
           }

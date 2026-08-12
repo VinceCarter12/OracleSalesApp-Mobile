@@ -55,7 +55,7 @@ export function ResultClientRow({ client }: { client: Client }) {
         <YStack flex={1} gap="$0.5">
           <Text fontFamily={BIZLINK_FONTS.semibold} fontSize={14} color={BIZLINK_COLORS.text}>{client.company_name}</Text>
           <Text fontSize={11.5} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted}>
-            {client.contact_person || 'Walang contact person pa'}
+            {client.contact_person || 'No contact person yet'}
           </Text>
         </YStack>
       </XStack>

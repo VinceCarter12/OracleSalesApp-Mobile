@@ -24,7 +24,7 @@ export function useManagerApprovalFeed(): UseManagerApprovalFeed {
       setRows(data);
     } catch (err) {
       console.error('[use-manager-approval-feed] load failed:', describeLoadError(err));
-      setError('Hindi na-load ang Approvals. Subukan ulit.');
+      setError("The requests couldn't be loaded. Try again.");
     } finally {
       setLoading(false);
     }

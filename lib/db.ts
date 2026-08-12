@@ -53,7 +53,68 @@ async function ensureSelfieProofColumns(db: SQLiteDatabase): Promise<void> {
 }
 
 /**
- * Runs once per app launch via `SQLiteProvider`'s `onInit` (see app/_layout.tsx).
+ * B-111 (2026-08-10): `collection_payments` (v28) and `cod_payments` (v30)
+ * are additive tables gated behind their own `currentVersion === N` block, so
+ * (same class of gap as `ensureSelfieProofColumns` above) a device whose
+ * `user_version` already reached the target — but whose CREATE TABLE never
+ * actually completed, e.g. B-110's now-fixed dual-connection race letting two
+ * concurrent `migrateDbIfNeeded()` runs interleave mid-migration — permanently
+ * skips them forever, since version gating alone never re-attempts a step
+ * once the stored version moves past it. Both statements are already
+ * `CREATE TABLE/INDEX IF NOT EXISTS`, so safe to re-run unconditionally on
+ * every launch regardless of whether this device was ever actually affected.
+ */
+async function ensureCriticalTablesExist(db: SQLiteDatabase): Promise<void> {
+  await db.execAsync(`
+    CREATE TABLE IF NOT EXISTS collection_payments (
+      id TEXT PRIMARY KEY NOT NULL,
+      visit_id TEXT NOT NULL,
+      collector_id TEXT NOT NULL,
+      amount REAL NOT NULL,
+      payment_method TEXT NOT NULL,
+      payment_photo_uri TEXT,
+      receipt_photo_uri TEXT,
+      payment_photo_url TEXT,
+      delivery_receipt_photo_url TEXT,
+      gps_lat REAL,
+      gps_lng REAL,
+      remarks TEXT,
+      paid_at TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'pending',
+      retry_count INTEGER NOT NULL DEFAULT 0,
+      next_attempt_at TEXT,
+      last_error TEXT,
+      created_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_collection_payments_status ON collection_payments (status);
+    CREATE INDEX IF NOT EXISTS idx_collection_payments_visit ON collection_payments (visit_id);
+
+    CREATE TABLE IF NOT EXISTS cod_payments (
+      id TEXT PRIMARY KEY NOT NULL,
+      po_id TEXT NOT NULL,
+      driver_id TEXT NOT NULL,
+      amount REAL NOT NULL,
+      payment_method TEXT NOT NULL,
+      payment_photo_uri TEXT,
+      payment_photo_url TEXT,
+      gps_lat REAL,
+      gps_lng REAL,
+      remarks TEXT,
+      paid_at TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'pending',
+      retry_count INTEGER NOT NULL DEFAULT 0,
+      next_attempt_at TEXT,
+      last_error TEXT,
+      created_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_cod_payments_status ON cod_payments (status);
+    CREATE INDEX IF NOT EXISTS idx_cod_payments_po ON cod_payments (po_id);
+  `);
+}
+
+/**
+ * Runs once per app launch, inside `getDb()`'s `openDb()` (called by
+ * `AppDbProvider` on boot — see `lib/app-db-provider.tsx` / app/_layout.tsx).
  * Uses `PRAGMA user_version` so each migration step applies exactly once per
  * device, in order, regardless of which version the device is upgrading from.
  */
@@ -62,9 +123,10 @@ export async function migrateDbIfNeeded(db: SQLiteDatabase): Promise<void> {
   let currentVersion = result?.user_version ?? 0;
 
   // Do this before the version short-circuit: inconsistent devices may report
-  // v30 (or newer) while one or more additive columns are absent.
+  // v30 (or newer) while one or more additive columns/tables are absent.
   if (currentVersion >= LATEST_SCHEMA_VERSION) {
     await ensureSelfieProofColumns(db);
+    await ensureCriticalTablesExist(db);
     return;
   }
 
@@ -1257,6 +1319,7 @@ export async function migrateDbIfNeeded(db: SQLiteDatabase): Promise<void> {
   // Keep this unconditional as a final defensive check for databases that
   // traversed an older path with a partially-applied v30 block.
   await ensureSelfieProofColumns(db);
+  await ensureCriticalTablesExist(db);
 
 
   await db.execAsync(`PRAGMA user_version = ${currentVersion}`);
@@ -1302,9 +1365,14 @@ function serializeTransactions(db: SQLiteDatabase): SQLiteDatabase {
 let dbPromise: Promise<SQLiteDatabase> | null = null;
 
 /**
- * For code outside the React tree (T-002 sync engine, background tasks).
- * Screens/components should prefer `useSQLiteContext()` from `expo-sqlite`
- * instead, since it shares the connection `SQLiteProvider` already opened.
+ * B-110 (2026-08-10): the app's ONE native SQLite connection — used directly
+ * by code outside the React tree (T-002 sync engine, background tasks) AND
+ * republished into React via `lib/app-db-provider.tsx`'s `AppDbProvider`/
+ * `useAppDb()` (replaces expo-sqlite's own `<SQLiteProvider>`/
+ * `useSQLiteContext()`, which used to open a SECOND, entirely independent
+ * native connection to the same file — see `app-db-provider.tsx`'s header
+ * comment for the full incident). Every screen/hook should call `useAppDb()`;
+ * `getDb()` itself is for non-React callers only.
  */
 export function getDb(): Promise<SQLiteDatabase> {
   if (!dbPromise) {

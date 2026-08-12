@@ -1,10 +1,11 @@
 import { useMemo, useState } from 'react';
-import { FlatList, Pressable, TextInput } from 'react-native';
+import { FlatList, Pressable, RefreshControl, ScrollView, TextInput } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
-import { Search, SlidersHorizontal, Users } from 'lucide-react-native';
+import { Plus, Search, SlidersHorizontal, Users } from 'lucide-react-native';
 import { Spinner, Text, XStack, YStack } from 'tamagui';
 import { BIZLINK_COLORS, BIZLINK_FONTS, BIZLINK_ON_INK } from '../../../../lib/theme';
+import { KeyboardAwareFlatList } from '../../../../components/ui/KeyboardAwareScrollView';
 import { useTeamOverview } from '../../../../lib/use-team-overview';
 import { useManagerScope } from '../../../../lib/manager-scope-store';
 import { useSession } from '../../../../lib/session-store';
@@ -22,6 +23,8 @@ import { Avatar } from '../../../../components/ui/Avatar';
 import { StatusBadge } from '../../../../components/ui/StatusBadge';
 import { meetingBadge } from '../../../../lib/meeting-badge';
 import { MANAGER_OUTCOMES, MANAGER_OUTCOME_LABELS, type ManagerOutcome } from '../../../../types';
+import { BizFloatingPager } from '../../../../components/bizlink/BizFloatingPager';
+import { usePagination } from '../../../../lib/use-pagination';
 
 type OutcomeFilter = ManagerOutcome | 'all';
 
@@ -55,6 +58,8 @@ export default function ManagerMeetingsScreen() {
       && (outcomeFilter === 'all' || meeting.outcome === outcomeFilter)
       && (!normalizedQuery || [client?.name, meeting.location].join(' ').toLowerCase().includes(normalizedQuery));
   }), [meetings, clients, agentFilter, outcomeFilter, normalizedQuery]);
+  const resetKey = `${scope}:${agentFilter}:${outcomeFilter}:${normalizedQuery}`;
+  const { page, totalPages, pageItems, setPage } = usePagination(filtered, resetKey);
 
   const outcomeLabel = outcomeFilter === 'all' ? 'All' : MANAGER_OUTCOME_LABELS[outcomeFilter];
   const agentLabel = agentFilter === 'all' ? 'All' : agents.find((agent) => agent.id === agentFilter)?.name.split(' ')[0] ?? 'All';
@@ -67,7 +72,20 @@ export default function ManagerMeetingsScreen() {
 
   return (
     <YStack flex={1} backgroundColor={BIZLINK_COLORS.canvas} paddingTop={insets.top}>
-      <BizTopBar title="Meeting Details" />
+      <BizTopBar
+        title="Meeting Details"
+        fallbackHref="/(manager)"
+        right={
+          <Pressable
+            accessibilityLabel="Select client for a new meeting"
+            onPress={() => router.push('/(manager)/clients/select-client')}
+            style={{ flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: BIZLINK_COLORS.brand, borderRadius: 999, paddingHorizontal: 16, minHeight: 44 }}
+          >
+            <Plus size={14} color={BIZLINK_ON_INK.solid} strokeWidth={1.75} />
+            <Text fontSize={12.5} fontFamily={BIZLINK_FONTS.semibold} color={BIZLINK_ON_INK.solid}>Select Client</Text>
+          </Pressable>
+        }
+      />
       <YStack paddingHorizontal="$4" gap="$2">
         <XStack gap="$2" alignItems="center">
           <XStack flex={1} alignItems="center" gap="$2" height={52} paddingHorizontal={12} backgroundColor={BIZLINK_COLORS.card} borderRadius={16}>
@@ -96,6 +114,13 @@ export default function ManagerMeetingsScreen() {
         <BizScopeFilter />
       </YStack>
 
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flexGrow: 0 }} contentContainerStyle={{ paddingHorizontal: 16 }}>
+        <XStack gap="$2" marginBottom="$2.5">
+          <BizChip label="All" selected={outcomeFilter === 'all'} onPress={() => setOutcomeFilter('all')} />
+          {MANAGER_OUTCOMES.map((outcome) => <BizChip key={outcome} label={MANAGER_OUTCOME_LABELS[outcome]} selected={outcomeFilter === outcome} onPress={() => setOutcomeFilter(outcome)} />)}
+        </XStack>
+      </ScrollView>
+
       <BizFilterSheet visible={filterOpen} onClose={() => setFilterOpen(false)} filtersActive={filtersActive} onReset={resetFilters}>
         {scope !== 'mine' ? (
           <BizFilterSheetRow label="Agent" value={agentLabel}>
@@ -114,9 +139,10 @@ export default function ManagerMeetingsScreen() {
       </BizFilterSheet>
 
       {loading ? <YStack alignItems="center" paddingVertical="$6"><Spinner size="large" color={BIZLINK_COLORS.brand} /></YStack>
-        : error ? <YStack alignItems="center" paddingVertical="$6" gap="$3"><Text fontSize={13} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} textAlign="center">{error}</Text><BizButton small label="Ulitin" variant="white" onPress={reload} /></YStack>
-          : <FlatList
-              data={filtered}
+        : error ? <YStack alignItems="center" paddingVertical="$6" gap="$3"><Text fontSize={13} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} textAlign="center">{error}</Text><BizButton small label="Try again" variant="white" onPress={reload} /></YStack>
+          : <KeyboardAwareFlatList
+              keyboardShouldPersistTaps="handled"
+              data={pageItems}
               keyExtractor={(item) => item.id}
               contentContainerStyle={{ paddingHorizontal: 16, paddingTop: 12, paddingBottom: 16 }}
               renderItem={({ item, index }) => {
@@ -134,13 +160,15 @@ export default function ManagerMeetingsScreen() {
                   <YStack flex={1} gap="$1.5">
                     <XStack alignItems="center" gap="$2"><Avatar initials={agent?.initials ?? '—'} size="sm" background={palette.background} color={palette.color} /><YStack flex={1}><Text fontFamily={BIZLINK_FONTS.semibold} fontSize={14} color={BIZLINK_COLORS.text}>{client?.name ?? 'Unknown client'}</Text><Text fontSize={11} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted}>{agent?.name ?? 'Unassigned'}</Text></YStack></XStack>
                     <Text fontSize={11.5} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted}>{item.date} · {item.time} · {item.location}{item.meetingMode === 'online' ? ' · Online' : ''}</Text>
-                    <XStack alignItems="center" gap="$1.5" flexWrap="wrap">{meetingBadge(item)}{lifecycleStatus ? <StatusBadge {...CLIENT_STATUS_BADGES[lifecycleStatus]} /> : null}<Text fontSize={10.5} fontFamily={BIZLINK_FONTS.semibold} color={item.synced ? BIZLINK_COLORS.brand : BIZLINK_COLORS.navy}>{item.synced ? '✓ synced' : '↻ pending'}</Text>{item.tagAlong ? <XStack alignItems="center" gap="$0.5"><Users size={11} color={BIZLINK_COLORS.navy} strokeWidth={1.75} /><Text fontSize={10.5} fontFamily={BIZLINK_FONTS.semibold} color={BIZLINK_COLORS.navy}>tag-along</Text></XStack> : null}</XStack>
+                    <XStack alignItems="center" gap="$1.5" flexWrap="wrap">{meetingBadge(item)}{lifecycleStatus ? <StatusBadge {...CLIENT_STATUS_BADGES[lifecycleStatus]} /> : null}<Text fontSize={10.5} fontFamily={BIZLINK_FONTS.semibold} color={item.synced ? BIZLINK_COLORS.brand : BIZLINK_COLORS.navy}>{item.synced ? '✓ uploaded' : '↻ waiting'}</Text>{item.tagAlong ? <XStack alignItems="center" gap="$0.5"><Users size={11} color={BIZLINK_COLORS.navy} strokeWidth={1.75} /><Text fontSize={10.5} fontFamily={BIZLINK_FONTS.semibold} color={BIZLINK_COLORS.navy}>companion</Text></XStack> : null}</XStack>
                     {client ? <XStack alignItems="center" gap="$2"><Text fontSize={10} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} width={58}>{client.status === 'in_progress' ? 'In progress' : client.status.charAt(0).toUpperCase() + client.status.slice(1)}</Text><YStack flex={1} height={4} borderRadius={2} backgroundColor={BIZLINK_COLORS.soft}><YStack width={`${progress}%`} height={4} borderRadius={2} backgroundColor={BIZLINK_COLORS.brand} /></YStack><Text fontSize={10} fontFamily={BIZLINK_FONTS.semibold} color={BIZLINK_COLORS.brand}>{progress}%</Text></XStack> : null}
                   </YStack>
                 </XStack>;
               }}
-              ListEmptyComponent={<YStack alignItems="center" padding="$8"><Text fontSize={13} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted}>Walang meeting na tumugma.</Text></YStack>}
+              refreshControl={<RefreshControl refreshing={loading} onRefresh={reload} />}
+              ListEmptyComponent={<YStack alignItems="center" padding="$8"><Text fontSize={13} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted}>No meetings match these filters.</Text></YStack>}
             />}
+      {filtered.length > 0 ? <BizFloatingPager page={page} totalPages={totalPages} onPageChange={setPage} bottomOffset={insets.bottom + 16} /> : null}
     </YStack>
   );
 }

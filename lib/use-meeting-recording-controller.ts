@@ -16,6 +16,8 @@ import {
   type MeetingDraft,
 } from './meeting-drafts';
 import { markLiveSession, hasLiveSession, clearLiveSession } from './meeting-live-session';
+import { checkMeetingStartAllowed } from './meeting-ongoing-guard';
+import { OngoingMeetingLimitError } from './meeting-drafts';
 import type { Client, MeetingMode, TeamRosterEntry } from '../types';
 
 export interface MeetingStartCapture {
@@ -58,6 +60,7 @@ export function useMeetingRecordingController({ clientId, flow }: UseMeetingReco
   const [start, setStart] = useState<MeetingStartCapture | null>(null);
   const [starting, setStarting] = useState(false);
   const [startConfirmOpen, setStartConfirmOpen] = useState(false);
+  const [ongoingMeetingWarning, setOngoingMeetingWarning] = useState<'ongoing_meeting' | 'unavailable' | null>(null);
 
   const [pendingDraft, setPendingDraft] = useState<MeetingDraft | null>(null);
   // A draft found for THIS JS process (hasLiveSession) — restored silently,
@@ -187,37 +190,49 @@ export function useMeetingRecordingController({ clientId, flow }: UseMeetingReco
       const alreadySelected = prev.some((p) => p.profileId === entry.profileId);
       if (alreadySelected) return prev.filter((p) => p.profileId !== entry.profileId);
       if (prev.length >= MAX_COMPANIONS_PER_REQUEST) {
-        showToast('Hanggang 2 kasama lang ang pwede');
+        showToast('Up to 2 companions are allowed');
         return prev;
       }
       return [...prev, entry];
     });
   }, []);
 
-  const requestStartMeeting = useCallback((): void => {
+  const requestStartMeeting = useCallback(async (): Promise<void> => {
+    const guard = await checkMeetingStartAllowed(profileId, clientId);
+    if (!guard.allowed) {
+      setOngoingMeetingWarning(guard.reason);
+      return;
+    }
     setStartConfirmOpen(true);
-  }, []);
+  }, [profileId, clientId]);
 
   const cancelStartMeeting = useCallback((): void => {
     setStartConfirmOpen(false);
   }, []);
 
+  const closeOngoingMeetingWarning = useCallback((): void => {
+    setOngoingMeetingWarning(null);
+  }, []);
+
   /**
    * GPS is captured on Start (matches the wireframe's
    * `aRequestRecordStart`/`aRecordConfirmStart`) — the actual GPS fetch only
-   * happens after "Yes, start". A best-effort draft write follows (ADR-026
-   * P1 item 3, extended to the full form 2026-08-02): a failure here logs
-   * but never blocks the meeting from starting, matching the fast path's
-   * existing behavior exactly.
+   * happens after "Yes, start". The draft write must succeed before the UI
+   * becomes in-progress: it is the durable record that enforces the one
+   * ongoing-meeting limit across every route.
    */
   const confirmStartMeeting = useCallback(async (): Promise<void> => {
     setStartConfirmOpen(false);
     if (!clientId || !profileId) return;
+    const guard = await checkMeetingStartAllowed(profileId, clientId);
+    if (!guard.allowed) {
+      setOngoingMeetingWarning(guard.reason);
+      return;
+    }
     setStarting(true);
     try {
       const gps = await captureGps();
       const capturedAt = new Date().toISOString();
-      setStart({ capturedAt, gpsLat: gps.lat, gpsLng: gps.lng });
       try {
         await saveDraft({
           clientId,
@@ -231,12 +246,14 @@ export function useMeetingRecordingController({ clientId, flow }: UseMeetingReco
             companions: companionsForDraft(currentVisibleCompanions()),
           },
         });
+        setStart({ capturedAt, gpsLat: gps.lat, gpsLng: gps.lng });
         // From this point on, this JS process "owns" the meeting — leaving
         // and returning to this screen (still the same app run) must never
         // ask again; see lib/meeting-live-session.ts.
         markLiveSession(profileId, clientId);
       } catch (draftErr) {
         console.error('[useMeetingRecordingController] Failed to persist meeting draft:', draftErr);
+        setOngoingMeetingWarning(draftErr instanceof OngoingMeetingLimitError ? 'ongoing_meeting' : 'unavailable');
       }
     } catch (err) {
       Alert.alert('Location Error', err instanceof Error ? err.message : 'Failed to get GPS location.');
@@ -378,8 +395,10 @@ export function useMeetingRecordingController({ clientId, flow }: UseMeetingReco
     starting,
     elapsedSeconds,
     startConfirmOpen,
+    ongoingMeetingWarning,
     requestStartMeeting,
     cancelStartMeeting,
+    closeOngoingMeetingWarning,
     confirmStartMeeting,
     updateStartGps,
     updateDraftAgendas,

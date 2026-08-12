@@ -73,14 +73,14 @@ export default function ManagerApprovalDetailScreen() {
           // Navigating away unmounts this screen's own feed instance; the
           // list screen's useFocusEffect already refetches on return, so no
           // reload() here (would race a state update on an unmounting hook).
-          showToast(code === 'approved' ? 'Na-approve ang request.' : 'Na-reject ang request.');
+          showToast(code === 'approved' ? 'Request approved.' : 'Request rejected.');
           router.back();
           break;
         case 'already_decided':
           // Not an error — someone else (or a retried tap) already decided
           // this request; per ADR-052 section E's decision-code mapping,
           // just inform and refetch so the list reflects reality.
-          showToast('Na-desisyunan na ito.');
+          showToast('This was already decided.');
           await reload();
           break;
         case 'conflict':
@@ -90,12 +90,12 @@ export default function ManagerApprovalDetailScreen() {
           await reload();
           break;
         case 'error':
-          setDecideError('Hindi na-proseso ang desisyon. Subukan ulit.');
+          setDecideError("The decision couldn't be processed. Try again.");
           await reload();
           break;
       }
     } catch (err) {
-      setDecideError(err instanceof Error ? err.message : 'Hindi na-proseso ang desisyon. Subukan ulit.');
+      setDecideError(err instanceof Error ? err.message : "The decision couldn't be processed. Try again.");
     } finally {
       setDeciding(false);
     }
@@ -124,7 +124,7 @@ export default function ManagerApprovalDetailScreen() {
         <BizTopBar title="Approval Detail" fallbackHref="/(manager)/approvals" />
         <YStack flex={1} justifyContent="center" alignItems="center" paddingHorizontal="$5">
           <Text fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} textAlign="center">
-            Wala nang approval — na-decide na ito o hindi ma-hanap.
+            This approval is gone — it was already decided or can't be found.
           </Text>
         </YStack>
       </YStack>

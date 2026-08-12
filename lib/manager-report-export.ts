@@ -24,7 +24,7 @@ function sharingModule(): typeof import('expo-sharing') {
     // eslint-disable-next-line @typescript-eslint/no-require-imports -- must not crash route import on a pre-sharing dev build.
     return require('expo-sharing') as typeof import('expo-sharing');
   } catch {
-    throw new Error('Kailangan i-rebuild ang app bago magamit ang Excel export.');
+    throw new Error('The app needs to be rebuilt before Excel export can be used.');
   }
 }
 
@@ -59,7 +59,7 @@ function reportFileName(): string {
  */
 export async function exportManagerReport(request: ManagerReportExportRequest): Promise<void> {
   const { data: { session } } = await supabase.auth.getSession();
-  if (!session) throw new Error('Kailangan munang mag-sign in bago mag-export.');
+  if (!session) throw new Error('You need to be signed in to export.');
 
   const response = await fetch(`${process.env.EXPO_PUBLIC_SUPABASE_URL}/functions/v1/manager-report-export`, {
     method: 'POST',
@@ -71,7 +71,7 @@ export async function exportManagerReport(request: ManagerReportExportRequest): 
     body: JSON.stringify(request),
   });
   if (!response.ok) {
-    let message = 'Hindi ma-generate ang Excel report. Subukan ulit.';
+    let message = "The Excel report couldn't be generated. Try again.";
     try {
       const body = await response.json() as { error?: string };
       if (body.error) message = body.error;
@@ -89,7 +89,7 @@ export async function exportManagerReport(request: ManagerReportExportRequest): 
 
   const Sharing = sharingModule();
   if (!await Sharing.isAvailableAsync()) {
-    throw new Error('Hindi available ang file sharing sa device na ito.');
+    throw new Error('File sharing isn\'t available on this device.');
   }
-  await Sharing.shareAsync(file.uri, { mimeType: EXCEL_MIME, dialogTitle: 'I-share ang team report' });
+  await Sharing.shareAsync(file.uri, { mimeType: EXCEL_MIME, dialogTitle: 'Share the team report' });
 }

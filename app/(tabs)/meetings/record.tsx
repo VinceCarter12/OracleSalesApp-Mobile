@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Alert, ScrollView } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useSQLiteContext } from 'expo-sqlite';
+import { useAppDb } from '../../../lib/app-db-provider';
 import { router, useLocalSearchParams } from 'expo-router';
 import { MapPin } from 'lucide-react-native';
 import { Spinner, Text, XStack, YStack } from 'tamagui';
@@ -33,6 +33,8 @@ import { DraftResumePrompt } from '../../../components/meetings/DraftResumePromp
 import { ClientCutoffAllowanceBlock } from '../../../components/cutoff/ClientCutoffAllowanceBlock';
 import { StartMeetingConfirmDialog } from '../../../components/meetings/StartMeetingConfirmDialog';
 import { CancelMeetingDialog } from '../../../components/meetings/CancelMeetingDialog';
+import { KeyboardAwareScrollView } from '../../../components/ui/KeyboardAwareScrollView';
+import { OngoingMeetingWarningDialog } from '../../../components/meetings/OngoingMeetingWarningDialog';
 import { InAppCameraOverlay } from '../../../components/meetings/InAppCameraOverlay';
 import { isCloseDealPoEligible } from '../../../lib/policies/po-confirmation-status-policy';
 import { CLOSE_DEAL_AGENDA, type MeetingOutcome } from '../../../types';
@@ -81,7 +83,7 @@ function agendaStageForClient(status: ReturnType<typeof getClientStatus> | null)
  */
 export default function RecordMeetingScreen() {
   const insets = useSafeAreaInsets();
-  const db = useSQLiteContext();
+  const db = useAppDb();
   const { clientId } = useLocalSearchParams<{ clientId?: string }>();
   const { session } = useAuth();
   const routes = useClientFlowRoutes();
@@ -91,7 +93,8 @@ export default function RecordMeetingScreen() {
     client, visibleRoster, profileId, markSuspended,
     selectedCompanions, toggleCompanion, companionSelections, companionsPreAccepted,
     mode, setMode, start, starting, elapsedSeconds, startConfirmOpen,
-    requestStartMeeting, cancelStartMeeting, confirmStartMeeting, updateStartGps, updateDraftAgendas,
+    requestStartMeeting, cancelStartMeeting, closeOngoingMeetingWarning, confirmStartMeeting, updateStartGps, updateDraftAgendas,
+    ongoingMeetingWarning,
     autoResumedAgendas, pendingDraft, resumeDraft, discardDraft, cancelActiveMeeting, clearDraft,
   } = controller;
 
@@ -173,7 +176,7 @@ export default function RecordMeetingScreen() {
       const gps = await captureGps();
       updateStartGps(gps);
     } catch (err) {
-      Alert.alert('Location Error', err instanceof Error ? err.message : 'Failed to get GPS location.');
+      Alert.alert('Location Error', err instanceof Error ? err.message : "Couldn't get your location.");
     } finally {
       setLoadingLocation(false);
     }
@@ -205,7 +208,7 @@ export default function RecordMeetingScreen() {
   async function doSave() {
     if (saving) return;
     if (!start) {
-      Alert.alert('Start Meeting Required', 'Tap Start meeting to lock GPS + timestamp before saving.');
+      Alert.alert('Start Meeting Required', 'Tap Start meeting to save your location and time before saving.');
       return;
     }
     if (!photoUri) {
@@ -222,7 +225,7 @@ export default function RecordMeetingScreen() {
       // rather than silently drop the captured evidence.
       Alert.alert(
         'Sync Required',
-        'This client’s current cycle hasn’t synced to this device yet. Sync online, then try again before saving with PO evidence.'
+        "This client's current cycle hasn't been received by this device yet. Connect online and try again before saving with PO evidence."
       );
       return;
     }
@@ -251,7 +254,7 @@ export default function RecordMeetingScreen() {
       const gps = await captureGps();
       endGps = { capturedAt: new Date().toISOString(), gpsLat: gps.lat, gpsLng: gps.lng };
     } catch (err) {
-      Alert.alert('Location Error', err instanceof Error ? err.message : 'Failed to get GPS location.');
+      Alert.alert('Location Error', err instanceof Error ? err.message : "Couldn't get your location.");
       setSaving(false);
       return;
     }
@@ -331,7 +334,7 @@ export default function RecordMeetingScreen() {
       await cancelActiveMeeting();
       router.replace(routes.meetingsHome());
     } catch {
-      Alert.alert('Cancel failed', 'Hindi na-discard ang meeting draft. Subukan ulit.');
+      Alert.alert('Cancel failed', "The meeting draft couldn't be discarded. Try again.");
     }
   }
 
@@ -340,8 +343,8 @@ export default function RecordMeetingScreen() {
 
   return (
     <YStack flex={1} backgroundColor={BIZLINK_COLORS.canvas} paddingTop={insets.top}>
-      <BizTopBar title={actionName} />
-      <ScrollView contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 32 }}>
+      <BizTopBar title={actionName} fallbackHref={routes.meetingsHome()} fallbackOnlyIfNoHistory />
+      <KeyboardAwareScrollView contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 32 }} keyboardShouldPersistTaps="handled">
         <SelectedClientCard
           clientName={client?.company_name ?? null}
           status={client ? getClientStatus(client) : null}
@@ -394,23 +397,23 @@ export default function RecordMeetingScreen() {
                   <MapPin size={18} color={BIZLINK_COLORS.card} strokeWidth={1.75} />
                 </YStack>
                 <YStack flex={1}>
-                  <Text fontSize={12.5} fontFamily={BIZLINK_FONTS.semibold} color={BIZLINK_COLORS.card}>GPS will be captured on Start</Text>
+                  <Text fontSize={12.5} fontFamily={BIZLINK_FONTS.semibold} color={BIZLINK_COLORS.card}>Your location will be saved when you tap Start</Text>
                   <Text fontSize={11} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_ON_INK.textMuted}>
                     Start asks for location permission if needed.
                   </Text>
                 </YStack>
               </XStack>
             </YStack>
-            <BizButton label={starting ? 'Capturing GPS…' : 'Start meeting'} onPress={requestStartMeeting} disabled={starting} />
+            <BizButton label={starting ? 'Capturing your location…' : 'Start meeting'} onPress={requestStartMeeting} disabled={starting} />
             <Text fontSize={12} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} textAlign="center">
-              Picture ay kukunin lang sa dulo, kasabay ng Save Meeting.
+              The photo is taken at the end, together with Save Meeting.
             </Text>
           </YStack>
         ) : (
           <>
             <YStack backgroundColor={BIZLINK_COLORS.tintA} borderRadius={20} padding={14} marginTop="$4">
               <Text fontSize={12.5} fontFamily={BIZLINK_FONTS.semibold} color={BIZLINK_COLORS.ink}>
-                Meeting in progress — nagsimula {new Date(start.capturedAt).toLocaleTimeString()} · {formatElapsed(elapsedSeconds)}
+                Meeting in progress — started {new Date(start.capturedAt).toLocaleTimeString()} · {formatElapsed(elapsedSeconds)}
               </Text>
             </YStack>
 
@@ -478,11 +481,11 @@ export default function RecordMeetingScreen() {
               {saving ? <Spinner color={BIZLINK_COLORS.brand} /> : null}
             </XStack>
             <Text fontSize={12} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} textAlign="center" marginTop="$2">
-              Gagana kahit walang signal — mase-save locally, auto-sync mamaya.
+              Works even without signal — saved on this phone, uploaded automatically later.
             </Text>
           </>
         )}
-      </ScrollView>
+      </KeyboardAwareScrollView>
 
       <LostOpportunityDialog
         visible={lostDialogOpen}
@@ -522,6 +525,12 @@ export default function RecordMeetingScreen() {
         onConfirm={() => {
           void confirmStartMeeting();
         }}
+      />
+
+      <OngoingMeetingWarningDialog
+        visible={ongoingMeetingWarning !== null}
+        unavailable={ongoingMeetingWarning === 'unavailable'}
+        onClose={closeOngoingMeetingWarning}
       />
 
       <CancelMeetingDialog

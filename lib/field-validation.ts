@@ -30,9 +30,9 @@ export const OTHER_LOCATION_MAX_LENGTH = 100;
 export const PASSWORD_MIN_LENGTH = 8;
 
 export const CONTACT_NUMBER_INVALID_MESSAGE =
-  'Contact number ay dapat 11 digits na nagsisimula sa 09 (hal. 0917 123 4567).';
-export const EMAIL_INVALID_MESSAGE = 'Hindi valid ang email na ito.';
-export const PASSWORD_TOO_SHORT_MESSAGE = `Ang password ay dapat may hindi bababa sa ${PASSWORD_MIN_LENGTH} characters.`;
+  'The contact number must be 11 digits starting with 09 (e.g. 0917 123 4567).';
+export const EMAIL_INVALID_MESSAGE = 'This email address is not valid.';
+export const PASSWORD_TOO_SHORT_MESSAGE = `The password must have at least ${PASSWORD_MIN_LENGTH} characters.`;
 
 /**
  * Strips everything but digits and caps the result at 11 — wired into the

@@ -84,13 +84,13 @@ export async function getNotificationFeedItems(profileId: string | null): Promis
   const loadedAt = new Date().toISOString();
 
   if (counts.failed > 0) {
-    const title = `${pluralRecords(counts.failed)} failed to sync`;
+    const title = `${pluralRecords(counts.failed)} couldn't be uploaded`;
     items.push({
       id: buildNotificationContentId(profileId, 'sync', title),
       category: 'sync',
       kind: 'action',
       title,
-      body: 'Needs attention — check Sync History for details.',
+      body: 'Needs your attention — open Uploads to see which one.',
       timestamp: loadedAt,
       clientId: null,
       meetingId: null,
@@ -105,7 +105,7 @@ export async function getNotificationFeedItems(profileId: string | null): Promis
       category: 'sync',
       kind: 'action',
       title,
-      body: 'A record was changed on both the device and the server.',
+      body: 'This item was changed on your phone at the same time it was changed in the system. The app needs you to choose which version to keep.',
       timestamp: loadedAt,
       clientId: null,
       meetingId: null,
@@ -114,13 +114,13 @@ export async function getNotificationFeedItems(profileId: string | null): Promis
     });
   }
   if (counts.pending > 0) {
-    const title = `${pluralRecords(counts.pending)} queued for sync`;
+    const title = `${pluralRecords(counts.pending)} waiting to upload`;
     items.push({
       id: buildNotificationContentId(profileId, 'sync', title),
       category: 'sync',
       kind: 'update',
       title,
-      body: 'Auto-uploads kapag may signal.',
+      body: 'These will be sent automatically once you\'re online.',
       timestamp: loadedAt,
       clientId: null,
       meetingId: null,
@@ -130,14 +130,14 @@ export async function getNotificationFeedItems(profileId: string | null): Promis
   }
 
   for (const tag of managerTags) {
-    const managerName = tag.requesterName ?? 'Manager mo';
-    const title = `${managerName} tinag ka sa isang meeting`;
+    const managerName = tag.requesterName ?? 'Your manager';
+    const title = `${managerName} invited you to a meeting`;
     items.push({
       id: buildNotificationContentId(profileId, 'tagalong', `${title}:${tag.id}`),
       category: 'tagalong',
       kind: 'update',
       title,
-      body: tag.clientName ?? 'Walang client name na naka-sync.',
+      body: tag.clientName ?? 'Client name unavailable.',
       timestamp: tag.createdAt,
       clientId: tag.clientId,
       meetingId: null,

@@ -1,4 +1,6 @@
+import type { ReactNode } from 'react';
 import { router } from 'expo-router';
+import { useWindowDimensions } from 'react-native';
 import {
   Bell,
   Building2,
@@ -12,9 +14,8 @@ import {
   Plus,
   ShieldCheck,
   UserRound,
-  Users,
 } from 'lucide-react-native';
-import { XStack } from 'tamagui';
+import { XStack, YStack } from 'tamagui';
 import { BIZLINK_COLORS } from '../../lib/theme';
 import { getDashboardActionHref } from '../../lib/dashboard-action-registry';
 import { BizSectionHeader } from '../bizlink/BizSectionHeader';
@@ -47,93 +48,59 @@ export function ManagerHomeActionsSection({
   pendingApprovalCount,
   pendingTagAlongCount,
 }: ManagerHomeActionsSectionProps) {
+  const { width: windowWidth } = useWindowDimensions();
+  const quickActionColumns = Math.max(3, Math.floor((windowWidth - 32 + 8) / (78 + 8)));
+
   return (
     <>
-      <BizSectionHeader title="Mga Gawain" />
+      <BizSectionHeader title="Your tasks" />
       <XStack gap="$2.5">
         <BizPrimaryActionCard
           variant="dark"
           icon={<Plus size={18} color="#FFFFFF" strokeWidth={1.75} />}
-          title="Gumawa ng client"
-          subtitle="Company at city muna"
+          title="Create a client"
+          subtitle="Company and city first"
           onPress={() => router.push(getDashboardActionHref('manager-create-client', role))}
         />
         <BizPrimaryActionCard
           variant="alt"
           icon={<Handshake size={18} color={BIZLINK_COLORS.ink} strokeWidth={1.75} />}
-          title="I-record ang meeting"
-          subtitle="Pumili muna ng client"
+          title="Record a meeting"
+          subtitle="Pick a client first"
           onPress={() => router.push(getDashboardActionHref('manager-record-meeting', role))}
           active={activeMeeting}
         />
       </XStack>
 
       <BizSectionHeader title="Manager Actions" />
-      <XStack gap="$2.5" flexWrap="wrap">
-        {/* Batch 6 PR B (ADR-052, F-205 reversal): Wireframe-Manager-BizLink.html
-            line 487's "Approvals" Quick Action, restored — client-edit +
-            PO-confirmation requests only (Wireframe line 687: tag-along
-            keeps its own separate flow below, unchanged). Badge count now
-            wired (2026-08-04 Full Badge Implementation) — shows pending
-            client-edit + PO-confirmation requests. */}
-        <BizQuickAction
-          icon={<PenLine size={20} color={BIZLINK_COLORS.ink} strokeWidth={1.75} />}
-          label="Approvals"
-          badgeCount={pendingApprovalCount}
-          onPress={() => router.push(getDashboardActionHref('manager-approvals', role))}
-        />
-        <BizQuickAction
-          icon={<Users size={20} color={BIZLINK_COLORS.ink} strokeWidth={1.75} />}
-          label="Tag-Along"
-          badgeCount={pendingTagAlongCount}
-          onPress={() => router.push(getDashboardActionHref('manager-tag-along', role))}
-        />
-        <BizQuickAction
-          icon={<UserRound size={20} color={BIZLINK_COLORS.ink} strokeWidth={1.75} />}
-          label="My Team"
-          onPress={() => router.push(getDashboardActionHref('manager-team', role))}
-        />
-        <BizQuickAction
-          icon={<Building2 size={20} color={BIZLINK_COLORS.ink} strokeWidth={1.75} />}
-          label="Clients"
-          onPress={() => router.push(getDashboardActionHref('manager-clients', role))}
-        />
-        <BizQuickAction
-          icon={<CalendarDays size={20} color={BIZLINK_COLORS.ink} strokeWidth={1.75} />}
-          label="Meeting Details"
-          onPress={() => router.push(getDashboardActionHref('manager-sales-history', role))}
-        />
-        <BizQuickAction
-          icon={<CircleOff size={20} color={BIZLINK_COLORS.ink} strokeWidth={1.75} />}
-          label="Lost Opportunities"
-          onPress={() => router.push('/(manager)/more/lost-opportunities')}
-        />
-        <BizQuickAction
-          icon={<ChartNoAxesCombined size={20} color={BIZLINK_COLORS.ink} strokeWidth={1.75} />}
-          label="Reports"
-          onPress={() => router.push('/(manager)/more/reports')}
-        />
-        <BizQuickAction
-          icon={<MapPinned size={20} color={BIZLINK_COLORS.ink} strokeWidth={1.75} />}
-          label="Office Map"
-          onPress={() => router.push('/(manager)/more/maps')}
-        />
-        <BizQuickAction
-          icon={<Bell size={20} color={BIZLINK_COLORS.ink} strokeWidth={1.75} />}
-          label="Notifications"
-          onPress={() => router.push('/(manager)/more/notifications')}
-        />
-        <BizQuickAction
-          icon={<History size={20} color={BIZLINK_COLORS.ink} strokeWidth={1.75} />}
-          label="Sync History"
-          onPress={() => router.push('/(manager)/more/sync-history')}
-        />
-        <BizQuickAction
-          icon={<ShieldCheck size={20} color={BIZLINK_COLORS.ink} strokeWidth={1.75} />}
-          label="Account"
-          onPress={() => router.push('/(manager)/more/account')}
-        />
-      </XStack>
+      {/* Keep the same responsive grid rhythm as Sales/RSR Home: complete
+          rows spread across the width, while a partial final row stays grouped
+          from the left. */}
+      <YStack gap={16}>
+        {(() => {
+          const tiles: ReactNode[] = [
+            // Requests inbox: client-edit, PO-confirmation, and tag-along rows
+            // share one destination. The badge covers all pending requests.
+            <BizQuickAction key="approvals" icon={<PenLine size={20} color={BIZLINK_COLORS.ink} strokeWidth={1.75} />} label="Approvals" badgeCount={pendingApprovalCount + pendingTagAlongCount} onPress={() => router.push(getDashboardActionHref('manager-approvals', role))} />,
+            <BizQuickAction key="my-team" icon={<UserRound size={20} color={BIZLINK_COLORS.ink} strokeWidth={1.75} />} label="My Team" onPress={() => router.push(getDashboardActionHref('manager-team', role))} />,
+            <BizQuickAction key="clients" icon={<Building2 size={20} color={BIZLINK_COLORS.ink} strokeWidth={1.75} />} label="Clients" onPress={() => router.push(getDashboardActionHref('manager-clients', role))} />,
+            <BizQuickAction key="meeting-details" icon={<CalendarDays size={20} color={BIZLINK_COLORS.ink} strokeWidth={1.75} />} label="Meeting Details" onPress={() => router.push(getDashboardActionHref('manager-sales-history', role))} />,
+            <BizQuickAction key="lost-opportunities" icon={<CircleOff size={20} color={BIZLINK_COLORS.ink} strokeWidth={1.75} />} label="Lost Opportunities" onPress={() => router.push('/(manager)/more/lost-opportunities')} />,
+            <BizQuickAction key="reports" icon={<ChartNoAxesCombined size={20} color={BIZLINK_COLORS.ink} strokeWidth={1.75} />} label="Reports" onPress={() => router.push('/(manager)/more/reports')} />,
+            <BizQuickAction key="office-map" icon={<MapPinned size={20} color={BIZLINK_COLORS.ink} strokeWidth={1.75} />} label="Office Map" onPress={() => router.push('/(manager)/more/maps')} />,
+            <BizQuickAction key="notifications" icon={<Bell size={20} color={BIZLINK_COLORS.ink} strokeWidth={1.75} />} label="Notifications" onPress={() => router.push('/(manager)/more/notifications')} />,
+            <BizQuickAction key="sync-history" icon={<History size={20} color={BIZLINK_COLORS.ink} strokeWidth={1.75} />} label="Sync History" onPress={() => router.push('/(manager)/more/sync-history')} />,
+            <BizQuickAction key="account" icon={<ShieldCheck size={20} color={BIZLINK_COLORS.ink} strokeWidth={1.75} />} label="Account" onPress={() => router.push('/(manager)/more/account')} />,
+          ];
+          const rows: ReactNode[][] = [];
+          for (let i = 0; i < tiles.length; i += quickActionColumns) rows.push(tiles.slice(i, i + quickActionColumns));
+          return rows.map((row, index) => (
+            <XStack key={index} gap={8} justifyContent={row.length === quickActionColumns ? 'space-between' : 'flex-start'}>
+              {row}
+            </XStack>
+          ));
+        })()}
+      </YStack>
     </>
   );
 }

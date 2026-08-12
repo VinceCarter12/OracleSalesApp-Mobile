@@ -4,6 +4,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Download, Search, SlidersHorizontal } from 'lucide-react-native';
 import { Spinner, Text, XStack, YStack } from 'tamagui';
 import { BIZLINK_FONTS, BIZLINK_ON_INK, useBizlinkColors } from '../../../lib/theme';
+import { KeyboardAwareScrollView } from '../../../components/ui/KeyboardAwareScrollView';
 import { useTeamOverview } from '../../../lib/use-team-overview';
 import { useSession } from '../../../lib/session-store';
 import { countNewClientsAcquired, filterMeetingsByTimeframe, type ReportTimeframe } from '../../../lib/report-timeframe';
@@ -146,9 +147,9 @@ export default function ManagerReportsScreen() {
     setExporting(true);
     try {
       await exportManagerReport({ timeframe, agentIds, categories: exportCategories, searchQuery: searchQuery.trim() });
-      showToast('Excel report ready na. Piliin kung saan ise-save o ise-share.');
+      showToast('Excel report ready. Choose where to save or share it.');
     } catch (exportError) {
-      showToast(exportError instanceof Error ? exportError.message : 'Hindi ma-generate ang Excel report. Subukan ulit.');
+      showToast(exportError instanceof Error ? exportError.message : "The Excel report couldn't be generated. Try again.");
     } finally {
       setExporting(false);
     }
@@ -157,7 +158,7 @@ export default function ManagerReportsScreen() {
   return (
     <YStack flex={1} backgroundColor={BIZLINK_COLORS.canvas} paddingTop={insets.top}>
       <BizTopBar title="Reports" fallbackHref="/(manager)" />
-      <ScrollView contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 24 }}>
+      <KeyboardAwareScrollView contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 24 }} keyboardShouldPersistTaps="handled">
         <XStack gap="$2" alignItems="center" marginBottom="$3">
           <XStack flex={1} alignItems="center" gap="$2" height={52} paddingHorizontal={12} backgroundColor={BIZLINK_COLORS.card} borderRadius={16} borderWidth={1} borderColor={BIZLINK_COLORS.line}>
             <Search size={17} color={BIZLINK_COLORS.muted} strokeWidth={1.75} />
@@ -174,7 +175,7 @@ export default function ManagerReportsScreen() {
             <XStack gap="$2" flexWrap="wrap">
               {TIMEFRAMES.map((value) => <BizChip key={value} label={value} selected={timeframe === value} onPress={() => setTimeframe(value)} />)}
             </XStack>
-            {timeframe === 'Custom' ? <Text fontSize={11.5} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} marginTop="$2">Wala pang date range picker, all-time ang Custom.</Text> : null}
+            {timeframe === 'Custom' ? <Text fontSize={11.5} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} marginTop="$2">No date range picker yet — Custom shows all time.</Text> : null}
           </BizFilterSheetRow>
           <BizFilterSheetRow label="Users" value={selectedAgentsLabel}>
             <XStack gap="$2" flexWrap="wrap">
@@ -186,7 +187,7 @@ export default function ManagerReportsScreen() {
             <XStack gap="$2" flexWrap="wrap">
               {MANAGER_REPORT_EXPORT_CATEGORIES.map((category) => <BizChip key={category} label={MANAGER_REPORT_CATEGORY_LABELS[category]} selected={exportCategories.includes(category)} onPress={() => toggleExportCategory(category)} />)}
             </XStack>
-            {exportCategories.length === 0 ? <Text fontSize={11.5} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.red} marginTop="$2">Pumili ng kahit isang category para makapag-export.</Text> : null}
+            {exportCategories.length === 0 ? <Text fontSize={11.5} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.red} marginTop="$2">Pick at least one category to export.</Text> : null}
           </BizFilterSheetRow>
         </BizFilterSheet>
 
@@ -197,19 +198,19 @@ export default function ManagerReportsScreen() {
                   <YStack width="48%"><BizStatCard tone="tintA" value={filteredMeetings.length} label="Total meetings" caption={timeframe.toLowerCase()} minWidth={0} onPress={() => togglePerformanceFilter({ kind: 'meetings' })} selected={performanceFilter?.kind === 'meetings'} /></YStack>
                   <YStack width="48%"><BizStatCard tone="white" value={successful} label="Successful" caption={`${successRate}% rate`} minWidth={0} onPress={() => togglePerformanceFilter({ kind: 'successful' })} selected={performanceFilter?.kind === 'successful'} /></YStack>
                   <YStack width="48%"><BizStatCard tone="white" value={newClients.length} label="New clients acquired" caption="acquired" minWidth={0} onPress={() => togglePerformanceFilter({ kind: 'newClients' })} selected={performanceFilter?.kind === 'newClients'} /></YStack>
-                  <YStack width="48%"><BizStatCard tone="tintB" value={lost} label="Lost opportunities" caption="bantayan" minWidth={0} onPress={() => togglePerformanceFilter({ kind: 'lost' })} selected={performanceFilter?.kind === 'lost'} /></YStack>
+                  <YStack width="48%"><BizStatCard tone="tintB" value={lost} label="Lost opportunities" caption="watch" minWidth={0} onPress={() => togglePerformanceFilter({ kind: 'lost' })} selected={performanceFilter?.kind === 'lost'} /></YStack>
                 </XStack>
                 <WeeklyMeetingsChart title="Team meetings this week" meetings={teamMeetingsThisWeek} selectedDay={performanceFilter?.kind === 'day' ? performanceFilter.dayIndex : null} onSelectDay={(dayIndex) => togglePerformanceFilter({ kind: 'day', dayIndex })} />
-                {performanceFilter && panelTitle ? <FadeInPanel key={panelKey}><BizSectionHeader title={panelTitle} actionLabel="Clear" onAction={() => setPerformanceFilter(null)} />{resultMeetings?.map((meeting) => <TeamResultMeetingRow key={meeting.id} meeting={meeting} clientName={overview?.clients.find((client) => client.id === meeting.clientId)?.name ?? 'Unknown Client'} />)}{resultClients?.map((client) => <TeamResultClientRow key={client.id} client={client} />)}{(resultMeetings?.length === 0 || resultClients?.length === 0) ? <Text fontSize={13} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} paddingVertical="$3">Wala pang laman dito.</Text> : null}</FadeInPanel> : null}
+                {performanceFilter && panelTitle ? <FadeInPanel key={panelKey}><BizSectionHeader title={panelTitle} actionLabel="Clear" onAction={() => setPerformanceFilter(null)} />{resultMeetings?.map((meeting) => <TeamResultMeetingRow key={meeting.id} meeting={meeting} clientName={overview?.clients.find((client) => client.id === meeting.clientId)?.name ?? 'Unknown Client'} />)}{resultClients?.map((client) => <TeamResultClientRow key={client.id} client={client} />)}{(resultMeetings?.length === 0 || resultClients?.length === 0) ? <Text fontSize={13} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} paddingVertical="$3">Nothing here yet.</Text> : null}</FadeInPanel> : null}
               </>}
 
         <YStack marginTop="$4">
           <BizButton label={exporting ? 'Generating Excel...' : 'Export current report'} variant="navy" icon={<Download size={15} color={BIZLINK_COLORS.card} strokeWidth={1.75} />} onPress={handleExport} disabled={loading || exporting || exportCategories.length === 0} />
         </YStack>
         <Text fontSize={12.5} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} textAlign="center" marginTop="$2.5" lineHeight={18}>
-          {selectedAgentsLabel} · {timeframe} · {selectedCategoriesLabel}. Team records only, walang customer contact info.
+          {selectedAgentsLabel} · {timeframe} · {selectedCategoriesLabel}. Team records only, no customer contact info.
         </Text>
-      </ScrollView>
+      </KeyboardAwareScrollView>
     </YStack>
   );
 }

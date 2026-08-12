@@ -1,97 +1,64 @@
-import { useCallback, useState } from 'react';
-import { ScrollView } from 'react-native';
+import { useCallback, useMemo, useState } from 'react';
+import { Pressable, ScrollView } from 'react-native';
+import { router, useFocusEffect } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useFocusEffect } from 'expo-router';
-import { AlertTriangle, Bell, CircleAlert, RefreshCw } from 'lucide-react-native';
+import { AlertTriangle, Bell, PencilLine, RefreshCw, RotateCcw, Users } from 'lucide-react-native';
 import { Spinner, Text, XStack, YStack } from 'tamagui';
-import { BIZLINK_COLORS, BIZLINK_FONTS } from '../../../lib/theme';
-import { getOutboxCounts, type OutboxCounts } from '../../../lib/sync-engine';
 import { BizTopBar } from '../../../components/bizlink/BizTopBar';
+import { BizFilterScroll, type BizFilterOption } from '../../../components/bizlink/BizFilterScroll';
+import { useBizlinkColors, BIZLINK_FONTS } from '../../../lib/theme';
+import { useSession } from '../../../lib/session-store';
+import { getManagerNotificationFeedItems, type ManagerNotificationCategory, type ManagerNotificationFeedItem } from '../../../lib/manager-notification-feed-service';
+import { getReadNotificationIds, markNotificationRead } from '../../../lib/notification-unread';
+import { timeAgo } from '../../../lib/time-ago';
 
-/**
- * Manager counterpart of `app/(tabs)/more/notifications.tsx` — same
- * per-device outbox data source (`getOutboxCounts()`), since sync state is
- * scoped to the device, not the role. See that file's comment for why this
- * screen is deliberately scoped to real sync-outbox counts only.
- */
+type Filter = 'all' | ManagerNotificationCategory;
+const FILTERS: BizFilterOption<Filter>[] = [
+  { value: 'all', label: 'All' },
+  { value: 'approvals', label: 'Approvals' },
+  { value: 'tagalong', label: 'Tag-Along' },
+  { value: 'lost', label: 'Lost' },
+  { value: 'sync', label: 'Sync' },
+];
+
 export default function ManagerNotificationsScreen() {
   const insets = useSafeAreaInsets();
-  const [counts, setCounts] = useState<OutboxCounts | null>(null);
+  const colors = useBizlinkColors();
+  const { profileId } = useSession();
+  const [feed, setFeed] = useState<ManagerNotificationFeedItem[]>([]);
+  const [readIds, setReadIds] = useState<Set<string>>(new Set());
+  const [filter, setFilter] = useState<Filter>('all');
   const [loading, setLoading] = useState(true);
-
+  const [loaded, setLoaded] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const load = useCallback(() => {
     setLoading(true);
-    getOutboxCounts()
-      .then(setCounts)
-      .finally(() => setLoading(false));
-  }, []);
-
+    setError(null);
+    Promise.all([getManagerNotificationFeedItems(profileId), getReadNotificationIds()]).then(([items, ids]) => { setFeed(items); setReadIds(ids); }).catch((err: unknown) => { setError(err instanceof Error ? err.message : 'Could not load notifications.'); }).finally(() => { setLoading(false); setLoaded(true); });
+  }, [profileId]);
   useFocusEffect(useCallback(() => { load(); }, [load]));
-
-  const items: Array<{ icon: React.ReactNode; title: string; body: string }> = [];
-  if (counts) {
-    if (counts.failed > 0) {
-      items.push({
-        icon: <AlertTriangle size={16} color={BIZLINK_COLORS.red} strokeWidth={1.75} />,
-        title: `${counts.failed} record${counts.failed === 1 ? '' : 's'} failed to sync`,
-        body: 'Needs attention — check Sync History for details.',
-      });
-    }
-    if (counts.conflict > 0) {
-      items.push({
-        icon: <CircleAlert size={16} color={BIZLINK_COLORS.orange} strokeWidth={1.75} />,
-        title: `${counts.conflict} sync conflict${counts.conflict === 1 ? '' : 's'}`,
-        body: 'A record was changed on both the device and the server.',
-      });
-    }
-    if (counts.pending > 0) {
-      items.push({
-        icon: <RefreshCw size={16} color={BIZLINK_COLORS.brand} strokeWidth={1.75} />,
-        title: `${counts.pending} record${counts.pending === 1 ? '' : 's'} queued for sync`,
-        body: 'Auto-uploads kapag may signal.',
-      });
-    }
+  const visible = useMemo(() => filter === 'all' ? feed : feed.filter((item) => item.category === filter), [feed, filter]);
+  function icon(item: ManagerNotificationFeedItem): React.ReactNode {
+    if (item.category === 'approvals') return <PencilLine size={18} color={colors.brand} strokeWidth={1.8} />;
+    if (item.category === 'tagalong') return <Users size={18} color={colors.brand} strokeWidth={1.8} />;
+    if (item.category === 'lost') return <RotateCcw size={18} color={colors.orange} strokeWidth={1.8} />;
+    return item.syncKind === 'failed' ? <AlertTriangle size={18} color={colors.red} strokeWidth={1.8} /> : <RefreshCw size={18} color={colors.brand} strokeWidth={1.8} />;
   }
-
-  return (
-    <YStack flex={1} backgroundColor={BIZLINK_COLORS.canvas} paddingTop={insets.top}>
-      <BizTopBar title="Notifications" fallbackHref="/(manager)" />
-      <ScrollView contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 24 }}>
-        {loading && !counts ? (
-          <YStack alignItems="center" padding="$8">
-            <Spinner size="large" color={BIZLINK_COLORS.brand} />
-          </YStack>
-        ) : items.length === 0 ? (
-          <YStack alignItems="center" padding="$8" gap="$2.5">
-            <Bell size={40} color={BIZLINK_COLORS.muted} strokeWidth={1.75} />
-            <Text fontSize={13} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} textAlign="center">
-              Wala pang sync alerts.
-            </Text>
-          </YStack>
-        ) : (
-          items.map((item, index) => (
-            <XStack
-              key={index}
-              gap="$3"
-              alignItems="flex-start"
-              backgroundColor={BIZLINK_COLORS.card}
-              borderRadius={20}
-              padding={16}
-              marginTop={index === 0 ? 0 : 10}
-            >
-              {item.icon}
-              <YStack flex={1} gap="$1">
-                <Text fontFamily={BIZLINK_FONTS.semibold} fontSize={13.5} color={BIZLINK_COLORS.text}>
-                  {item.title}
-                </Text>
-                <Text fontSize={12} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} lineHeight={17}>
-                  {item.body}
-                </Text>
-              </YStack>
-            </XStack>
-          ))
-        )}
-      </ScrollView>
-    </YStack>
-  );
+  function press(item: ManagerNotificationFeedItem): void {
+    if (!readIds.has(item.id)) { setReadIds((prev) => new Set(prev).add(item.id)); markNotificationRead(item.id).catch(() => undefined); }
+    if (item.category === 'approvals') router.push('/(manager)/approvals');
+    else if (item.category === 'tagalong') router.push('/(manager)/tag-along');
+    else if (item.category === 'sync') router.push('/(manager)/more/sync-history');
+    else router.push('/(manager)/more/lost-opportunities/index');
+  }
+  return <YStack flex={1} backgroundColor={colors.canvas} paddingTop={insets.top}>
+    <BizTopBar title="Notifications" fallbackHref="/(manager)" />
+    <ScrollView contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 24 }} keyboardShouldPersistTaps="handled">
+      <Text fontSize={13} fontFamily={BIZLINK_FONTS.medium} color={colors.muted} lineHeight={18} marginBottom="$2.5">
+        Requests, approval outcomes, Tag-Along responses, and sync alerts. A local action is never presented as server-final until sync confirms it.
+      </Text>
+      <YStack marginBottom="$3"><BizFilterScroll options={FILTERS} value={filter} onChange={setFilter} /></YStack>
+      {loading && !loaded ? <YStack alignItems="center" padding="$8"><Spinner size="large" color={colors.brand} /></YStack> : error ? <YStack alignItems="center" padding="$8" gap="$2.5"><Text fontSize={13} fontFamily={BIZLINK_FONTS.medium} color={colors.red} textAlign="center">{error}</Text><Pressable onPress={load} hitSlop={8}><Text fontSize={13} fontFamily={BIZLINK_FONTS.semibold} color={colors.brand}>Retry</Text></Pressable></YStack> : visible.length === 0 ? <YStack alignItems="center" padding="$8" gap="$2.5"><Bell size={40} color={colors.muted} strokeWidth={1.75} /><Text fontSize={13} fontFamily={BIZLINK_FONTS.medium} color={colors.muted} textAlign="center">Wala pang notification sa filter na ito.</Text></YStack> : visible.map((item) => { const unread = !readIds.has(item.id); return <Pressable key={item.id} onPress={() => press(item)} hitSlop={4}><XStack gap="$3" alignItems="flex-start" backgroundColor={unread ? colors.tintA : colors.card} borderRadius={20} padding={16} marginBottom={10} minHeight={44}><YStack width={36} height={36} borderRadius={18} alignItems="center" justifyContent="center" backgroundColor={colors.soft}>{icon(item)}</YStack><YStack flex={1} gap="$1"><XStack alignItems="center" gap="$1.5"><Text fontFamily={BIZLINK_FONTS.semibold} fontSize={13.5} color={colors.text}>{item.title}</Text>{unread ? <YStack width={7} height={7} borderRadius={3.5} backgroundColor={colors.brand} /> : null}</XStack><Text fontSize={12} fontFamily={BIZLINK_FONTS.medium} color={colors.muted} lineHeight={17}>{item.body}</Text><Text fontSize={11} fontFamily={BIZLINK_FONTS.regular} color={colors.muted} marginTop="$1">{timeAgo(item.timestamp)}</Text></YStack></XStack></Pressable>; })}
+    </ScrollView>
+  </YStack>;
 }

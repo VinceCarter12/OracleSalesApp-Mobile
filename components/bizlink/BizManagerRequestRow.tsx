@@ -19,7 +19,7 @@ interface BizManagerRequestRowProps {
 const KIND_BADGE_LABEL: Record<ManagerRequestRow['kind'], string> = {
   client_edit: 'Client Edit',
   po_confirmation: 'PO Confirmation',
-  tag_along: 'Tag-Along',
+  tag_along: 'Companion',
 };
 
 const KIND_BADGE_VARIANT: Record<ManagerRequestRow['kind'], 'edit' | 'request' | 'tagalong'> = {

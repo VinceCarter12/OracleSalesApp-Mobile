@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 import { FlatList, Pressable, TextInput } from 'react-native';
+import { KeyboardAwareFlatList } from '../../../../components/ui/KeyboardAwareScrollView';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { Plus, Search, SlidersHorizontal } from 'lucide-react-native';
@@ -158,19 +159,20 @@ export default function ManagerClientsScreen() {
           <BizButton small label="Ulitin" variant="white" onPress={reload} />
         </YStack>
       ) : (
-        <FlatList
+        <KeyboardAwareFlatList
           data={pageItems}
+          keyboardShouldPersistTaps="handled"
           keyExtractor={(item) => item.id}
           contentContainerStyle={{ paddingHorizontal: 16, paddingTop: 8, paddingBottom: 16 }}
           renderItem={({ item }) => <ClientRow client={item} agents={agents} meetings={meetings} />}
           ListEmptyComponent={
             <YStack alignItems="center" padding="$8">
-              <Text fontSize={13} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted}>Walang client na tumugma sa filter.</Text>
+              <Text fontSize={13} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted}>No client matches this filter.</Text>
             </YStack>
           }
           ListFooterComponent={
             <Text fontSize={12.5} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} textAlign="center" marginTop="$3.5">
-              Bilang manager, nakikita mo ang buong team dito — para walang magkabanggaang agents sa iisang client.
+              As a manager, you see the whole team here — so agents don't end up handling the same client.
             </Text>
           }
         />

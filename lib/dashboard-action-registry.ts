@@ -25,7 +25,6 @@ export type DashboardActionId =
   | 'manager-tag-along'
   | 'manager-sales-history'
   | 'manager-clients'
-  | 'manager-more'
   | 'manager-team'
   | 'manager-create-client'
   | 'manager-record-meeting'
@@ -45,11 +44,14 @@ const DASHBOARD_ACTIONS: Record<DashboardActionId, DashboardActionDef> = {
   'record-meeting': { href: '/(tabs)/meetings/select-client' as Href, roles: ['sales_specialist', 'rsr'] },
   'my-clients': { href: '/(tabs)/clients' as Href, roles: ['sales_specialist', 'rsr'] },
 
+  // Approvals + Tag-Along merged into one Requests inbox (design-only merge,
+  // 2026-08-10) — both ids intentionally still point at the same route
+  // (`/(manager)/approvals`, route path unchanged) so each Home tile keeps
+  // its own distinct badge count while opening the combined screen.
   'manager-approvals': { href: '/(manager)/approvals' as Href, roles: ['sales_manager'] },
-  'manager-tag-along': { href: '/(manager)/tag-along' as Href, roles: ['sales_manager'] },
+  'manager-tag-along': { href: '/(manager)/approvals' as Href, roles: ['sales_manager'] },
   'manager-sales-history': { href: '/(manager)/more/meetings' as Href, roles: ['sales_manager'] },
-  'manager-clients': { href: '/(manager)/more/clients' as Href, roles: ['sales_manager'] },
-  'manager-more': { href: '/(manager)/more' as Href, roles: ['sales_manager'] },
+  'manager-clients': { href: '/(manager)/clients' as Href, roles: ['sales_manager'] },
   'manager-team': { href: '/(manager)/team' as Href, roles: ['sales_manager'] },
   // Wireframe-Manager-BizLink.html s-home "Mga Gawain" (startManagerCreateClient/
   // startManagerRecordMeeting): the manager's own client/record flow lives under
@@ -59,7 +61,7 @@ const DASHBOARD_ACTIONS: Record<DashboardActionId, DashboardActionDef> = {
   // meetings/select-client) — the manager's own client list is the equivalent
   // "pick a client first" destination for starting a meeting.
   'manager-create-client': { href: '/(manager)/clients/create' as Href, roles: ['sales_manager'] },
-  'manager-record-meeting': { href: '/(manager)/clients' as Href, roles: ['sales_manager'] },
+  'manager-record-meeting': { href: '/(manager)/clients/select-client' as Href, roles: ['sales_manager'] },
 
   'executive-teams': { href: '/(executive)/teams' as Href, roles: ['executive'] },
   'executive-clients': { href: '/(executive)/clients' as Href, roles: ['executive'] },

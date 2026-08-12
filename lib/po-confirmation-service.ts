@@ -284,13 +284,17 @@ async function attemptSubmission(row: LocalPoConfirmationRow, userId: string, re
       po_photo_path: publicUrl,
     };
     const result = await rawSupabaseRestInsert('po_confirmation_requests', remotePayload);
-    if (!result.ok) {
+    // 23505 on this row's own id means a prior attempt's INSERT already
+    // landed server-side (see submitPoConfirmation's doc comment) — that is
+    // the expected, self-healing "already submitted" case, not a failure, so
+    // it must not log as one before falling through to `submitted` below.
+    if (!result.ok && result.code !== UNIQUE_VIOLATION_CODE) {
       console.error(
         `[po-confirmation-service] rawSupabaseRestInsert failed: status=${result.status} code=${result.code ?? 'unknown'}`
       );
+      if (result.code === RLS_PERMISSION_DENIED_CODE) return { kind: 'rls_rejected', err: result };
+      return { kind: 'other_error', err: result };
     }
-    if (!result.ok && result.code === RLS_PERMISSION_DENIED_CODE) return { kind: 'rls_rejected', err: result };
-    if (!result.ok && result.code !== UNIQUE_VIOLATION_CODE) return { kind: 'other_error', err: result };
     return { kind: 'submitted', publicUrl };
   } catch (err) {
     if (isRlsPermissionDenied(err)) return { kind: 'rls_rejected', err };

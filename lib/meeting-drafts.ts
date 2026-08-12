@@ -55,26 +55,68 @@ export interface SaveDraftInput {
   payload: MeetingDraftPayload;
 }
 
+/** Raised when an agent tries to start a second same-day meeting. */
+export class OngoingMeetingLimitError extends Error {
+  constructor() {
+    super('Only one ongoing meeting is allowed.');
+    this.name = 'OngoingMeetingLimitError';
+  }
+}
+
+/**
+ * The draft row is the durable source of truth for an ongoing meeting. This
+ * check intentionally lives beside the write, not only in a screen, so the
+ * full form, fast path, and Manager re-exports cannot drift apart.
+ */
+export async function hasOtherActiveDraftForAgent(agentId: string, clientId: string): Promise<boolean> {
+  const activeDrafts = await getActiveDraftsForAgent(agentId);
+  return activeDrafts.some((draft) => draft.clientId !== clientId);
+}
+
+// Serializes Start writes in this JS runtime. The write-time guard below is
+// still required even when the UI preflight has already passed: two entry
+// screens can otherwise both observe an empty draft list before either writes.
+let draftWriteQueue: Promise<void> = Promise.resolve();
+
+async function withDraftWriteLock<T>(operation: () => Promise<T>): Promise<T> {
+  const previous = draftWriteQueue;
+  let release!: () => void;
+  draftWriteQueue = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  await previous;
+  try {
+    return await operation();
+  } finally {
+    release();
+  }
+}
+
 /**
  * Upserts the single in-progress-meeting draft for a client. Cheap by
  * design — callers should write this once on Start, not on every render/
  * agenda-toggle tick.
  */
 export async function saveDraft(input: SaveDraftInput): Promise<void> {
-  const db = await getDb();
-  const now = new Date().toISOString();
-  const id = draftId(input.clientId);
-  await db.runAsync(
-    `INSERT INTO meeting_drafts (id, client_id, agent_id, flow, payload_json, start_captured_at, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-     ON CONFLICT(id) DO UPDATE SET
-       agent_id = excluded.agent_id,
-       flow = excluded.flow,
-       payload_json = excluded.payload_json,
-       start_captured_at = excluded.start_captured_at,
-       updated_at = excluded.updated_at`,
-    [id, input.clientId, input.agentId, input.flow, JSON.stringify(input.payload), input.payload.capturedAt, now, now]
-  );
+  await withDraftWriteLock(async () => {
+    if (await hasOtherActiveDraftForAgent(input.agentId, input.clientId)) {
+      throw new OngoingMeetingLimitError();
+    }
+    const db = await getDb();
+    const now = new Date().toISOString();
+    const id = draftId(input.clientId);
+    await db.runAsync(
+      `INSERT INTO meeting_drafts (id, client_id, agent_id, flow, payload_json, start_captured_at, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT(id) DO UPDATE SET
+         agent_id = excluded.agent_id,
+         flow = excluded.flow,
+         payload_json = excluded.payload_json,
+         start_captured_at = excluded.start_captured_at,
+         updated_at = excluded.updated_at`,
+      [id, input.clientId, input.agentId, input.flow, JSON.stringify(input.payload), input.payload.capturedAt, now, now]
+    );
+  });
 }
 
 /**

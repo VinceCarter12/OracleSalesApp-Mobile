@@ -15,10 +15,10 @@ export function ClientInfoCompletionNotice({ onCompleteInfo }: ClientInfoComplet
     <BizCard flat gap="$2.5" marginTop="$3.5" marginBottom="$3.5">
       <YStack gap="$0.5">
         <Text fontSize={13.5} fontFamily={BIZLINK_FONTS.semibold} color={BIZLINK_COLORS.text}>
-          Kumpletuhin muna ang client info
+          Complete the client's info first
         </Text>
         <Text fontSize={12.5} lineHeight={18} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted}>
-          May kulang pang impormasyon sa client na ito. Paki-fill up ang Complete info para kumpleto ang record.
+          This client is still missing some information. Fill out Complete info so the record is complete.
         </Text>
       </YStack>
       <XStack>

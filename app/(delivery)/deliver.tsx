@@ -1,9 +1,10 @@
 import { useRef, useState } from 'react';
 import { Alert, Pressable, ScrollView, TextInput } from 'react-native';
+import { KeyboardAwareScrollView } from '../../components/ui/KeyboardAwareScrollView';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router, useLocalSearchParams } from 'expo-router';
 import { Banknote, Check, FileCheck, Footprints, Lightbulb, Lock, PackageX, Smartphone } from 'lucide-react-native';
-import { useSQLiteContext } from 'expo-sqlite';
+import { useAppDb } from '../../lib/app-db-provider';
 import { Text, XStack, YStack } from 'tamagui';
 import { useBizlinkColors, BIZLINK_FONTS, BIZLINK_ON_INK, COLORS } from '../../lib/theme';
 import { useSession } from '../../lib/session-store';
@@ -111,7 +112,7 @@ export default function DeliverPoScreen() {
   const { id } = useLocalSearchParams<{ id?: string }>();
 
   const poId = String(id ?? '');
-  const db = useSQLiteContext();
+  const db = useAppDb();
   const { profileId, fullName, teamId } = useSession();
   // Real record from the local mirror for display; the deliver/fail/claim WRITE
   // goes through collection-delivery-write.ts (local update + outbox push).
@@ -404,7 +405,7 @@ export default function DeliverPoScreen() {
   return (
     <YStack flex={1} backgroundColor={BIZLINK_COLORS.canvas} paddingTop={insets.top}>
       <BizTopBar title="Deliver PO" />
-      <ScrollView contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 40 }} scrollEnabled={scrollEnabled}>
+      <KeyboardAwareScrollView contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 40 }} keyboardShouldPersistTaps="handled" scrollEnabled={scrollEnabled}>
         {/* PO header */}
         <YStack backgroundColor={BIZLINK_COLORS.card} borderRadius={24} padding={16} marginTop={6}>
           <XStack alignItems="center" gap="$2" marginBottom={6} flexWrap="wrap">
@@ -659,7 +660,7 @@ export default function DeliverPoScreen() {
         </Text>
           </>
         )}
-      </ScrollView>
+      </KeyboardAwareScrollView>
     </YStack>
   );
 }

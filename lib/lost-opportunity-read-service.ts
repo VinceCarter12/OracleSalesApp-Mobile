@@ -100,26 +100,21 @@ async function fetchCompanyLostClientRows(): Promise<LostClientRow[]> {
   return (data ?? []) as LostClientRow[];
 }
 
-/** Roster-first pattern, same as `lib/manager-team-service.ts::fetchTeamProfiles` — plus the manager themselves (ADR-020: a manager can own clients directly). */
-async function fetchTeamAgentIds(teamId: string, managerProfileId: string): Promise<string[]> {
-  const { data, error } = await supabase
-    .from('profiles')
-    .select('id, full_name, role, team_id')
-    .eq('team_id', teamId)
-    .in('role', AGENT_ROLES);
-  if (error) throw error;
-  const agentIds = ((data ?? []) as ProfileRow[]).map((p) => p.id);
-  return [...agentIds, managerProfileId];
-}
-
+/**
+ * Manager's Lost Opportunities read deliberately relies on the server's
+ * `Managers read team clients` RLS policy. Unlike a client-side owner roster,
+ * that policy remains correct for every permitted same-team owner.
+ */
 async function fetchTeamLostClientRows(teamId: string, managerProfileId: string): Promise<LostClientRow[]> {
-  const agentIds = await fetchTeamAgentIds(teamId, managerProfileId);
-  if (agentIds.length === 0) return [];
+  // `teamId` and `managerProfileId` are part of the shared scope contract;
+  // RLS (`Managers read team clients` / `is_manager_of_profile`) enforces them
+  // server-side, so no client roster filter is applied here.
+  void teamId;
+  void managerProfileId;
   const { data, error } = await supabase
     .from('clients')
     .select(LOST_CLIENT_COLUMNS)
-    .eq('status', 'lost')
-    .in('assigned_agent_id', agentIds);
+    .eq('status', 'lost');
   if (error) throw error;
   return (data ?? []) as LostClientRow[];
 }
@@ -271,6 +266,6 @@ export async function fetchLastMeetingSummary(clientId: string): Promise<LostOpp
   const row = ((data ?? []) as LastMeetingRow[])[0];
   if (!row) return null;
   const agendaSummary = row.agenda && row.agenda.length > 0 ? row.agenda.join(', ') : null;
-  const summary = row.remarks || row.outcome || agendaSummary || 'Walang detalyeng naitala.';
+  const summary = row.remarks || row.outcome || agendaSummary || 'No details recorded.';
   return { meetingDate: row.meeting_date, summary };
 }

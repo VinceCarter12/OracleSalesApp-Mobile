@@ -25,7 +25,7 @@ export function useManagerRequestFeed(profileId: string | null): UseManagerReque
       setRows(data);
     } catch (err) {
       console.error('[use-manager-request-feed] load failed:', describeLoadError(err));
-      setError('Hindi na-load ang Requests. Subukan ulit.');
+      setError("The requests couldn't be loaded. Try again.");
     } finally {
       setLoading(false);
     }

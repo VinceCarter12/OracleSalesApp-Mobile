@@ -102,11 +102,11 @@ export default function ManagerRequestsScreen() {
       <BizTopBar title="Requests" fallbackHref="/(manager)" />
       <ScrollView contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 120 }}>
         <Text fontSize={13} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} marginBottom="$2" lineHeight={19}>
-          Client edit, PO confirmation, at tag-along requests ng buong team mo — lahat dito na sa isang inbox.
+          Client edit, PO confirmation, and companion requests from your whole team — all in one inbox.
         </Text>
         <Text fontSize={13} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} marginBottom="$3" lineHeight={19}>
-          Hindi ka na gumagawa ng sariling meeting record. Ang sales rep ang nagre-record ng buong client visit
-          (kasama ka sa litrato niya bilang proof) — dito mo lang ito ku-kumpirmahin na sumama ka.
+          You no longer create your own meeting record. The sales rep records the whole client visit
+          (you appear in their photo as proof) — here you only confirm that you joined.
         </Text>
 
         <BizFilterScroll options={STATUS_FILTER_OPTIONS} value={statusFilter} onChange={setStatusFilter} />
@@ -133,13 +133,13 @@ export default function ManagerRequestsScreen() {
             <Text fontSize={13} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} textAlign="center">
               {error}
             </Text>
-            <BizButton small label="Ulitin" variant="white" onPress={reload} />
+            <BizButton small label="Try again" variant="white" onPress={reload} />
           </YStack>
         ) : filteredRows.length === 0 ? (
           <YStack alignItems="center" paddingVertical="$6" gap="$2">
             <CircleCheckBig size={28} color={BIZLINK_COLORS.muted} strokeWidth={1.75} />
             <Text fontSize={13} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} textAlign="center">
-              {rows.length === 0 ? 'Wala kang naghihintay na request.' : 'Walang request sa filter na ito.'}
+              {rows.length === 0 ? 'You have no requests waiting.' : 'No request matches this filter.'}
             </Text>
           </YStack>
         ) : (

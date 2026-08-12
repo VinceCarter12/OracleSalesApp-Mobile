@@ -30,7 +30,7 @@ export function useManagerTeamMapData(dateWindow?: TeamMapDateWindow): UseManage
       setTeamMapData(data);
     } catch (err) {
       console.error('[use-manager-team-map-data] load failed:', describeLoadError(err));
-      setError('Hindi na-load ang team map data. Subukan ulit.');
+      setError("The team map data couldn't be loaded. Try again.");
     } finally {
       setLoading(false);
     }

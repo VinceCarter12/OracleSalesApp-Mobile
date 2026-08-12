@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { useSQLiteContext } from 'expo-sqlite';
+import { useAppDb } from './app-db-provider';
 import { subscribeSyncComplete } from './sync/sync-events';
 import {
   rowToPo,
@@ -17,7 +17,7 @@ import type { CollectionStore, DeliveryPo } from './collection-delivery-data';
 // filter here.
 
 export function useCollectionStores() {
-  const db = useSQLiteContext();
+  const db = useAppDb();
   const [stores, setStores] = useState<CollectionStore[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -38,7 +38,7 @@ export function useCollectionStores() {
 }
 
 export function useDeliveryPos() {
-  const db = useSQLiteContext();
+  const db = useAppDb();
   const [pos, setPos] = useState<DeliveryPo[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -60,7 +60,7 @@ export function useDeliveryPos() {
 
 /** Single collection visit by id — for the Collect Payment screen's display. */
 export function useCollectionStore(id: string | undefined) {
-  const db = useSQLiteContext();
+  const db = useAppDb();
   const [store, setStore] = useState<CollectionStore | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -88,7 +88,7 @@ export function useCollectionStore(id: string | undefined) {
 
 /** Single purchase order by id — for the Deliver PO screen's display. */
 export function useDeliveryPo(id: string | undefined) {
-  const db = useSQLiteContext();
+  const db = useAppDb();
   const [po, setPo] = useState<DeliveryPo | null>(null);
   const [loading, setLoading] = useState(true);
 

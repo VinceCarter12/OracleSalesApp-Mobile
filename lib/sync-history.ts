@@ -126,26 +126,26 @@ function adminMessageFor(
   failureClass: FailureClass | null
 ): string | null {
   if (status === 'failed' && isPermissionDenied(failureClass, lastError)) {
-    return 'Hindi maayos ng app na ito — may kailangang ayusin sa system settings. Kontakin agad ang admin/IT sa office, hindi na kailangang mag-retry pa.';
+    return 'This can\'t be fixed from the app — something in the system settings needs attention. Contact your office admin/IT; there\'s no need to keep retrying.';
   }
   if (status === 'failed' && retryCount > 0) {
-    return 'Paulit-ulit na nabigo — kontakin ang admin sa office kung magpapatuloy ito pagkatapos mag-retry.';
+    return 'It keeps failing — contact your office admin if it still fails after retrying.';
   }
   if (status === 'conflict') {
-    return 'May kasalukuyang bersyon na sa server — kontakin ang admin sa office para malutas.';
+    return 'There\'s already another version on the server — contact your office admin to resolve it.';
   }
   return null;
 }
 
 /** Batch 7a: human-readable copy for the Sync History detail view's "why" line — mirrors the diagnostic axis lib/sync/outbox-status.ts's `FailureClass` already computes, never re-derived. */
 export const FAILURE_CLASS_LABEL: Record<FailureClass, string> = {
-  validation: 'Invalid o hindi kumpletong data',
-  network: 'Walang koneksyon sa internet',
-  authentication: 'Kailangan mag-sign in ulit / walang access',
-  conflict: 'May nauna nang bersyon sa server',
+  validation: 'Invalid or incomplete data',
+  network: 'No internet connection',
+  authentication: 'Needs you to sign in again / no access',
+  conflict: 'Another version already exists on the server',
   server: 'Server-side error',
-  rate_limited: 'Sobrang dami ng request — susubukan ulit',
-  unknown: 'Hindi tiyak na dahilan',
+  rate_limited: 'Too many requests — will try again',
+  unknown: 'Unknown reason',
 };
 
 /**

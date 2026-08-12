@@ -33,7 +33,7 @@ export function StartMeetingConfirmDialog({ visible, onCancel, onConfirm }: Star
           <YStack backgroundColor={BIZLINK_COLORS.card} borderRadius={24} padding="$4.5" width={320}>
             <Text fontSize={18} fontFamily={BIZLINK_FONTS.semibold} color={BIZLINK_COLORS.text}>Start meeting?</Text>
             <Text fontSize={13} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} marginTop="$2" lineHeight={19}>
-              Ila-lock ang current GPS at timestamp. Hindi pa kukuha ng photo hanggang sa End Meeting.
+              Your current location and time will be saved. No photo will be taken until End Meeting.
             </Text>
             <XStack gap="$2.5" marginTop="$4.5">
               <YStack flex={1}><BizButton label="Cancel" variant="white" onPress={onCancel} /></YStack>

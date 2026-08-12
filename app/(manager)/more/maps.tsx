@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { Pressable, ScrollView, TextInput } from 'react-native';
+import { useCallback, useEffect, useState } from 'react';
+import { Pressable, TextInput } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect, router } from 'expo-router';
 import { Search, SlidersHorizontal } from 'lucide-react-native';
@@ -21,6 +21,7 @@ import { ManagerTeamMapStatusBanner } from '../../../components/maps/ManagerTeam
 import { ManagerMapScopeFilterRow } from '../../../components/maps/ManagerMapScopeFilterRow';
 import { BizFilterSheet } from '../../../components/bizlink/BizFilterSheet';
 import type { DateRange } from '../../../components/bizlink/DateRangePickerModal';
+import { KeyboardAwareScrollView } from '../../../components/ui/KeyboardAwareScrollView';
 import { MapsFilterPanel } from '../../../components/maps/MapsFilterPanel';
 import { MapsListSection } from '../../../components/maps/MapsListSection';
 import { LeafletWebViewMapWithControls, type MapTileType } from '../../../components/maps/LeafletWebViewMap';
@@ -60,7 +61,6 @@ export default function ManagerMapsScreen() {
   const [selectedMarkerIds, setSelectedMarkerIds] = useState<Set<string>>(new Set());
   const [currentPage, setCurrentPage] = useState(0);
   const [mapExpanded, setMapExpanded] = useState(false);
-  const scrollViewRef = useRef<ScrollView>(null);
   const [datePreset, setDatePreset] = useState<MapsDatePreset>('last7');
   const [dateRange, setDateRange] = useState<DateRange>(() => makeMapsPresetRange('last7'));
   const [filterOpen, setFilterOpen] = useState(false);
@@ -174,7 +174,7 @@ export default function ManagerMapsScreen() {
   return (
     <YStack flex={1} backgroundColor={BIZLINK_COLORS.canvas} paddingTop={insets.top}>
       <BizTopBar title="Office Map" fallbackHref="/(manager)" />
-      <ScrollView ref={scrollViewRef} contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 120 }}>
+      <KeyboardAwareScrollView contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 120 }}>
         {!online ? <OfflineBanner /> : null}
 
         <XStack gap="$2" alignItems="center" marginBottom="$3">
@@ -274,7 +274,7 @@ export default function ManagerMapsScreen() {
           onMeetingPress={(id) => handleCardSelect('meeting', id)}
           onOfficePress={(id) => handleCardSelect('office', id)}
         />
-      </ScrollView>
+      </KeyboardAwareScrollView>
 
       {totalPages > 0 && (
         <BizFloatingPager

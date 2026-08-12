@@ -83,7 +83,7 @@ export interface ReassignClientInput {
 export async function reassignClient(input: ReassignClientInput): Promise<void> {
   const online = await isLikelyOnline();
   if (!online) {
-    throw new Error('Kailangan ng internet connection para mag-reassign ng client.');
+    throw new Error('You need an internet connection to move a client.');
   }
 
   const { data, error } = await withTimeout(
@@ -152,7 +152,7 @@ export async function reassignTeamClient(
 ): Promise<ReassignTeamClientResult> {
   const online = await isLikelyOnline();
   if (!online) {
-    throw new Error('Kailangan ng internet connection para mag-reassign ng client.');
+    throw new Error('You need an internet connection to move a client.');
   }
 
   const { data, error } = await withTimeout(

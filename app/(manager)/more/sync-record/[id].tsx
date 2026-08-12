@@ -49,7 +49,7 @@ export default function ManagerSyncRecordDetailScreen() {
         <BizTopBar title="Sync Record" fallbackHref="/(manager)/more/sync-history" />
         <YStack flex={1} justifyContent="center" alignItems="center" paddingHorizontal="$5">
           <Text fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} textAlign="center">
-            Hindi makita ang sync record na ito.
+            This sync record can't be found.
           </Text>
         </YStack>
       </YStack>
@@ -63,7 +63,7 @@ export default function ManagerSyncRecordDetailScreen() {
         <SyncRecordDetail
           entry={entry}
           showFullFields={false}
-          noticeText="Sariling Manager device records lang ito, hindi team-wide audit log."
+          noticeText="These are only this manager device's records — not a team-wide audit log."
         />
       </ScrollView>
     </YStack>

@@ -27,8 +27,8 @@ export default function ManagerTeamScreen() {
       <BizTopBar title="My Team" fallbackHref="/(manager)" />
       <ScrollView contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 24 }}>
         <Text fontSize={13} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} marginBottom="$3" lineHeight={19}>
-          Makikita mo dito ang lahat ng agents sa ilalim mo — kanya-kanyang stats para malaman mo kung sino ang
-          kailangan ng tulong. (Staff stats lang ito — hindi customer data, kaya walang fingerprint na kailangan.)
+          Here you'll see every agent under you — each one's stats, so you can tell who needs help.
+          (These are staff stats only — no customer data, so no fingerprint is needed.)
         </Text>
 
         {loading ? (
@@ -40,12 +40,12 @@ export default function ManagerTeamScreen() {
             <Text fontSize={13} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} textAlign="center">
               {error}
             </Text>
-            <BizButton small label="Ulitin" variant="white" onPress={reload} />
+            <BizButton small label="Try again" variant="white" onPress={reload} />
           </YStack>
         ) : !overview || overview.agents.length === 0 ? (
           <YStack alignItems="center" paddingVertical="$6">
             <Text fontSize={13} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted}>
-              Walang agent na naka-assign sa team mo.
+              No agents are assigned to your team yet.
             </Text>
           </YStack>
         ) : (
@@ -56,7 +56,7 @@ export default function ManagerTeamScreen() {
             {shownAgents.length === 0 ? (
               <YStack alignItems="center" paddingVertical="$6">
                 <Text fontSize={13} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted}>
-                  Walang team member sa filter na ito.
+                  No team member matches this filter.
                 </Text>
               </YStack>
             ) : (

@@ -12,7 +12,7 @@ export function OfflineBanner() {
     <XStack alignItems="center" gap="$2" backgroundColor={BIZLINK_COLORS.amberSoft} borderRadius={16} paddingHorizontal={14} paddingVertical={10} marginBottom="$3">
       <WifiOff size={14} color={BIZLINK_COLORS.orange} strokeWidth={1.75} />
       <Text fontSize={12} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.orange}>
-        Offline — cached na data lang ang ipinapakita.
+        Offline — showing saved data only.
       </Text>
     </XStack>
   );
@@ -24,12 +24,12 @@ export interface LegendEntry {
 }
 
 const BASE_LEGEND_ITEMS: LegendEntry[] = [
-  { color: MAP_OFFICE_PIN_COLOR, label: 'Office pin' },
+  { color: MAP_OFFICE_PIN_COLOR, label: 'Office location' },
   { color: MAP_MEETING_STATUS_COLORS.prospect, label: 'Prospect meeting' },
   { color: MAP_MEETING_STATUS_COLORS.in_progress, label: 'In Progress meeting' },
   { color: MAP_MEETING_STATUS_COLORS.new, label: 'New meeting' },
   { color: MAP_MEETING_STATUS_COLORS.existing, label: 'Existing meeting' },
-  { color: BIZLINK_COLORS.navy, label: 'You here' },
+  { color: BIZLINK_COLORS.navy, label: 'Your location' },
 ];
 
 /**

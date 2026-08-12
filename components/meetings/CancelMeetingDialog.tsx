@@ -45,7 +45,7 @@ export function CancelMeetingDialog({ visible, onCancel, onConfirm }: CancelMeet
               Cancel meeting?
             </Text>
             <Text fontSize={13} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} marginTop="$2" lineHeight={19}>
-              Mawawala ang kasalukuyang draft at hindi ito mase-save o mase-submit.
+              The current draft will be discarded and won't be saved or submitted.
             </Text>
             <XStack gap="$2.5" marginTop="$4.5">
               <YStack flex={1} accessible accessibilityRole="button" accessibilityLabel="Keep meeting">

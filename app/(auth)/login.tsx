@@ -1,5 +1,6 @@
-import { useState } from 'react';
-import { Image, KeyboardAvoidingView, Platform, Pressable, ScrollView, TextInput } from 'react-native';
+import { useEffect, useState } from 'react';
+import { Image, Keyboard, KeyboardAvoidingView, Platform, Pressable, TextInput } from 'react-native';
+import { KeyboardAwareScrollView } from '../../components/ui/KeyboardAwareScrollView';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AlertTriangle, Eye, EyeOff } from 'lucide-react-native';
 import { Spinner, Text, View, XStack, YStack } from 'tamagui';
@@ -20,7 +21,7 @@ function toFriendlyMessage(error: Error): string {
     return 'Invalid email or password. Try again.';
   }
   if (msg.includes('email not confirmed')) {
-    return 'This account is not yet confirmed. Contact your admin.';
+    return 'Your account needs approval before you can sign in — contact your office administrator.';
   }
   if (msg.includes('timed out')) {
     return 'Connection timed out. Check your internet and try again.';
@@ -34,6 +35,7 @@ export default function LoginScreen() {
   const { signIn } = useSession();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [keyboardFocused, setKeyboardFocused] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
@@ -111,14 +113,19 @@ export default function LoginScreen() {
 
   const canSubmit = !submitting && Boolean(email.trim()) && Boolean(password);
 
+  useEffect(() => {
+    const subscription = Keyboard.addListener('keyboardDidHide', () => setKeyboardFocused(false));
+    return () => subscription.remove();
+  }, []);
+
   return (
     <KeyboardAvoidingView
       style={{ flex: 1, backgroundColor: BIZLINK_COLORS.ink, paddingTop: insets.top, paddingBottom: insets.bottom }}
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
     >
-      <ScrollView
+      <KeyboardAwareScrollView
         style={{ backgroundColor: BIZLINK_COLORS.ink }}
-        contentContainerStyle={{ flexGrow: 1, justifyContent: 'center', paddingHorizontal: 24 }}
+        contentContainerStyle={{ flexGrow: 1, justifyContent: keyboardFocused ? 'flex-start' : 'center', paddingHorizontal: 24, paddingVertical: keyboardFocused ? 32 : 0, paddingBottom: keyboardFocused ? 180 : 0 }}
         keyboardShouldPersistTaps="handled"
       >
         <YStack backgroundColor={BIZLINK_COLORS.ink}>
@@ -138,7 +145,7 @@ export default function LoginScreen() {
               marginTop="$1"
               textAlign="center"
             >
-              Field Agent App — i-track ang clients, meetings at prospects sa isang app
+              Field Agent App — track your clients, meetings, and possible clients in one app
             </Text>
           </YStack>
 
@@ -165,6 +172,7 @@ export default function LoginScreen() {
             onChangeText={setEmail}
             placeholder="agent@oraclecorp.com"
             keyboardType="email-address"
+            onFocus={() => setKeyboardFocused(true)}
           />
           <LoginField
             label="Password"
@@ -172,6 +180,7 @@ export default function LoginScreen() {
             onChangeText={setPassword}
             placeholder="••••••••"
             secureTextEntry
+            onFocus={() => setKeyboardFocused(true)}
           />
 
           <Pressable
@@ -202,11 +211,11 @@ export default function LoginScreen() {
             textAlign="center"
             marginTop="$4"
           >
-            Gumamit ng sariling account password para mag-sign in. Kapag naka-on ang device lock, native phone
-            credential ang gagamitin sa pag-unlock ng app.
+            Use your own account password to sign in. If device lock is on, your phone's
+            PIN, pattern, or password (or fingerprint) is used to unlock the app.
           </Text>
         </YStack>
-      </ScrollView>
+      </KeyboardAwareScrollView>
     </KeyboardAvoidingView>
   );
 }
@@ -218,10 +227,11 @@ interface LoginFieldProps {
   placeholder: string;
   secureTextEntry?: boolean;
   keyboardType?: 'default' | 'email-address';
+  onFocus?: () => void;
 }
 
 /** BizLink-styled dark-onboarding input — translucent-white fill, matches Wireframe-Sales-BizLink.html's #a-login .inp. */
-function LoginField({ label, value, onChangeText, placeholder, secureTextEntry, keyboardType }: LoginFieldProps) {
+function LoginField({ label, value, onChangeText, placeholder, secureTextEntry, keyboardType, onFocus }: LoginFieldProps) {
   const [revealed, setRevealed] = useState(false);
   const isSecure = secureTextEntry && !revealed;
 
@@ -232,6 +242,7 @@ function LoginField({ label, value, onChangeText, placeholder, secureTextEntry, 
       </Text>
       <View position="relative">
         <TextInput
+          onFocus={onFocus}
           value={value}
           onChangeText={onChangeText}
           placeholder={placeholder}

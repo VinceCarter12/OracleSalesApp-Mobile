@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { useSQLiteContext } from 'expo-sqlite';
+import { useAppDb } from './app-db-provider';
 import { subscribeSyncComplete } from './sync/sync-events';
 import type { RemitDestination } from './remittance-write';
 
@@ -32,7 +32,7 @@ interface CollectedRow {
 
 /** Collection "collections on hand" — collected visits by this collector not yet in a remittance. */
 export function useCollectionOnHand(collectorId: string | null | undefined) {
-  const db = useSQLiteContext();
+  const db = useAppDb();
   const [summary, setSummary] = useState<OnHandSummary>(emptySummary);
   const [loading, setLoading] = useState(true);
 
@@ -130,7 +130,7 @@ function countIds(json: string | null): number {
 
 /** Collection remittance history — this collector's submitted `remittances`, newest first. */
 export function useRemittanceHistory(collectorId: string | null | undefined) {
-  const db = useSQLiteContext();
+  const db = useAppDb();
   const [entries, setEntries] = useState<RemittanceHistoryEntry[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -197,7 +197,7 @@ interface CodRemittanceHistoryRow {
 
 /** COD remittance history — this driver's submitted `cod_remittances`, newest first. */
 export function useCodRemittanceHistory(driverId: string | null | undefined) {
-  const db = useSQLiteContext();
+  const db = useAppDb();
   const [entries, setEntries] = useState<CodRemittanceHistoryEntry[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -245,7 +245,7 @@ interface CodRow {
 
 /** COD "on hand" — delivered COD POs by this driver not yet remitted (cod_remitted = 0). */
 export function useCodOnHand(driverId: string | null | undefined) {
-  const db = useSQLiteContext();
+  const db = useAppDb();
   const [summary, setSummary] = useState<OnHandSummary>(emptySummary);
   const [loading, setLoading] = useState(true);
 

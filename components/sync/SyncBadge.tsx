@@ -17,10 +17,10 @@ interface SyncBadgeProps {
 }
 
 const SYNC_BADGE_CONTENT: Record<Exclude<OutboxStatus, 'synced'>, { label: string; Icon: typeof Clock }> = {
-  pending: { label: 'Pending sync', Icon: Clock },
-  syncing: { label: 'Nag-a-upload…', Icon: RefreshCw },
-  conflict: { label: 'May conflict', Icon: GitBranch },
-  failed: { label: 'Failed — i-retry', Icon: AlertCircle },
+  pending: { label: 'Waiting to upload', Icon: Clock },
+  syncing: { label: 'Uploading…', Icon: RefreshCw },
+  conflict: { label: 'Needs your choice', Icon: GitBranch },
+  failed: { label: "Couldn't upload — retry", Icon: AlertCircle },
 };
 
 export function SyncBadge({ status }: SyncBadgeProps) {

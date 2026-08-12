@@ -22,9 +22,9 @@ export type SyncHistoryFilterValue = 'all' | 'synced' | 'resolved' | 'retried';
 
 export const SYNC_HISTORY_OUTCOME_FILTERS: BizFilterOption<SyncHistoryFilterValue>[] = [
   { value: 'all', label: 'All' },
-  { value: 'synced', label: 'Synced' },
-  { value: 'resolved', label: 'Resolved' },
-  { value: 'retried', label: 'Retried' },
+  { value: 'synced', label: 'Uploaded' },
+  { value: 'resolved', label: 'Fixed' },
+  { value: 'retried', label: 'Retrying' },
 ];
 
 /** Maps an outbox row's terminal status to the wireframe's display vocabulary. */
@@ -55,10 +55,10 @@ export const SYNC_TABLE_LABEL: Record<string, string> = {
 
 /** Wireframe's per-row/per-detail "note" text (`h.note` in the mock data, both wireframes). */
 export function getResultMessage(entry: SyncHistoryEntry): string {
-  if (entry.status === 'synced') return 'Uploaded from this device';
-  if (entry.status === 'conflict') return 'Conflict resolved: renamed';
+  if (entry.status === 'synced') return 'Uploaded from this phone';
+  if (entry.status === 'conflict') return 'Conflict fixed: renamed';
   if (entry.status === 'failed' && entry.retryCount > 0) {
-    return `Na-fail muna, successful sa ${entry.retryCount === 1 ? '2nd' : entry.retryCount + 1}nd retry`;
+    return `It failed first, then was uploaded on the ${entry.retryCount === 1 ? '2nd' : entry.retryCount + 1}nd try`;
   }
   return 'Processing';
 }

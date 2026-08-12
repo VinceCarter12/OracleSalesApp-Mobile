@@ -50,9 +50,10 @@ export function MeetingWrapUpSection({
     <>
       {/* Wireframe-Sales-BizLink.html:699 — "Agenda · stage-aware", not the
           generic "piliin lahat" caption this used to carry. */}
-      <BizSectionHeader title="Agenda" helper="· stage-aware" />
+      <BizSectionHeader title="Agenda" />
       <Text fontSize={12} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} marginTop={-6} marginBottom="$2" lineHeight={17}>
-        Ang “Product / company presentation” tick dito ang buong basehan ng progress % ng client — hindi na Complete Info (B-001).
+        Your client's progress percentage is based on whether you tick "Product / company presentation" in
+        this meeting's agenda. Completing the client's other information does not raise the percentage anymore.
       </Text>
       {agendaNote}
       <XStack gap="$2" flexWrap="wrap">

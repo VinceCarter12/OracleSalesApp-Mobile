@@ -36,7 +36,7 @@ export default function ManagerMeetingDetailScreen() {
     return (
       <YStack flex={1} justifyContent="center" alignItems="center" backgroundColor={BIZLINK_COLORS.canvas} gap="$3" paddingHorizontal="$5">
         <Text fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} textAlign="center">{error}</Text>
-        <BizButton small label="Ulitin" variant="white" onPress={reload} />
+        <BizButton small label="Try again" variant="white" onPress={reload} />
       </YStack>
     );
   }
@@ -72,7 +72,7 @@ export default function ManagerMeetingDetailScreen() {
           <XStack alignItems="center" gap="$2" flexWrap="wrap">
             {meetingBadge(meeting)}
             <StatusBadge
-              label={meeting.synced ? '✓ synced' : '↻ pending sync'}
+              label={meeting.synced ? '✓ uploaded' : '↻ waiting to upload'}
               background={meeting.synced ? BIZLINK_COLORS.tintA : BIZLINK_COLORS.soft}
               color={meeting.synced ? BIZLINK_COLORS.brand : BIZLINK_COLORS.navy}
             />
@@ -96,7 +96,7 @@ export default function ManagerMeetingDetailScreen() {
           ) : null}
 
           <Text fontSize={12.5} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} textAlign="center" marginTop="$4">
-            Walang duration dito — kino-compute sa Excel export (web-side).
+            Duration is computed in the Excel export (web side) — it isn't shown here.
           </Text>
         </ScrollView>
       </YStack>
@@ -106,10 +106,10 @@ export default function ManagerMeetingDetailScreen() {
   const outcomeLabel = meeting.outcome ? MANAGER_OUTCOME_LABELS[meeting.outcome] : null;
   const outcomeStyle = outcomeLabel ? OUTCOME_BADGE_STYLES[outcomeLabel] : null;
   const gpsNote = isOnline
-    ? 'Online meeting — GPS = sariling lokasyon ng agent (ADR-012)'
+    ? 'Online meeting — the location saved is the agent\'s own location, not the client\'s'
     : meeting.tagAlong
-      ? `Kasama sa litrato si ${meeting.tagAlongManagerName} bilang proof`
-      : 'Location bound at shutter time';
+      ? `The manager ${meeting.tagAlongManagerName} appears in the photo as proof`
+      : 'Location saved at the moment the photo was taken';
 
   return (
     <YStack flex={1} backgroundColor={BIZLINK_COLORS.canvas} paddingTop={insets.top}>
@@ -123,14 +123,14 @@ export default function ManagerMeetingDetailScreen() {
             <StatusBadge label={outcomeLabel} background={outcomeStyle.background} color={outcomeStyle.color} />
           ) : null}
           <StatusBadge
-            label={meeting.synced ? '✓ synced' : '↻ pending sync'}
+            label={meeting.synced ? '✓ uploaded' : '↻ waiting to upload'}
             background={meeting.synced ? BIZLINK_COLORS.tintA : BIZLINK_COLORS.soft}
             color={meeting.synced ? BIZLINK_COLORS.brand : BIZLINK_COLORS.navy}
           />
           {ModeBadge}
           {meeting.tagAlong ? (
             <StatusBadge
-              label={meeting.tagAlongStatus === 'pending' ? 'Pending your approval' : 'Tag-along approved'}
+              label={meeting.tagAlongStatus === 'pending' ? 'Waiting for your decision' : 'Companion approved'}
               background={BIZLINK_COLORS.tintA}
               color={BIZLINK_COLORS.brand}
             />
@@ -138,12 +138,12 @@ export default function ManagerMeetingDetailScreen() {
         </XStack>
 
         <Text fontSize={11} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} textTransform="uppercase" letterSpacing={0.4} marginTop="$4" marginBottom="$1">
-          Auto-captured — sales rep's own record
+          Auto-captured — the sales rep's own record
         </Text>
         <BizCard flat>
           <XStack alignItems="center" gap="$2.5" paddingVertical="$1.5">
             <Check size={14} color={BIZLINK_COLORS.brand} strokeWidth={1.75} />
-            <Text fontSize={12.5} fontFamily={BIZLINK_FONTS.semibold} color={BIZLINK_COLORS.text}>GPS</Text>
+            <Text fontSize={12.5} fontFamily={BIZLINK_FONTS.semibold} color={BIZLINK_COLORS.text}>Location</Text>
             <Text fontSize={12.5} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted}>{meeting.gps}</Text>
           </XStack>
           <XStack alignItems="center" gap="$2.5" paddingVertical="$1.5">
@@ -183,9 +183,9 @@ export default function ManagerMeetingDetailScreen() {
           <XStack alignItems="flex-start" gap="$2" backgroundColor={BIZLINK_COLORS.soft} borderRadius={20} padding={14} marginTop="$3.5">
             <UsersIcon size={15} color={BIZLINK_COLORS.navy} strokeWidth={1.75} />
             <Text fontSize={12} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.navy} flex={1} lineHeight={17}>
-              Tag-along — kasama si {meeting.tagAlongManagerName}. {meeting.tagAlongStatus === 'pending'
-                ? 'Naghihintay pa ng approval mo (see Approvals tab).'
-                : 'Na-approve mo na ito.'} Iisang record lang ito — walang hiwalay na meeting entry ang manager.
+              Companion — {meeting.tagAlongManagerName} joined. {meeting.tagAlongStatus === 'pending'
+                ? 'Waiting for your decision (see the Requests tab).'
+                : 'You approved this.'} This is one single record — the manager does not get a separate meeting entry.
             </Text>
           </XStack>
         ) : null}
@@ -214,7 +214,7 @@ function PhotoRow({ label, time }: { label: string; time?: string }) {
     <BizCard flat>
       <XStack alignItems="center" gap="$2.5" paddingVertical="$1.5">
         <Check size={14} color={BIZLINK_COLORS.brand} strokeWidth={1.75} />
-        <Text fontSize={12.5} fontFamily={BIZLINK_FONTS.semibold} color={BIZLINK_COLORS.text}>Timestamp</Text>
+        <Text fontSize={12.5} fontFamily={BIZLINK_FONTS.semibold} color={BIZLINK_COLORS.text}>Date and time</Text>
         <Text fontSize={12.5} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted}>{time}</Text>
       </XStack>
       <XStack alignItems="center" gap="$2.5" paddingVertical="$1.5">
@@ -223,7 +223,7 @@ function PhotoRow({ label, time }: { label: string; time?: string }) {
         </YStack>
         <YStack>
           <Text fontSize={12} fontFamily={BIZLINK_FONTS.semibold} color={BIZLINK_COLORS.text}>{label}</Text>
-          <Text fontSize={11.5} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted}>Locked</Text>
+          <Text fontSize={11.5} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted}>Saved</Text>
         </YStack>
       </XStack>
     </BizCard>

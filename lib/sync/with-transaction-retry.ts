@@ -1,16 +1,18 @@
 import type { SQLiteDatabase } from 'expo-sqlite';
 
-// `lib/db.ts::getDb()`'s own doc comment: the sync engine's connection and
-// the UI's `useSQLiteContext()` connection (opened by <SQLiteProvider>) are
-// two SEPARATE native connections to the same SQLite file. A write firing
-// on one connection while a transaction is active on the other can make the
-// second connection's BEGIN fail (SQLite's single-writer lock) — expo-sqlite's
-// transaction wrapper then attempts a ROLLBACK regardless of whether BEGIN
-// ever actually succeeded, which surfaces as the confusing secondary
-// "cannot rollback - no transaction is active" instead of the real,
-// transient lock contention underneath it (reported 2026-08-04, e.g.
-// pullAgendaStageRules colliding with a meeting-record write on the
-// SQLiteProvider connection).
+// Originally written (2026-08-04) for a two-native-connection race: the sync
+// engine's `getDb()` connection and the UI's `useSQLiteContext()` connection
+// (opened separately by <SQLiteProvider>) could BEGIN a transaction on each
+// at the same time, and expo-sqlite's wrapper attempts a ROLLBACK regardless
+// of whether its own BEGIN ever actually succeeded — surfacing as the
+// confusing secondary "cannot rollback - no transaction is active" instead of
+// the real, transient lock-contention error underneath it. B-110 (2026-08-10)
+// removed the second connection entirely (`lib/app-db-provider.tsx` now
+// republishes the SAME `getDb()` connection into React instead of opening its
+// own), so this specific two-connection race is structurally gone. Kept as
+// defense-in-depth for any other genuinely transient SQLite condition (e.g. a
+// real OS-level `SQLITE_BUSY`) — cheap to keep, and every caller already
+// expects this signature.
 
 const MAX_ATTEMPTS = 3;
 const RETRY_BASE_DELAY_MS = 150;

@@ -17,15 +17,15 @@ export type LostOpportunityClaimCode =
   | 'already_claimed';
 
 const CLAIM_MESSAGES: Record<LostOpportunityClaimCode, string> = {
-  claimed: 'Matagumpay na na-claim ang opportunity. Nasa My Clients mo na ito.',
-  role_not_eligible: 'Hindi ka pinapayagang mag-claim ng lost opportunity.',
+  claimed: 'Done — this client is now in your My Clients list.',
+  role_not_eligible: 'You don\'t have permission to claim lost opportunities.',
   // Permanent, across ALL historical cycles (Vince, 2026-07-26/27) — not just
   // the immediately-previous owner. Copy must not imply this is temporary.
-  former_owner_excluded: 'Hindi mo puwedeng i-claim ang client na ito dahil dating agent mo na ito.',
+  former_owner_excluded: 'This client can\'t be claimed because it was previously yours.',
   // 1-month cooldown per Migration 036's `reassignable_at`.
-  cooling_down: 'Hindi pa ito puwedeng i-claim — nasa cooldown period pa.',
-  not_found_or_not_lost: 'Hindi na available ang opportunity na ito.',
-  already_claimed: 'Na-claim na ng ibang agent ang opportunity na ito.',
+  cooling_down: 'Not claimable yet — it\'s still on the waiting list.',
+  not_found_or_not_lost: 'This opportunity is no longer available.',
+  already_claimed: 'Another agent already claimed this client.',
 };
 
 /** Maps a `claim_lost_opportunity()` response `code` to a user-facing message. */

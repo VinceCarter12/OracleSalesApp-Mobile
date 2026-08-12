@@ -93,6 +93,18 @@ export type RemoteRemitDestination = 'office' | 'bayad_center' | 'bank_deposit';
 export type Database = {
   public: {
     Tables: {
+      teams: {
+        Row: {
+          id: string;
+          name: string;
+          kind: string | null;
+          manager_id: string | null;
+          created_at: string;
+        };
+        Insert: Omit<Database['public']['Tables']['teams']['Row'], 'id' | 'created_at'> & { id?: string; created_at?: string };
+        Update: Partial<Database['public']['Tables']['teams']['Insert']>;
+        Relationships: [];
+      };
       clients: {
         Row: {
           id: string;
@@ -730,6 +742,14 @@ export type Database = {
       // values in lib/policies/lost-opportunity-claim-policy.ts.
       claim_lost_opportunity: {
         Args: { p_client_id: string };
+        Returns: { ok: boolean; code: string; client?: Record<string, unknown> };
+      };
+      // Migration 088 (declare_client_lost_rpc.sql) — Complete Info's
+      // "Declare lost opportunity" action. `code` is one of the
+      // LostOpportunityDeclareCode values in
+      // lib/policies/lost-opportunity-declare-policy.ts.
+      declare_client_lost: {
+        Args: { p_client_id: string; p_reason: string };
         Returns: { ok: boolean; code: string; client?: Record<string, unknown> };
       };
       // ADR-053 / Migrations 057-060 (Batch 7B, live 2026-08-02): the

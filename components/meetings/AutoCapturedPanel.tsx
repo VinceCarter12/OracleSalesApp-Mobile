@@ -38,7 +38,7 @@ export function AutoCapturedPanel({
           {/* Design-System-Catalog §6: BIZLINK_COLORS.card is a theme-reactive
               surface color, never a foreground on the always-dark `ink` bg —
               use BIZLINK_ON_INK.solid so this stays white in both themes. */}
-          <Text fontSize={12.5} fontFamily={BIZLINK_FONTS.semibold} color={BIZLINK_ON_INK.solid}>GPS</Text>
+          <Text fontSize={12.5} fontFamily={BIZLINK_FONTS.semibold} color={BIZLINK_ON_INK.solid}>Location</Text>
           <Text fontSize={12.5} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_ON_INK.textMuted}>
             {loadingLocation
               ? 'Capturing…'
@@ -75,7 +75,7 @@ export function AutoCapturedPanel({
           )}
           <YStack flex={1}>
             <Text fontSize={12} fontFamily={BIZLINK_FONTS.semibold} color={BIZLINK_ON_INK.solid}>Selfie — camera only</Text>
-            <Text fontSize={11} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_ON_INK.textMuted}>Compressed ≤3MB · naka-save locally</Text>
+            <Text fontSize={11} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_ON_INK.textMuted}>Compressed ≤3MB · saved on this phone</Text>
             <YStack marginTop="$1.5">
               <BizButton small label={photoUri ? 'Retake' : 'Open Camera'} variant="white" onPress={onOpenCamera} />
             </YStack>

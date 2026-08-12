@@ -29,7 +29,7 @@ export function ManagerTeamMapStatusBanner({ scope, loading, error, onRetry }: M
     return (
       <XStack alignItems="center" gap="$2" marginTop="$3">
         <Spinner size="small" color={BIZLINK_COLORS.brand} />
-        <Text fontSize={12} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted}>Naglo-load ang team data...</Text>
+        <Text fontSize={12} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted}>Loading team data...</Text>
       </XStack>
     );
   }

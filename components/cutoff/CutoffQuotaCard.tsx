@@ -1,10 +1,11 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useFocusEffect } from 'expo-router';
 import { CircleAlert, Clock, Target } from 'lucide-react-native';
 import { Text, View, XStack, YStack } from 'tamagui';
 import { useBizlinkColors, BIZLINK_FONTS } from '../../lib/theme';
 import { getCutoffQuotaCard, type CutoffQuotaCardData } from '../../lib/cutoff-quota-service';
 import type { CutoffQuotaRole } from '../../lib/policies/cutoff-policy';
+import { subscribeSyncComplete } from '../../lib/sync/sync-events';
 
 interface CutoffQuotaCardProps {
   agentId: string | null;
@@ -63,6 +64,24 @@ export function CutoffQuotaCard({ agentId, role }: CutoffQuotaCardProps) {
     }, [agentId, role])
   );
 
+  // A post-meeting sync can finish while Home remains focused. Re-read the
+  // refreshed SQLite mirror immediately instead of waiting for a tab switch.
+  useEffect(() => {
+    let cancelled = false;
+    const unsubscribe = subscribeSyncComplete(() => {
+      if (!agentId) return;
+      getCutoffQuotaCard(agentId, role)
+        .then((result) => {
+          if (!cancelled) setData(result);
+        })
+        .catch((err) => console.error('[CutoffQuotaCard] sync refresh failed:', err));
+    });
+    return () => {
+      cancelled = true;
+      unsubscribe();
+    };
+  }, [agentId, role]);
+
   if (loading) return null;
 
   const unconfigured = !data || data.target === null;
@@ -78,7 +97,7 @@ export function CutoffQuotaCard({ agentId, role }: CutoffQuotaCardProps) {
             <Text fontSize={12.5} fontFamily={BIZLINK_FONTS.semibold} color={BIZLINK_COLORS.text}>No quota configured</Text>
           </XStack>
           <Text fontSize={11} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted}>
-            Wala pang active cutoff target na na-sync para sa role mo. Hindi gagamit ng fallback na number ang app.
+            There's no active monthly target loaded for your role yet. The app won't use a fallback number.
           </Text>
         </YStack>
       ) : (

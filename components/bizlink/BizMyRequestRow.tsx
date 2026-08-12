@@ -15,7 +15,7 @@ interface BizMyRequestRowProps {
 const KIND_LABEL: Record<MyRequestRow['requestKind'], string> = {
   po_confirmation: 'PO confirmation',
   client_edit: 'Client edit',
-  tag_along: 'Tag-along',
+  tag_along: 'Companion',
 };
 
 // Wireframe `aRequestStatusHtml()` labels (~line 1194).

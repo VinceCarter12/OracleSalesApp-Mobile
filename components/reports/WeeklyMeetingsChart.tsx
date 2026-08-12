@@ -204,7 +204,7 @@ export function WeeklyMeetingsChart<T extends WeeklyChartMeeting>({
       <Text fontSize={11} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} marginTop={2}>
         {selectedDay !== null && selectedCount !== null
           ? `${WEEKDAY_LABELS[selectedDay]} — meetings this week`
-          : 'I-tap ang isang araw para makita ang mga meeting nito'}
+          : 'Tap a day to see its meetings'}
       </Text>
 
       <View style={{ position: 'relative', marginTop: 12 }}>

@@ -10,10 +10,11 @@ import { getLastSyncAt } from '../../lib/sync/last-sync';
 /**
  * Wireframe `.spin` (2026-08-03 spinner pass): 18dp, 3dp border, 1.1s linear
  * infinite rotation — a real animated ring, not a static icon, and only
- * while a sync is actively in flight (`counts.syncing > 0`). Idle/pending/
- * failed/conflict states keep the existing static Lucide icon.
+ * while a sync is actively in flight (`counts.syncing > 0`). A plain queued
+ * pending state uses the same ring with the warning-orange accent; failed /
+ * conflict states keep their existing static alarm icons.
  */
-function ActiveSyncSpinner() {
+function ActiveSyncSpinner({ color = BIZLINK_COLORS.navy }: { color?: string }) {
   const rotation = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
@@ -39,7 +40,7 @@ function ActiveSyncSpinner() {
         borderRadius: 9,
         borderWidth: 3,
         borderColor: BIZLINK_COLORS.soft,
-        borderTopColor: BIZLINK_COLORS.navy,
+        borderTopColor: color,
         transform: [{ rotate: spin }],
       }}
     />
@@ -71,7 +72,7 @@ function isAlarm(counts: OutboxCounts): boolean {
 
 function primaryLine(counts: OutboxCounts): string {
   const n = pendingSyncCount(counts);
-  return n === 0 ? 'Naka-sync na lahat' : `${n} record${n > 1 ? 's' : ''} pending sync`;
+  return n === 0 ? 'Everything is uploaded' : `${n} item${n > 1 ? 's' : ''} waiting to upload`;
 }
 
 /**
@@ -85,17 +86,17 @@ function primaryLine(counts: OutboxCounts): string {
  * is visible regardless of the pending count.
  */
 function subLine(counts: OutboxCounts, lastSyncAt: string | null): string {
-  if (counts.failed > 0) return `${counts.failed} failed — kailangan i-retry`;
-  if (counts.conflict > 0) return `${counts.conflict} may conflict`;
-  return `Huling sync: ${lastSyncLabel(lastSyncAt)}`;
+  if (counts.failed > 0) return `${counts.failed} couldn't be uploaded — needs retry`;
+  if (counts.conflict > 0) return `${counts.conflict} need your attention`;
+  return `Last upload: ${lastSyncLabel(lastSyncAt)}`;
 }
 
 function lastSyncLabel(lastSyncAt: string | null): string {
-  if (!lastSyncAt) return 'hindi pa nakaka-sync';
+  if (!lastSyncAt) return 'not uploaded yet';
   const elapsedMs = Date.now() - new Date(lastSyncAt).getTime();
-  if (elapsedMs < 0) return 'kanina lang';
+  if (elapsedMs < 0) return 'just now';
   const minutes = Math.floor(elapsedMs / 60000);
-  if (minutes < 1) return 'kanina lang';
+  if (minutes < 1) return 'just now';
   if (minutes < 60) return `${minutes}m ago`;
   const hours = Math.floor(minutes / 60);
   if (hours < 24) return `${hours}h ago`;
@@ -134,6 +135,12 @@ export function SyncStatusChip({ counts: countsProp, onPress }: SyncStatusChipPr
   // ring, taking priority over the static icon — failed/conflict still win
   // visually once a sync attempt actually finishes and fails.
   const activelySyncing = counts.syncing > 0;
+  // A queued outbox record is actionable local work even before the sync
+  // worker starts. Keep that state visible with the same circular feedback,
+  // using the warning orange accent from the BizLink palette. Failed and
+  // conflict rows remain static alarm icons so their more specific state
+  // continues to win visually.
+  const hasPendingRecords = counts.pending > 0 && !isAlarm(counts);
   const Icon = counts.failed > 0 ? AlertCircle : counts.conflict > 0 ? GitBranch : RefreshCw;
 
   const content = (
@@ -146,7 +153,15 @@ export function SyncStatusChip({ counts: countsProp, onPress }: SyncStatusChipPr
       paddingVertical={11}
       marginTop={12}
     >
-      {activelySyncing ? <ActiveSyncSpinner /> : <Icon size={16} color={accent} strokeWidth={1.75} />}
+      {alarm ? (
+        <Icon size={16} color={accent} strokeWidth={1.75} />
+      ) : activelySyncing ? (
+        <ActiveSyncSpinner />
+      ) : hasPendingRecords ? (
+        <ActiveSyncSpinner color={BIZLINK_COLORS.orange} />
+      ) : (
+        <Icon size={16} color={accent} strokeWidth={1.75} />
+      )}
       <YStack>
         <Text fontSize={12} fontFamily={BIZLINK_FONTS.medium} color={accent}>
           {primaryLine(counts)}

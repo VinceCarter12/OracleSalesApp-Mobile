@@ -6,7 +6,6 @@ import { Bell, Hourglass } from 'lucide-react-native';
 import { Spinner, Text, XStack, YStack } from 'tamagui';
 import { BIZLINK_COLORS, BIZLINK_FONTS } from '../../lib/theme';
 import { useManagerDashboard } from '../../lib/useManagerDashboard';
-import { useTeamOverview } from '../../lib/use-team-overview';
 import { getIncomingCompanionRequests } from '../../lib/tag-along-invitee-service';
 import { useManagerApprovalFeed } from '../../lib/use-manager-approval-feed';
 import { useSession } from '../../lib/session-store';
@@ -17,7 +16,6 @@ import { timeAgo } from '../../lib/time-ago';
 import { firstName, initialsFromName } from '../../lib/display-name';
 import { Avatar } from '../../components/ui/Avatar';
 import { StatusBadge } from '../../components/ui/StatusBadge';
-import { BizStatCard } from '../../components/bizlink/BizStatCard';
 import { BizHeroCard } from '../../components/bizlink/BizHeroCard';
 import { BizButton } from '../../components/bizlink/BizButton';
 import { BizScopeFilter } from '../../components/bizlink/BizScopeFilter';
@@ -48,7 +46,7 @@ const SCOPE_LABEL: Record<ManagerScope, string> = { mine: 'My', team: 'Team', co
 function scopeHelperNote(scope: ManagerScope, lastSyncAt: string | null): string {
   if (scope === 'mine') return 'Your local records are available offline.';
   if (scope === 'team') {
-    const syncLabel = lastSyncAt ? timeAgo(lastSyncAt) : 'hindi pa nakaka-sync';
+    const syncLabel = lastSyncAt ? timeAgo(lastSyncAt) : 'never synced yet';
     return `Team snapshot. Last authorized sync: ${syncLabel}.`;
   }
   return 'Combined view. Team data is the last authorized sync when offline.';
@@ -69,9 +67,6 @@ export default function ManagerDashboardScreen() {
   // and Team Overview's.
   const { scope } = useManagerScope();
   const { summary, error, refresh: refreshDashboard } = useManagerDashboard(scope);
-  // B-054 Phase 1 item 6: real "this week" trend numbers for the two stat
-  // captions below.
-  const { overview, reload: refreshOverview } = useTeamOverview(scope);
   const { fullName, profileId, role } = useSession();
   // Wireframe s-home "Mga Gawain" primary-action hub (item 1): same
   // cross-screen active-meeting visibility Sales Home uses for its
@@ -137,7 +132,7 @@ export default function ManagerDashboardScreen() {
     return (
       <YStack flex={1} justifyContent="center" alignItems="center" backgroundColor={BIZLINK_COLORS.canvas} gap="$3" paddingHorizontal="$5">
         <Text fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} textAlign="center">{error}</Text>
-        <BizButton small label="Ulitin" variant="white" onPress={refreshDashboard} />
+        <BizButton small label="Try again" variant="white" onPress={refreshDashboard} />
       </YStack>
     );
   }
@@ -177,7 +172,7 @@ export default function ManagerDashboardScreen() {
             onRefresh={async () => {
               setIsRefreshing(true);
               try {
-                await Promise.all([refreshDashboard(), refreshOverview()]);
+                await refreshDashboard();
               } finally {
                 setIsRefreshing(false);
               }
@@ -192,47 +187,6 @@ export default function ManagerDashboardScreen() {
         <Text fontSize={12} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} marginTop={2} marginBottom={10}>
           {scopeHelperNote(scope, lastSyncAt)}
         </Text>
-
-        <XStack gap={10} marginTop={6}>
-          <YStack flex={1}>
-            <BizStatCard
-              tone="tintA"
-              value={summary.teamProspects}
-              label={`${SCOPE_LABEL[scope]} Prospects`}
-              caption={`+${overview?.newProspectsThisWeek ?? 0} this week`}
-              onPress={() => router.push('/(manager)/more/clients')}
-            />
-          </YStack>
-          <YStack flex={1}>
-            <BizStatCard
-              tone="white"
-              value={summary.teamClients}
-              label={`${SCOPE_LABEL[scope]} Clients`}
-              caption={`+${overview?.newTeamClientsThisWeek ?? 0} this week`}
-              onPress={() => router.push('/(manager)/more/clients')}
-            />
-          </YStack>
-        </XStack>
-        <XStack gap={10} marginTop={10}>
-          <YStack flex={1}>
-            <BizStatCard
-              tone="white"
-              value={scope === 'mine' ? '—' : summary.agentCount}
-              label={scope === 'mine' ? 'Your records' : 'Team Agents'}
-              caption="your team"
-              onPress={() => router.push('/(manager)/team')}
-            />
-          </YStack>
-          <YStack flex={1}>
-            <BizStatCard
-              tone="white"
-              value={pendingTagAlongCount}
-              label="Tag-Along"
-              caption="accept/reject"
-              onPress={() => router.push('/(manager)/tag-along')}
-            />
-          </YStack>
-        </XStack>
 
         <BizHeroCard
           value={summary.teamMeetings}
@@ -278,14 +232,14 @@ export default function ManagerDashboardScreen() {
             <Hourglass size={18} color={BIZLINK_COLORS.red} strokeWidth={1.75} />
             <YStack flex={1}>
               <Text fontSize={12.5} fontFamily={BIZLINK_FONTS.semibold} color={BIZLINK_COLORS.red}>
-                {summary.deadlineWarningCount} prospects across the team: info deadline malapit na
+                {summary.deadlineWarningCount} prospects across the team: info deadline is close
               </Text>
-              <Text fontSize={11} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.red}>1-month rule — kumpletuhin o auto-delete</Text>
+              <Text fontSize={11} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.red}>Client info deadline — complete it or it is auto-deleted</Text>
             </YStack>
           </XStack>
         ) : null}
 
-        <ManagerHomeTeamSection agents={summary.agents} recentMeetings={summary.recentMeetings} />
+        <ManagerHomeTeamSection agents={summary.agents} />
       </ScrollView>
 
       <SyncCenterSheet

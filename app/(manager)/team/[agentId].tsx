@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 import { ScrollView, TextInput } from 'react-native';
+import { KeyboardAwareScrollView } from '../../../components/ui/KeyboardAwareScrollView';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router, useLocalSearchParams } from 'expo-router';
 import { Handshake, Inbox, Search } from 'lucide-react-native';
@@ -98,7 +99,7 @@ export default function AgentDetailScreen() {
         <BizTopBar title="Agent" fallbackHref="/(manager)/team" />
         <YStack flex={1} justifyContent="center" alignItems="center" gap="$3" paddingHorizontal="$5">
           <Text fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} textAlign="center">{error}</Text>
-          <BizButton small label="Ulitin" variant="white" onPress={reload} />
+          <BizButton small label="Try again" variant="white" onPress={reload} />
         </YStack>
       </YStack>
     );
@@ -119,7 +120,7 @@ export default function AgentDetailScreen() {
   return (
     <YStack flex={1} backgroundColor={BIZLINK_COLORS.canvas} paddingTop={insets.top}>
       <BizTopBar title={agent.name.split(' ')[0]} fallbackHref="/(manager)/team" />
-      <ScrollView contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 120 + insets.bottom }}>
+      <KeyboardAwareScrollView contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 120 + insets.bottom }}>
         <XStack alignItems="center" gap="$3.5" backgroundColor={BIZLINK_COLORS.card} borderRadius={24} padding={18}>
           <Avatar initials={agent.initials} size="lg" background={avatarPaletteFor(agent.id).background} color={avatarPaletteFor(agent.id).color} />
           <YStack>
@@ -146,9 +147,9 @@ export default function AgentDetailScreen() {
               <BizFilterScroll options={CLIENT_STATUS_FILTERS} value={statusFilter} onChange={setStatusFilter} />
             </YStack>
             {clients.length === 0 ? (
-              <EmptyRow icon={<Inbox size={22} color={BIZLINK_COLORS.muted} strokeWidth={1.75} />} label="Walang clients na naka-assign." />
+              <EmptyRow icon={<Inbox size={22} color={BIZLINK_COLORS.muted} strokeWidth={1.75} />} label="No clients assigned yet." />
             ) : filteredClients.length === 0 ? (
-              <EmptyRow icon={<Inbox size={22} color={BIZLINK_COLORS.muted} strokeWidth={1.75} />} label="Walang client na tumugma sa filter." />
+              <EmptyRow icon={<Inbox size={22} color={BIZLINK_COLORS.muted} strokeWidth={1.75} />} label="No client matches this filter." />
             ) : (
               clientPageItems.map((client, index) => (
                 <ClientRow key={client.id} client={client} rowNumber={(clientPage - 1) * PAGINATION_PAGE_SIZE + index + 1} />
@@ -163,9 +164,9 @@ export default function AgentDetailScreen() {
               <BizFilterScroll options={HISTORY_FILTERS} value={historyFilter} onChange={setHistoryFilter} />
             </YStack>
             {meetings.length === 0 ? (
-              <EmptyRow icon={<Handshake size={22} color={BIZLINK_COLORS.muted} strokeWidth={1.75} />} label="Wala pang meetings." />
+              <EmptyRow icon={<Handshake size={22} color={BIZLINK_COLORS.muted} strokeWidth={1.75} />} label="No meetings yet." />
             ) : filteredMeetings.length === 0 ? (
-              <EmptyRow icon={<Handshake size={22} color={BIZLINK_COLORS.muted} strokeWidth={1.75} />} label="Walang meeting na tumugma sa filter." />
+              <EmptyRow icon={<Handshake size={22} color={BIZLINK_COLORS.muted} strokeWidth={1.75} />} label="No meeting matches this filter." />
             ) : (
               historyPageItems.map((meeting, index) => (
                 <MeetingRow
@@ -178,7 +179,7 @@ export default function AgentDetailScreen() {
             )}
           </>
         )}
-      </ScrollView>
+      </KeyboardAwareScrollView>
 
       {view === 'clients' && filteredClients.length > 0 ? (
         <BizFloatingPager page={clientPage} totalPages={clientTotalPages} onPageChange={setClientPage} bottomOffset={insets.bottom + 16} />

@@ -4,6 +4,7 @@ node_modules/
 dist/
 web-build/
 .env.local
+.env.staging.local
 *.jks
 *.p8
 *.p12

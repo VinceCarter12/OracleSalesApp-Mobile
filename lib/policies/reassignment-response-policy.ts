@@ -18,13 +18,13 @@ export type ReassignResponseCode =
   | 'reassigned';
 
 const REASSIGN_MESSAGES: Record<ReassignResponseCode, string> = {
-  reason_required: 'Kailangan ng dahilan bago mag-reassign.',
-  same_owner: 'Pareho ang bagong agent sa kasalukuyang agent — pumili ng ibang agent.',
-  role_not_eligible: 'Hindi ka pinapayagang mag-reassign ng client na ito.',
-  new_owner_not_in_team: 'Ang bagong agent ay wala sa team mo.',
-  new_owner_not_eligible: 'Hindi puwedeng tanggapin ng napiling agent ang client na ito (inactive o hindi kwalipikadong role).',
-  stale_or_not_permitted: 'Nailipat na ang client na ito sa ibang agent — i-refresh at subukan ulit.',
-  reassigned: 'Matagumpay na na-reassign ang client.',
+  reason_required: 'Enter a reason before moving the client.',
+  same_owner: 'The chosen agent is already this client\'s agent — pick a different one.',
+  role_not_eligible: 'You don\'t have permission to move this client.',
+  new_owner_not_in_team: 'The chosen agent is not on your team.',
+  new_owner_not_eligible: 'The chosen agent can\'t take this client (inactive or ineligible role).',
+  stale_or_not_permitted: 'This client was already moved to another agent — refresh and try again.',
+  reassigned: 'The client was moved successfully.',
 };
 
 /** Maps a `reassign_team_client()` response `code` to a user-facing message. */

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Alert, Pressable, ScrollView, TextInput } from 'react-native';
+import { KeyboardAwareScrollView } from '../../components/ui/KeyboardAwareScrollView';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router, useLocalSearchParams } from 'expo-router';
 import {
@@ -15,7 +16,7 @@ import {
   Receipt,
   Smartphone,
 } from 'lucide-react-native';
-import { useSQLiteContext } from 'expo-sqlite';
+import { useAppDb } from '../../lib/app-db-provider';
 import { Text, XStack, YStack } from 'tamagui';
 import { useBizlinkColors, BIZLINK_FONTS, BIZLINK_ON_INK, COLORS } from '../../lib/theme';
 import { useSession } from '../../lib/session-store';
@@ -117,7 +118,7 @@ export default function CollectPaymentScreen() {
   const { id } = useLocalSearchParams<{ id?: string }>();
 
   const storeId = String(id ?? '');
-  const db = useSQLiteContext();
+  const db = useAppDb();
   const { profileId, fullName, teamId } = useSession();
   // Real record from the local mirror for display; the collect/reschedule/claim
   // WRITE goes through collection-delivery-write.ts (local update + outbox push).
@@ -314,7 +315,7 @@ export default function CollectPaymentScreen() {
   return (
     <YStack flex={1} backgroundColor={BIZLINK_COLORS.canvas} paddingTop={insets.top}>
       <BizTopBar title="Collect Payment" />
-      <ScrollView contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 40 }} scrollEnabled={scrollEnabled}>
+      <KeyboardAwareScrollView contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 40 }} keyboardShouldPersistTaps="handled" scrollEnabled={scrollEnabled}>
         {/* Store header */}
         <XStack
           alignItems="center"
@@ -555,7 +556,7 @@ export default function CollectPaymentScreen() {
         <Text fontSize={12.5} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} textAlign="center" marginTop={10}>
           Works even without signal — saved on your phone and synced automatically later.
         </Text>
-      </ScrollView>
+      </KeyboardAwareScrollView>
     </YStack>
   );
 }

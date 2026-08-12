@@ -41,8 +41,8 @@ export function MeetingLocationPicker({ value, onChange, otherLocation, onOtherL
         <XStack gap="$1.5" alignItems="flex-start" marginTop="$1.5">
           <TriangleAlert size={13} color={BIZLINK_COLORS.orange} strokeWidth={1.75} style={{ marginTop: 2 }} />
           <Text fontSize={11.5} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} flex={1} lineHeight={16}>
-            Online meeting — ang GPS na makukuha ay sa lokasyon MO, hindi sa client. Hindi ito bibilangin bilang
-            client-site visit sa maps/reports.
+            Online meeting — the location saved is your location, not the client's. It won't count as a
+            client-site visit in maps/reports.
           </Text>
         </XStack>
       ) : null}

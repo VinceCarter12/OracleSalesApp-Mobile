@@ -48,7 +48,7 @@ export default function SyncRecordDetailScreen() {
         <BizTopBar title="Sync Record" fallbackHref="/(tabs)/more/sync-history" />
         <YStack flex={1} justifyContent="center" alignItems="center" paddingHorizontal="$5">
           <Text fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} textAlign="center">
-            Hindi makita ang sync record na ito.
+            This sync record can't be found.
           </Text>
         </YStack>
       </YStack>
@@ -62,7 +62,7 @@ export default function SyncRecordDetailScreen() {
         <SyncRecordDetail
           entry={entry}
           showFullFields
-          noticeText="Impormasyon ng sariling record ng Sales user. Hindi ito admin-wide audit log."
+          noticeText="Details of the Sales user's own record on this device. Not an admin-wide audit log."
         />
       </ScrollView>
     </YStack>

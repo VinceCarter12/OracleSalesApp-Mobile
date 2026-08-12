@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { Alert, Image, Pressable, ScrollView } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router, useLocalSearchParams } from 'expo-router';
-import { useSQLiteContext } from 'expo-sqlite';
+import { useAppDb } from '../../../lib/app-db-provider';
 import { Camera, Check, ChevronRight, MapPin, Route, User } from 'lucide-react-native';
 import { Spinner, Text, XStack, YStack } from 'tamagui';
 import { rowToMeeting, type LocalMeetingRow } from '../../../lib/local-meeting-mapper';
@@ -39,7 +39,7 @@ import { mapMeetingPhotoEvidence } from '../../../lib/meeting-photo-evidence';
 export default function MeetingDetailScreen() {
   const BIZLINK_COLORS = useBizlinkColors();
   const insets = useSafeAreaInsets();
-  const db = useSQLiteContext();
+  const db = useAppDb();
   const { id } = useLocalSearchParams<{ id: string }>();
   const routes = useClientFlowRoutes();
   const [meeting, setMeeting] = useState<Meeting | null>(null);
@@ -147,11 +147,11 @@ export default function MeetingDetailScreen() {
           {outcomeStyle && meeting.outcome ? (
             <StatusBadge label={meeting.outcome} {...outcomeStyle} />
           ) : (
-            <StatusBadge label="Photo visit (fast path)" background={BIZLINK_COLORS.tintA} color={BIZLINK_COLORS.ink} />
+            <StatusBadge label="Photo-only visit" background={BIZLINK_COLORS.tintA} color={BIZLINK_COLORS.ink} />
           )}
           {meeting.meeting_mode ? (
             <StatusBadge
-              label={meeting.meeting_mode === 'online' ? 'Online' : 'In-person'}
+              label={meeting.meeting_mode === 'online' ? 'Online meeting' : 'Face-to-face visit'}
               background={BIZLINK_COLORS.soft}
               color={BIZLINK_COLORS.navy}
             />
@@ -188,7 +188,7 @@ export default function MeetingDetailScreen() {
           <YStack backgroundColor={BIZLINK_COLORS.tintA} borderRadius={20} padding={14} marginTop="$3">
             {companionRequests.map((request) => {
               const status = companionRequestDisplayStatus(request);
-              const name = request.inviteeName ?? 'Kasama';
+              const name = request.inviteeName ?? 'Companion';
               return (
                 <Text key={request.id} fontSize={12.5} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.ink} lineHeight={17}>
                   {name} — {COMPANION_REQUEST_STATUS_LABELS[status]}
@@ -204,7 +204,7 @@ export default function MeetingDetailScreen() {
             <YStack backgroundColor={BIZLINK_COLORS.ink} borderRadius={24} padding={16} gap="$2.5">
               <XStack alignItems="center" gap="$2">
                 <Check size={14} color="#8FD7B4" strokeWidth={1.75} />
-                <Text fontSize={12.5} fontFamily={BIZLINK_FONTS.semibold} color={BIZLINK_ON_INK.solid}>Timestamp</Text>
+                <Text fontSize={12.5} fontFamily={BIZLINK_FONTS.semibold} color={BIZLINK_ON_INK.solid}>Date and time</Text>
                 <Text fontSize={12.5} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_ON_INK.textMuted}>
                   {meeting.start_captured_at ? new Date(meeting.start_captured_at).toLocaleString() : '—'}
                 </Text>
@@ -221,9 +221,9 @@ export default function MeetingDetailScreen() {
                 )}
                 <YStack>
                   <Text fontSize={12} fontFamily={BIZLINK_FONTS.semibold} color={BIZLINK_ON_INK.solid}>Start photo</Text>
-                  <Text fontSize={11} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_ON_INK.textMuted}>Locked</Text>
-                  <Text fontSize={10.5} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_ON_INK.textMuted}>{startEvidence.gpsLat !== null ? `GPS ${startEvidence.gpsLat.toFixed(4)}, ${startEvidence.gpsLng?.toFixed(4)}` : 'GPS unavailable'} · {startEvidence.capturedAt ? new Date(startEvidence.capturedAt).toLocaleString() : 'Timestamp unavailable'}</Text>
-                  <Text fontSize={10.5} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_ON_INK.textMuted}>Client status at meeting: {startEvidence.clientStatusLabel}</Text>
+                  <Text fontSize={11} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_ON_INK.textMuted}>Saved</Text>
+                  <Text fontSize={10.5} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_ON_INK.textMuted}>{startEvidence.gpsLat !== null ? `Location ${startEvidence.gpsLat.toFixed(4)}, ${startEvidence.gpsLng?.toFixed(4)}` : 'Location unavailable'} · {startEvidence.capturedAt ? new Date(startEvidence.capturedAt).toLocaleString() : 'Date and time unavailable'}</Text>
+                  <Text fontSize={10.5} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_ON_INK.textMuted}>Client's stage at this meeting: {startEvidence.clientStatusLabel}</Text>
                 </YStack>
               </XStack>
             </YStack>
@@ -232,7 +232,7 @@ export default function MeetingDetailScreen() {
             <YStack backgroundColor={BIZLINK_COLORS.ink} borderRadius={24} padding={16} gap="$2.5">
               <XStack alignItems="center" gap="$2">
                 <Check size={14} color="#8FD7B4" strokeWidth={1.75} />
-                <Text fontSize={12.5} fontFamily={BIZLINK_FONTS.semibold} color={BIZLINK_ON_INK.solid}>Timestamp</Text>
+                <Text fontSize={12.5} fontFamily={BIZLINK_FONTS.semibold} color={BIZLINK_ON_INK.solid}>Date and time</Text>
                 <Text fontSize={12.5} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_ON_INK.textMuted}>
                   {meeting.end_captured_at ? new Date(meeting.end_captured_at).toLocaleString() : '—'}
                 </Text>
@@ -249,14 +249,14 @@ export default function MeetingDetailScreen() {
                 )}
                 <YStack>
                   <Text fontSize={12} fontFamily={BIZLINK_FONTS.semibold} color={BIZLINK_ON_INK.solid}>End photo</Text>
-                  <Text fontSize={11} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_ON_INK.textMuted}>Locked</Text>
-                  <Text fontSize={10.5} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_ON_INK.textMuted}>{endEvidence.gpsLat !== null ? `GPS ${endEvidence.gpsLat.toFixed(4)}, ${endEvidence.gpsLng?.toFixed(4)}` : 'GPS unavailable'} · {endEvidence.capturedAt ? new Date(endEvidence.capturedAt).toLocaleString() : 'Timestamp unavailable'}</Text>
-                  <Text fontSize={10.5} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_ON_INK.textMuted}>Client status at meeting: {endEvidence.clientStatusLabel}</Text>
+                  <Text fontSize={11} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_ON_INK.textMuted}>Saved</Text>
+                  <Text fontSize={10.5} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_ON_INK.textMuted}>{endEvidence.gpsLat !== null ? `Location ${endEvidence.gpsLat.toFixed(4)}, ${endEvidence.gpsLng?.toFixed(4)}` : 'Location unavailable'} · {endEvidence.capturedAt ? new Date(endEvidence.capturedAt).toLocaleString() : 'Date and time unavailable'}</Text>
+                  <Text fontSize={10.5} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_ON_INK.textMuted}>Client's stage at this meeting: {endEvidence.clientStatusLabel}</Text>
                 </YStack>
               </XStack>
             </YStack>
             <Text fontSize={11.5} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} marginTop="$2" textAlign="center">
-              Walang duration dito — kino-compute sa Excel export (web-side).
+              Duration is computed in the Excel export (web side) — it isn't shown here.
             </Text>
           </>
         ) : (
@@ -267,7 +267,7 @@ export default function MeetingDetailScreen() {
             <YStack backgroundColor={BIZLINK_COLORS.ink} borderRadius={24} padding={16} gap="$2.5">
               <XStack alignItems="center" gap="$2">
                 <Check size={14} color="#8FD7B4" strokeWidth={1.75} />
-                <Text fontSize={12.5} fontFamily={BIZLINK_FONTS.semibold} color={BIZLINK_ON_INK.solid}>GPS</Text>
+                <Text fontSize={12.5} fontFamily={BIZLINK_FONTS.semibold} color={BIZLINK_ON_INK.solid}>Location</Text>
                 <Text fontSize={12.5} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_ON_INK.textMuted}>
                   {meeting.gps_lat.toFixed(4)}° N, {meeting.gps_lng.toFixed(4)}° E
                 </Text>
@@ -288,9 +288,9 @@ export default function MeetingDetailScreen() {
                   </YStack>
                 )}
                 <YStack flex={1}>
-                  <Text fontSize={12} fontFamily={BIZLINK_FONTS.semibold} color={BIZLINK_ON_INK.solid}>Selfie captured</Text>
-                  <Text fontSize={10.5} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_ON_INK.textMuted}>{selfieEvidence.gpsLat !== null ? `GPS ${selfieEvidence.gpsLat.toFixed(4)}, ${selfieEvidence.gpsLng?.toFixed(4)}` : 'GPS unavailable'} · {selfieEvidence.capturedAt ? new Date(selfieEvidence.capturedAt).toLocaleString() : 'Timestamp unavailable'}</Text>
-                  <Text fontSize={10.5} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_ON_INK.textMuted}>Client status at meeting: {selfieEvidence.clientStatusLabel}</Text>
+                  <Text fontSize={12} fontFamily={BIZLINK_FONTS.semibold} color={BIZLINK_ON_INK.solid}>Selfie photo</Text>
+                  <Text fontSize={10.5} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_ON_INK.textMuted}>{selfieEvidence.gpsLat !== null ? `Location ${selfieEvidence.gpsLat.toFixed(4)}, ${selfieEvidence.gpsLng?.toFixed(4)}` : 'Location unavailable'} · {selfieEvidence.capturedAt ? new Date(selfieEvidence.capturedAt).toLocaleString() : 'Date and time unavailable'}</Text>
+                  <Text fontSize={10.5} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_ON_INK.textMuted}>Client's stage at this meeting: {selfieEvidence.clientStatusLabel}</Text>
                 </YStack>
               </XStack>
             </YStack>
@@ -360,7 +360,7 @@ export default function MeetingDetailScreen() {
                   Client journey & activities
                 </Text>
                 <Text fontSize={11.5} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted}>
-                  Tingnan ang meetings, outcomes, at stage movement.
+                  See the meetings, outcomes, and stage movement.
                 </Text>
               </YStack>
               <ChevronRight size={18} color={BIZLINK_COLORS.muted} strokeWidth={1.75} />
@@ -380,7 +380,7 @@ export default function MeetingDetailScreen() {
         ) : null}
 
         <Text fontSize={11.5} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} marginTop="$4" textAlign="center">
-          Recorded {new Date(meeting.created_at).toLocaleString()}
+          Meeting saved by you on {new Date(meeting.created_at).toLocaleString()}
         </Text>
       </ScrollView>
 

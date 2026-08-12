@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Modal, Pressable, ScrollView, TextInput } from 'react-native';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Modal, Pressable, TextInput } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect, router } from 'expo-router';
 import { Search, SlidersHorizontal, X } from 'lucide-react-native';
@@ -16,6 +16,7 @@ import type { BizFilterOption } from '../../../components/bizlink/BizFilterScrol
 import { MapLegend, OfflineBanner } from '../../../components/maps/MapsScreenSections';
 import { BizFilterSheet } from '../../../components/bizlink/BizFilterSheet';
 import type { DateRange } from '../../../components/bizlink/DateRangePickerModal';
+import { KeyboardAwareScrollView } from '../../../components/ui/KeyboardAwareScrollView';
 import { MapsFilterPanel } from '../../../components/maps/MapsFilterPanel';
 import { MapsListSection } from '../../../components/maps/MapsListSection';
 import { LeafletWebViewMapWithControls, type MapTileType } from '../../../components/maps/LeafletWebViewMap';
@@ -56,7 +57,6 @@ export default function AgentMapsScreen() {
   const [selectedMarkerIds, setSelectedMarkerIds] = useState<Set<string>>(new Set());
   const [currentPage, setCurrentPage] = useState(0);
   const [mapExpanded, setMapExpanded] = useState(false);
-  const scrollViewRef = useRef<ScrollView>(null);
   const [datePreset, setDatePreset] = useState<MapsDatePreset>('last7');
   const [dateRange, setDateRange] = useState<DateRange>(() => makeMapsPresetRange('last7'));
   const [filterOpen, setFilterOpen] = useState(false);
@@ -140,7 +140,7 @@ export default function AgentMapsScreen() {
   return (
     <YStack flex={1} backgroundColor={BIZLINK_COLORS.canvas} paddingTop={insets.top}>
       <BizTopBar title="Maps" fallbackHref="/(tabs)" />
-      <ScrollView ref={scrollViewRef} contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 120 }}>
+      <KeyboardAwareScrollView contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 120 }} keyboardShouldPersistTaps="handled">
         {!online ? <OfflineBanner /> : null}
 
         {/* Search Bar + Filters pill */}
@@ -230,7 +230,7 @@ export default function AgentMapsScreen() {
           onOfficePress={(id) => handleCardSelect('office', id)}
         />
 
-      </ScrollView>
+      </KeyboardAwareScrollView>
 
       {totalPages > 0 && (
         <BizFloatingPager

@@ -1,5 +1,4 @@
 import { useCallback } from 'react';
-import { ScrollView } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect, router } from 'expo-router';
 import { YStack } from 'tamagui';
@@ -9,6 +8,7 @@ import { PAGINATION_PAGE_SIZE } from '../../../lib/use-pagination';
 import { BizTopBar } from '../../../components/bizlink/BizTopBar';
 import { BizFloatingPager } from '../../../components/bizlink/BizFloatingPager';
 import { SyncHistoryList } from '../../../components/sync/SyncHistoryList';
+import { KeyboardAwareScrollView } from '../../../components/ui/KeyboardAwareScrollView';
 
 /**
  * Manager counterpart of `app/(tabs)/more/sync-history.tsx` — reads the same
@@ -36,10 +36,10 @@ export default function ManagerSyncHistoryScreen() {
 
   return (
     <YStack flex={1} backgroundColor={BIZLINK_COLORS.canvas} paddingTop={insets.top}>
-      <BizTopBar title="Sync History" />
-      <ScrollView contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 120 }}>
+      <BizTopBar title="Sync History" fallbackHref="/(manager)" />
+      <KeyboardAwareScrollView contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 120 }} keyboardShouldPersistTaps="handled">
         <SyncHistoryList
-          description="Listahan ng mga na-sync (o na-flag) na pagbabagong ginawa mo sa device na ito — hindi kasama ang sa ibang agents."
+          description="Changes (or flagged items) you made on this device — other agents' changes aren't included."
           entries={pageItems}
           totalCount={entries.length}
           rowStartIndex={(page - 1) * PAGINATION_PAGE_SIZE}
@@ -57,7 +57,7 @@ export default function ManagerSyncHistoryScreen() {
             params: { id: entry.id },
           })}
         />
-      </ScrollView>
+      </KeyboardAwareScrollView>
 
       {totalPages > 0 ? (
         <BizFloatingPager page={page} totalPages={totalPages} onPageChange={setPage} bottomOffset={insets.bottom + 16} />

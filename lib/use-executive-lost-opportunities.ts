@@ -63,7 +63,7 @@ export function useExecutiveLostOpportunities(): UseExecutiveLostOpportunities {
       setItems(data.map(toExecLostOpportunity));
     } catch (err) {
       console.error('[use-executive-lost-opportunities] load failed:', err instanceof Error ? err.message : String(err));
-      setError('Hindi na-load ang lost opportunity list. Subukan ulit.');
+      setError("The lost opportunity list couldn't be loaded. Try again.");
     } finally {
       setLoading(false);
     }

@@ -3,6 +3,7 @@ import { ScrollView, TextInput } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { Spinner, Text, XStack, YStack } from 'tamagui';
+import { KeyboardAwareScrollView } from '../../../../components/ui/KeyboardAwareScrollView';
 import { ChevronRight } from 'lucide-react-native';
 import { BIZLINK_COLORS, BIZLINK_FONTS } from '../../../../lib/theme';
 import { useSession } from '../../../../lib/session-store';
@@ -51,7 +52,7 @@ export default function ReassignClientScreen() {
       setOnline(isOnline);
     } catch (err) {
       console.error('[reassign] load candidates failed:', err instanceof Error ? err.message : String(err));
-      setCandidatesError('Hindi na-load ang listahan ng agents.');
+      setCandidatesError("The agents list couldn't be loaded.");
     } finally {
       setCandidatesLoading(false);
     }
@@ -85,9 +86,9 @@ export default function ReassignClientScreen() {
       setSubmitError(mapReassignResponseCode(result.code));
     } catch (err) {
       if (err instanceof ReassignConflictError) {
-        setSubmitError('Nailipat na ang client na ito sa ibang agent — i-refresh at subukan ulit.');
+        setSubmitError('This client was already moved to another agent — refresh and try again.');
       } else {
-        setSubmitError(err instanceof Error ? err.message : 'Hindi na-reassign ang client. Subukan ulit.');
+        setSubmitError(err instanceof Error ? err.message : "The client couldn't be reassigned. Try again.");
       }
     } finally {
       setSubmitting(false);
@@ -124,7 +125,7 @@ export default function ReassignClientScreen() {
   return (
     <YStack flex={1} backgroundColor={BIZLINK_COLORS.canvas} paddingTop={insets.top}>
       <BizTopBar title="Reassign Client" fallbackHref={`/(manager)/more/clients/${encodeURIComponent(clientId)}`} />
-      <ScrollView contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 24 }}>
+      <KeyboardAwareScrollView contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 24 }}>
         <YStack backgroundColor={BIZLINK_COLORS.card} borderRadius={20} padding={14} marginBottom="$3.5">
           <Text fontSize={12.5} fontFamily={BIZLINK_FONTS.semibold} color={BIZLINK_COLORS.text}>{client.name}</Text>
           <Text fontSize={13} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} marginTop={4}>
@@ -135,12 +136,12 @@ export default function ReassignClientScreen() {
         {!online ? (
           <YStack backgroundColor={BIZLINK_COLORS.amberSoft} borderRadius={20} padding={14} marginBottom="$3.5">
             <Text fontSize={12.5} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.orange}>
-              Kailangan ng internet connection para mag-reassign ng client. Walang offline queue para dito.
+              Reassigning a client needs an internet connection. There's no offline queue for this.
             </Text>
           </YStack>
         ) : null}
 
-        <Text fontFamily={BIZLINK_FONTS.semibold} fontSize={16} color={BIZLINK_COLORS.text} marginBottom="$2.5">Piliin ang bagong agent</Text>
+        <Text fontFamily={BIZLINK_FONTS.semibold} fontSize={16} color={BIZLINK_COLORS.text} marginBottom="$2.5">Pick the new agent</Text>
 
         {candidatesLoading ? (
           <YStack alignItems="center" paddingVertical="$5">
@@ -153,7 +154,7 @@ export default function ReassignClientScreen() {
           </YStack>
         ) : candidates.length === 0 ? (
           <Text fontSize={13} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} textAlign="center" paddingVertical="$4">
-            Walang ibang agent sa team mo.
+            There are no other agents on your team.
           </Text>
         ) : (
           candidates.map((a) => {
@@ -193,13 +194,13 @@ export default function ReassignClientScreen() {
           <TextInput
             value={reason}
             onChangeText={setReason}
-            placeholder="Ilagay ang dahilan ng reassignment"
+            placeholder="Why are you reassigning this client?"
             placeholderTextColor={BIZLINK_COLORS.muted}
             multiline
             textAlignVertical="top"
             style={{ minHeight: 96, borderRadius: 16, backgroundColor: BIZLINK_COLORS.card, borderWidth: 1, borderColor: BIZLINK_COLORS.line, padding: 14, fontFamily: BIZLINK_FONTS.medium, fontSize: 14, color: BIZLINK_COLORS.text }}
           />
-          <Text fontSize={12} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted}>Required ito para sa permanent audit trail. Online-only ang reassignment.</Text>
+          <Text fontSize={12} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted}>This is required for a permanent audit trail. Reassignment is online-only.</Text>
         </YStack>
 
         {submitError ? (
@@ -215,7 +216,7 @@ export default function ReassignClientScreen() {
             onPress={confirm}
           />
         </YStack>
-      </ScrollView>
+      </KeyboardAwareScrollView>
     </YStack>
   );
 }

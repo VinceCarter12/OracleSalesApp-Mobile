@@ -27,14 +27,14 @@ export function CompanionPicker({ roster, selected, onToggle }: CompanionPickerP
   const BIZLINK_COLORS = useBizlinkColors();
   return (
     <>
-      <BizSectionHeader title="Kasama sa visit" helper="optional · max 2" />
+      <BizSectionHeader title="Companions on this visit" helper="optional · max 2" />
       <Text fontSize={12.5} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} marginTop={-6} marginBottom="$2.5" lineHeight={17}>
-        Pumili ng manager o ka-team na kasama mo sa visit na ito — maabisuhan sila at kailangan nilang i-accept. Tuloy ka pa
-        rin agad sa pag-record habang pending ang sagot nila.
+        Pick a manager or teammate to join you on this visit — they'll be notified and need to accept. You can keep
+        recording right away while you wait for their answer.
       </Text>
       {roster.length === 0 ? (
         <Text fontSize={11.5} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} marginBottom="$3">
-          Team list hindi pa na-sync — kumonekta para makapili ng kasama.
+          The team list isn't loaded yet — connect to the internet to pick your companions.
         </Text>
       ) : (
         <XStack gap="$2" flexWrap="wrap" marginBottom="$3">

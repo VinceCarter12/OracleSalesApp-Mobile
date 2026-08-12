@@ -77,8 +77,8 @@ export default function MyRequestsScreen() {
       <BizTopBar title="My Requests" fallbackHref="/(tabs)" />
       <ScrollView contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 120 }}>
         <Text fontSize={13} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} marginBottom="$3" lineHeight={19}>
-          Status ng sarili mong PO confirmation, client-edit, at tag-along requests. View-only ito: Manager lang ang
-          may approval decision.
+          The status of your PO confirmations, client edits, and companion requests. View-only: the Manager is the only
+          one who decides.
         </Text>
 
         <BizFilterScroll options={STATUS_FILTER_OPTIONS} value={statusFilter} onChange={setStatusFilter} />
@@ -99,13 +99,13 @@ export default function MyRequestsScreen() {
             <Text fontSize={13} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} textAlign="center">
               {error}
             </Text>
-            <BizButton small label="Ulitin" variant="white" onPress={reload} />
+            <BizButton small label="Try again" variant="white" onPress={reload} />
           </YStack>
         ) : filteredRows.length === 0 ? (
           <YStack alignItems="center" paddingVertical="$6" gap="$2">
             <ClipboardCheck size={28} color={BIZLINK_COLORS.muted} strokeWidth={1.75} />
             <Text fontSize={13} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} textAlign="center">
-              {rows.length === 0 ? 'Wala ka pang request.' : 'Walang request sa filter na ito.'}
+              {rows.length === 0 ? "You have no requests yet." : "No request matches this filter."}
             </Text>
           </YStack>
         ) : (

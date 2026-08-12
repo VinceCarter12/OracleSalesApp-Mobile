@@ -42,7 +42,7 @@ export function useTeamOverview(scope: ManagerScope = DEFAULT_MANAGER_SCOPE): Us
       setOverview(data);
     } catch (err) {
       console.error('[use-team-overview] load failed:', describeLoadError(err));
-      setError('Hindi na-load ang team data. Subukan ulit.');
+      setError("Team data couldn't be loaded. Try again.");
     } finally {
       setLoading(false);
     }

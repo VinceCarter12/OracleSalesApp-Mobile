@@ -2,7 +2,6 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { AppState } from 'react-native';
 import NetInfo from '@react-native-community/netinfo';
 import { getOutboxCounts, runSync, type OutboxCounts } from './sync-engine';
-import { notifySyncComplete } from './sync/sync-events';
 import { createAdaptiveForegroundScheduler } from './sync/adaptive-foreground-scheduler';
 import type { ConnectivityState } from './sync/connectivity';
 import type { AppStateStatus } from 'react-native';
@@ -62,7 +61,6 @@ export function useSync(agentId: string | null, teamId?: string | null): SyncSta
           // already-mounted screens to re-read SQLite. `runSync()` only
           // reaches `syncDown()` (and thus actually changes local data) on
           // the 'online' path, so this can't fire on a no-op offline attempt.
-          notifySyncComplete();
         }
         return { changed: result.synced > 0 || result.failed > 0 };
       }

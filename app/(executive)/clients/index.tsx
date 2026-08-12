@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 import { FlatList, Pressable, TextInput } from 'react-native';
+import { KeyboardAwareFlatList } from '../../../components/ui/KeyboardAwareScrollView';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { Eye, Search, SlidersHorizontal } from 'lucide-react-native';
@@ -125,8 +126,9 @@ export default function ExecutiveClientsScreen() {
           <BizButton small label="Ulitin" variant="white" onPress={reload} />
         </YStack>
       ) : (
-        <FlatList
+        <KeyboardAwareFlatList
           data={filtered}
+          keyboardShouldPersistTaps="handled"
           keyExtractor={(c) => c.id}
           contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 24, paddingTop: 8 }}
           ListEmptyComponent={

@@ -151,7 +151,7 @@ describe("fetchLostOpportunities scope: 'claimable' (Sales/RSR)", () => {
 });
 
 describe("fetchLostOpportunities scope: 'team' (Manager)", () => {
-  it('fetches the team roster then filters clients by assigned_agent_id, including BOTH available and cooling records', async () => {
+  it('uses server RLS for the team boundary and includes BOTH available and cooling records', async () => {
     profilesResult = {
       data: [{ id: 'agent-1', full_name: 'Agent One', role: 'sales_specialist', team_id: 'team-1' }],
       error: null,
@@ -175,14 +175,34 @@ describe("fetchLostOpportunities scope: 'team' (Manager)", () => {
     // `assigned_agent_id IN (roster + manager)` — a regression to e.g. a
     // dropped `status` filter or the wrong id column would silently widen
     // or break the Manager scope without this assertion catching it.
-    expect(lastProfilesQuery.eq).toHaveBeenCalledWith('team_id', 'team-1');
-    expect(lastProfilesQuery.in).toHaveBeenCalledWith('role', ['sales_specialist', 'rsr']);
     expect(lastClientsQuery.eq).toHaveBeenCalledWith('status', 'lost');
-    expect(lastClientsQuery.in).toHaveBeenCalledWith('assigned_agent_id', ['agent-1', 'mgr-1']);
+    expect(lastClientsQuery.in).not.toHaveBeenCalled();
   });
 
-  it('returns an empty list without querying clients when the team roster is empty and the manager id is falsy-safe', async () => {
-    profilesResult = { data: [], error: null };
+  it('includes a cooling row even when the owner is absent from the roster response', async () => {
+    profilesResult = {
+      data: [
+        { id: 'agent-1', full_name: 'Agent One', role: 'sales_specialist', team_id: 'team-1' },
+        { id: 'mgr-2', full_name: 'Manager Two', role: 'sales_manager', team_id: 'team-1' },
+      ],
+      error: null,
+    };
+    clientsResult = {
+      data: [clientRow({ id: 'manager-owned-cooling', assigned_agent_id: 'mgr-2', reassignable_at: FUTURE })],
+      error: null,
+    };
+
+    const items = await fetchLostOpportunities({ scope: 'team', teamId: 'team-1', managerProfileId: 'mgr-1' });
+    expect(items).toEqual([
+      expect.objectContaining({ id: 'manager-owned-cooling', availability: 'cooling' }),
+    ]);
+    expect(lastClientsQuery.in).not.toHaveBeenCalled();
+    // The roster query remains explicitly team-bound, so a profile from a
+    // different team can never enter the assigned-agent IN list.
+    expect(lastClientsQuery.eq).toHaveBeenCalledWith('status', 'lost');
+  });
+
+  it('does not query profiles for team scope; RLS remains the boundary', async () => {
     // Manager id is always included, so roster is never truly empty in
     // practice — this asserts the clients query still runs scoped to just
     // the manager rather than skipping/broadening unexpectedly.
@@ -190,7 +210,7 @@ describe("fetchLostOpportunities scope: 'team' (Manager)", () => {
     expect(fromMock).toHaveBeenCalledWith('clients');
     expect(Array.isArray(items)).toBe(true);
     expect(lastClientsQuery.eq).toHaveBeenCalledWith('status', 'lost');
-    expect(lastClientsQuery.in).toHaveBeenCalledWith('assigned_agent_id', ['mgr-1']);
+    expect(fromMock).not.toHaveBeenCalledWith('profiles');
   });
 });
 
