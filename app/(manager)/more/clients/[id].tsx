@@ -77,17 +77,7 @@ export default function ManagerClientDetailScreen() {
         <BizCard flexDirection="row" alignItems="flex-start" gap="$3.5">
           <ProgressRing percent={progress} />
           <YStack flex={1} gap="$1.5">
-            <XStack alignItems="flex-start" justifyContent="space-between" gap="$2">
-              <Text fontFamily={BIZLINK_FONTS.semibold} fontSize={17} color={BIZLINK_COLORS.text} lineHeight={20} flex={1}>{client.name}</Text>
-              <BizButton
-                label="Reassign"
-                variant="white"
-                small
-                icon={<Repeat size={14} color={BIZLINK_COLORS.text} strokeWidth={1.75} />}
-                style={{ paddingHorizontal: 14 }}
-                onPress={() => router.push(`/(manager)/more/clients/reassign?clientId=${encodeURIComponent(client.id)}`)}
-              />
-            </XStack>
+            <Text fontFamily={BIZLINK_FONTS.semibold} fontSize={17} color={BIZLINK_COLORS.text} lineHeight={20}>{client.name}</Text>
             <XStack gap="$1.5">
               <StatusBadge {...CLIENT_STATUS_BADGES[client.status]} />
               {client.channel !== '—' ? (
@@ -151,6 +141,15 @@ export default function ManagerClientDetailScreen() {
               ? "Manager-owned record: changes apply directly, but they're still version-checked on upload."
               : "This is a team record. Sales edit requests go through Approvals; it won't be silently overwritten."}
           </Text>
+        </YStack>
+
+        <YStack marginTop="$3">
+          <BizButton
+            label="Reassign client"
+            variant="navy"
+            icon={<Repeat size={17} color="#FFFFFF" strokeWidth={1.75} />}
+            onPress={() => router.push(`/(manager)/more/clients/reassign?clientId=${encodeURIComponent(client.id)}`)}
+          />
         </YStack>
 
         <BizSectionHeader title="Meeting history" />
