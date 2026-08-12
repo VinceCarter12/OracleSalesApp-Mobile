@@ -8,6 +8,7 @@ import { BIZLINK_COLORS, BIZLINK_FONTS } from '../../lib/theme';
 import { useManagerDashboard } from '../../lib/useManagerDashboard';
 import { getIncomingCompanionRequests } from '../../lib/tag-along-invitee-service';
 import { useManagerApprovalFeed } from '../../lib/use-manager-approval-feed';
+import { useMyRequestStatuses } from '../../lib/use-my-request-statuses';
 import { useSession } from '../../lib/session-store';
 import { useManagerScope } from '../../lib/manager-scope-store';
 import { useActiveMeetingDrafts } from '../../lib/use-active-meeting-drafts';
@@ -97,6 +98,15 @@ export default function ManagerDashboardScreen() {
   const pendingApprovalCount = useMemo(
     () => approvalRows.filter((r) => r.status === 'pending').length,
     [approvalRows]
+  );
+
+  // "My Requests" badge (2026-08-11): the manager's own OUTGOING requests —
+  // same hook the Sales/RSR Home screen uses, already scoped server-side to
+  // whoever is calling it.
+  const { rows: myRequestRows } = useMyRequestStatuses();
+  const myRequestsBadgeCount = useMemo(
+    () => myRequestRows.filter((r) => r.status === 'pending').length,
+    [myRequestRows]
   );
 
   const loadPendingTagAlong = useCallback(() => {
@@ -204,6 +214,7 @@ export default function ManagerDashboardScreen() {
           activeMeeting={activeMeetingDrafts.length > 0}
           pendingApprovalCount={pendingApprovalCount}
           pendingTagAlongCount={pendingTagAlongCount}
+          myRequestsBadgeCount={myRequestsBadgeCount}
         />
 
         {/* T-014 Phase 3 (ADR-022 Phase D scope): manager's OWN device outbox

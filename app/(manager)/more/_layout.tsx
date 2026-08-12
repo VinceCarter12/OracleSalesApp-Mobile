@@ -8,6 +8,8 @@ export default function ManagerMoreStackLayout() {
       <Stack.Screen name="clients/index" />
       <Stack.Screen name="clients/[id]" />
       <Stack.Screen name="clients/reassign" />
+      <Stack.Screen name="my-requests/index" />
+      <Stack.Screen name="my-requests/[id]" />
       <Stack.Screen name="meetings/index" />
       <Stack.Screen name="meetings/[id]" />
       <Stack.Screen name="reports" />
