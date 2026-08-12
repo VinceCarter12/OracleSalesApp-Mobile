@@ -66,7 +66,7 @@ export function LostOpportunityDialog({
                   label="LOST OPPORTUNITY REASON *"
                   value={reason ?? ''}
                   onChangeText={onReasonChange ?? (() => {})}
-                  placeholder="Ilagay kung bakit naging Lost ang client"
+                  placeholder="Why did this client become Lost?"
                   multiline
                   maxLength={MINOR_NOTES_MAX_LENGTH}
                   hint={
