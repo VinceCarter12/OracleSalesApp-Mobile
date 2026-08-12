@@ -1,9 +1,9 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { ScrollView } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { CircleCheckBig } from 'lucide-react-native';
-import { Spinner, Text, YStack } from 'tamagui';
+import { Button, Spinner, Text, YStack } from 'tamagui';
 import { BIZLINK_FONTS, useBizlinkColors } from '../../../lib/theme';
 import { useSession } from '../../../lib/session-store';
 import { useManagerRequestFeed } from '../../../lib/use-manager-request-feed';
@@ -16,6 +16,7 @@ import { BizButton } from '../../../components/bizlink/BizButton';
 import { BizManagerRequestRow } from '../../../components/bizlink/BizManagerRequestRow';
 import { BizFilterScroll, type BizFilterOption } from '../../../components/bizlink/BizFilterScroll';
 import { BizFloatingPager } from '../../../components/bizlink/BizFloatingPager';
+import { decideJointManagerRequest, fetchManagerJointRequests, type JointManagerRequest } from '../../../lib/joint-manager-service';
 
 type StatusFilterValue = 'all' | ApprovalDecisionStatus;
 type KindFilterValue = 'all' | ManagerRequestKind;
@@ -62,6 +63,15 @@ export default function ManagerRequestsScreen() {
   const [kindFilter, setKindFilter] = useState<KindFilterValue>('all');
   const [respondingId, setRespondingId] = useState<string | null>(null);
   const [respondError, setRespondError] = useState<string | null>(null);
+  const [jointRows, setJointRows] = useState<JointManagerRequest[]>([]);
+  const [jointLoading, setJointLoading] = useState(false);
+
+  async function reloadJoint(): Promise<void> {
+    setJointLoading(true);
+    try { setJointRows(await fetchManagerJointRequests()); } catch (err) { setRespondError(err instanceof Error ? err.message : String(err)); } finally { setJointLoading(false); }
+  }
+
+  useEffect(() => { void reloadJoint(); }, []);
 
   function handleKindChipPress(kind: ManagerRequestKind): void {
     setKindFilter((current) => (current === kind ? 'all' : kind));
@@ -123,6 +133,14 @@ export default function ManagerRequestsScreen() {
             {respondError}
           </Text>
         ) : null}
+
+        {jointLoading ? <Spinner size="small" color={BIZLINK_COLORS.brand} /> : jointRows.map((request) => (
+          <YStack key={`joint-${request.id}`} padding="$3" marginBottom="$2" borderWidth={1} borderColor={BIZLINK_COLORS.line} borderRadius={10} gap="$2">
+            <Text color={BIZLINK_COLORS.text} fontFamily={BIZLINK_FONTS.semibold}>Joint record-holder request</Text>
+            <Text color={BIZLINK_COLORS.muted} fontFamily={BIZLINK_FONTS.medium}>{request.managerNames.join(', ') || 'Manager'} · {request.requiredCount} holder{request.requiredCount === 1 ? '' : 's'}</Text>
+            {request.status === 'pending' ? <YStack flexDirection="row" gap="$2"><Button minHeight={44} onPress={() => { void decideJointManagerRequest(request.id, 'approved').then(reloadJoint).catch((err: unknown) => setRespondError(err instanceof Error ? err.message : String(err))); }}>Approve</Button><Button minHeight={44} onPress={() => { void decideJointManagerRequest(request.id, 'declined').then(reloadJoint).catch((err: unknown) => setRespondError(err instanceof Error ? err.message : String(err))); }}>Decline</Button></YStack> : null}
+          </YStack>
+        ))}
 
         {loading ? (
           <YStack alignItems="center" paddingVertical="$6">

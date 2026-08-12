@@ -4,7 +4,9 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router, useLocalSearchParams } from 'expo-router';
 import { Spinner, Text, XStack, YStack } from 'tamagui';
 import { useSession } from '../../../lib/session-store';
-import { getClientById } from '../../../lib/client-service';
+import { createJointManagerRequest, getLocalManagerDirectory } from '../../../lib/joint-manager-service';
+import { JointManagerPicker, type JointManagerOption } from '../../../components/bizlink/JointManagerPicker';
+import { getClientById, ClientUpdateConflictError } from '../../../lib/client-service';
 import { getPendingEditRequestForClient, ClientNotFoundLocallyError, type ClientEditRequest } from '../../../lib/client-edit-request-service';
 import { submitCompleteInfo, splitCompleteInfoChanges } from '../../../lib/complete-info-submit';
 import { AccountSuspendedError } from '../../../lib/app-lock/account-status';
@@ -64,10 +66,15 @@ export default function CompleteInfoScreen() {
   // 2026-08-09 (field validation): the 09-format hint only appears after the
   // user leaves the field or tries to save — never mid-typing.
   const [contactNumberTouched, setContactNumberTouched] = useState(false);
+  const [managerOptions, setManagerOptions] = useState<JointManagerOption[]>([]);
+  const [selectedManagerIds, setSelectedManagerIds] = useState<string[]>([]);
 
   useEffect(() => {
     if (!clientId) return;
-    Promise.all([getClientById(clientId), getPendingEditRequestForClient(clientId)]).then(([foundClient, pending]) => {
+    Promise.all([getClientById(clientId), getPendingEditRequestForClient(clientId), getLocalManagerDirectory(role)]).then(([foundClient, pending, directory]) => {
+      // The restricted directory intentionally returns team ids only; never
+      // surface a raw UUID as a human-facing team label.
+      setManagerOptions(directory.map((entry) => ({ id: entry.id, name: entry.name, teamName: null })));
       if (!foundClient) {
         Alert.alert('Error', 'Client not found.');
       } else {
@@ -149,6 +156,10 @@ export default function CompleteInfoScreen() {
         form: { contactPerson, position, contactNumber, officeAddress, channel, existingOverride, minorNotes },
       });
 
+      if (selectedManagerIds.length > 0 && (role === 'sales_specialist' || role === 'rsr')) {
+        await createJointManagerRequest(clientId, profileId, selectedManagerIds, teamId);
+      }
+
       if (branch === 'blocked_pending') return;
 
       const TOASTS: Record<Exclude<Awaited<ReturnType<typeof submitCompleteInfo>>, 'blocked_pending'>, string> = {
@@ -164,6 +175,8 @@ export default function CompleteInfoScreen() {
         // Batch 5 Slice 2 (ADR-051): route to AccountSuspendedScreen instead
         // of showing a generic save error — never swallow this silently.
         markSuspended();
+      } else if (err instanceof ClientUpdateConflictError) {
+        Alert.alert('Client changed', err.message);
       } else if (err instanceof ClientNotFoundLocallyError) {
         Alert.alert('Error', 'Client not yet synced to this device — try again once online.');
       } else {
@@ -213,6 +226,7 @@ export default function CompleteInfoScreen() {
             are view-only here — not part of the wireframe's a-complete form,
             and editing them isn't in scope for info completion. */}
         <CompleteInfoReadOnlyHeader companyName={client.company_name} city={client.city} />
+        {managerOptions.length > 0 && (role === 'sales_specialist' || role === 'rsr') ? <JointManagerPicker options={managerOptions} selectedIds={selectedManagerIds} onChange={setSelectedManagerIds} /> : null}
         <BizField
           label="CONTACT PERSON"
           value={contactPerson}

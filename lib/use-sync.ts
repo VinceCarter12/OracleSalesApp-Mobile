@@ -5,6 +5,7 @@ import { getOutboxCounts, runSync, type OutboxCounts } from './sync-engine';
 import { createAdaptiveForegroundScheduler } from './sync/adaptive-foreground-scheduler';
 import type { ConnectivityState } from './sync/connectivity';
 import type { AppStateStatus } from 'react-native';
+import type { UserRole } from '../types';
 
 // T-002/T-005/T-014, Phase 1 adaptive scheduling (2026-08-04, Vince direction
 // — see projects/OracleSalesApp-Mobile/Sync-Scale-and-Realtime-Options-2026-08-04.md):
@@ -30,7 +31,7 @@ export interface SyncStatus {
   connectivity: ConnectivityState | null;
 }
 
-export function useSync(agentId: string | null, teamId?: string | null): SyncStatus {
+export function useSync(agentId: string | null, teamId?: string | null, role?: UserRole | null): SyncStatus {
   const [isSyncing, setIsSyncing] = useState(false);
   const [outboxCounts, setOutboxCounts] = useState<OutboxCounts>(EMPTY_OUTBOX_COUNTS);
   const [lastSyncedAt, setLastSyncedAt] = useState<Date | null>(null);
@@ -52,7 +53,7 @@ export function useSync(agentId: string | null, teamId?: string | null): SyncSta
     if (!agentId) return { changed: false };
     setIsSyncing(true);
     try {
-      const result = await runSync(agentId, teamId);
+      const result = await runSync(agentId, teamId, role);
       if (result) {
         setConnectivity(result.connectivity);
         if (result.connectivity === 'online') {
@@ -74,7 +75,7 @@ export function useSync(agentId: string | null, teamId?: string | null): SyncSta
       setIsSyncing(false);
       refreshPendingCount();
     }
-  }, [agentId, teamId, refreshPendingCount]);
+  }, [agentId, teamId, role, refreshPendingCount]);
 
   useEffect(() => {
     refreshPendingCount();

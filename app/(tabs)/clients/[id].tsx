@@ -29,6 +29,8 @@ import { StatusBadge } from '../../../components/ui/StatusBadge';
 import { StageRail } from '../../../components/ui/StageRail';
 import { ClientCutoffAllowanceBlock } from '../../../components/cutoff/ClientCutoffAllowanceBlock';
 import type { Client } from '../../../types';
+import { getClientHolderNames } from '../../../lib/joint-manager-service';
+import { JointManagerStatus } from '../../../components/bizlink/JointManagerStatus';
 
 export default function ClientDetailScreen() {
   const insets = useSafeAreaInsets();
@@ -41,6 +43,7 @@ export default function ClientDetailScreen() {
   const [companionRequests, setCompanionRequests] = useState<ClientCompanionRequest[]>([]);
   const [waitingManagerApproval, setWaitingManagerApproval] = useState(false);
   const [waitingManagerPoApproval, setWaitingManagerPoApproval] = useState(false);
+  const [holderNames, setHolderNames] = useState<string[]>([]);
   const { meetings } = useMeetings(id);
 
   // Local SQLite is the primary read path (ADR-001/T-003) — a `pending`
@@ -49,6 +52,7 @@ export default function ClientDetailScreen() {
     if (!id) return;
     const foundClient = await getClientById(id);
     setClient(foundClient);
+    setHolderNames(await getClientHolderNames(id));
     setLoading(false);
   }, [id]);
 
@@ -180,6 +184,8 @@ export default function ClientDetailScreen() {
             real `status` field — shared with Record Meeting's selected-
             company card via components/ui/StageRail.tsx. */}
         <StageRail status={status} />
+
+        {holderNames.length > 0 ? <JointManagerStatus holderNames={holderNames} originTeamName={null} requiredCount={holderNames.length === 2 ? 2 : 1} approvedCount={holderNames.length} declined={false} /> : null}
 
         {/* ADR-030 Pass 2: requester-side companion-request status — no
             literal wireframe markup exists for client-detail specifically

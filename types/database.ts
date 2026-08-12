@@ -554,6 +554,30 @@ export type Database = {
         Update: Partial<Database['public']['Tables']['cod_payments']['Row']>;
         Relationships: [];
       };
+      joint_manager_requests: {
+        Row: { id: string; client_id: string; requester_id: string; origin_team_id: string | null; manager_ids: string[]; action_kind: string; action_payload: Record<string, unknown>; base_updated_at: string; status: string; required_count: number; created_at: string; updated_at: string; applied_at: string | null; };
+        Insert: Partial<Database['public']['Tables']['joint_manager_requests']['Row']>;
+        Update: Partial<Database['public']['Tables']['joint_manager_requests']['Row']>;
+        Relationships: [];
+      };
+      joint_manager_request_decisions: {
+        Row: { id: string; request_id: string; manager_id: string; decision: string; decided_at: string | null; };
+        Insert: Partial<Database['public']['Tables']['joint_manager_request_decisions']['Row']>;
+        Update: Partial<Database['public']['Tables']['joint_manager_request_decisions']['Row']>;
+        Relationships: [];
+      };
+      client_record_holders: {
+        Row: { client_id: string; manager_id: string; manager_name: string | null; active: boolean; origin_team_id: string | null; updated_at: string; };
+        Insert: Partial<Database['public']['Tables']['client_record_holders']['Row']>;
+        Update: Partial<Database['public']['Tables']['client_record_holders']['Row']>;
+        Relationships: [];
+      };
+      manager_directory_snapshot: {
+        Row: { profile_id: string; full_name: string; team_id: string | null; is_active: boolean; synced_at: string };
+        Insert: Partial<Database['public']['Tables']['manager_directory_snapshot']['Row']>;
+        Update: Partial<Database['public']['Tables']['manager_directory_snapshot']['Row']>;
+        Relationships: [];
+      };
       // F-007 Delivery module — migrations 044 (base) + 045 (client_name) + 046
       // (claim columns). `area` is admin-entered on the PO (044), so 045 only
       // added client_name here.
@@ -786,6 +810,22 @@ export type Database = {
           cap: number | null;
           remaining: number | null;
         }[];
+      };
+      get_manager_joint_requests: {
+        Args: Record<string, never>;
+        Returns: Array<Record<string, unknown>>;
+      };
+      get_manager_directory: {
+        Args: Record<string, never>;
+        Returns: Array<{ id: string; full_name: string; team_id: string | null; is_active: boolean }>;
+      };
+      get_my_client_record_holders: {
+        Args: Record<string, never>;
+        Returns: Array<{ client_id: string; manager_id: string; manager_name: string | null; active: boolean; origin_team_id: string | null; updated_at: string }>;
+      };
+      decide_joint_manager_request: {
+        Args: { p_request_id: string; p_decision: 'approved' | 'declined' };
+        Returns: { ok: boolean; code: string; client?: Record<string, unknown> };
       };
     };
     Enums: Record<string, never>;

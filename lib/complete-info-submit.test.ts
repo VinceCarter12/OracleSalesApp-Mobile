@@ -173,6 +173,9 @@ describe('submitCompleteInfo — request_approval field-write splitting', () => 
       })
     );
 
+    expect(updateClientInfo).toHaveBeenCalledWith(
+      expect.objectContaining({ expectedUpdatedAt: client.updated_at })
+    );
     expect(createClientEditRequest).not.toHaveBeenCalled();
   });
 });

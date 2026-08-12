@@ -6,6 +6,7 @@ import { ENTITY_REGISTRY, type EntityTableName } from './sync/entity-registry';
 import { syncAgendaPolicyAndCycles } from './sync/policy-sync-down';
 import { syncCutoffQuotaSnapshots } from './sync/cutoff-sync-down';
 import type { SQLiteDatabase } from 'expo-sqlite';
+import type { UserRole } from '../types';
 
 // T-002/T-005/T-014: the pull half of the sync engine — split out of
 // sync-engine.ts to stay under the 300-line file limit. Only called from
@@ -27,7 +28,10 @@ type RemoteTableName =
   | 'collection_visits'
   | 'purchase_orders'
   | 'remittances'
-  | 'cod_remittances';
+  | 'cod_remittances'
+  | 'joint_manager_requests'
+  | 'joint_manager_request_decisions'
+  | 'client_record_holders';
 
 // Remote column is `assigned_agent_id` on `clients` — confirmed via
 // PostgREST introspection (2026-07-15); `meetings.agent_id` is correct
@@ -52,6 +56,9 @@ const AGENT_SCOPED_COLUMN: Record<EntityTableName, string> = {
   // exhaustive, same as the entries above.
   remittances: 'collector_id',
   cod_remittances: 'driver_id',
+  joint_manager_requests: 'requester_id',
+  joint_manager_request_decisions: 'manager_id',
+  client_record_holders: 'client_id',
 };
 
 async function pullEntity(db: SQLiteDatabase, agentId: string, tableName: EntityTableName): Promise<void> {
@@ -98,7 +105,7 @@ async function pullEntity(db: SQLiteDatabase, agentId: string, tableName: Entity
  * pull below no-ops for that one pass; the next connectivity/drain-timer
  * sync (which does carry `teamId`) picks it up.
  */
-export async function syncDown(agentId: string, teamId?: string | null): Promise<void> {
+export async function syncDown(agentId: string, teamId?: string | null, role?: UserRole | null): Promise<void> {
   const db = await getDb();
   const now = new Date().toISOString();
 
@@ -154,6 +161,41 @@ export async function syncDown(agentId: string, teamId?: string | null): Promise
     await pullEntity(db, agentId, 'cod_remittances');
   } catch (err) {
     console.error('[sync-down] cod_remittances pull failed:', err);
+  }
+
+  try {
+    await pullEntity(db, agentId, 'joint_manager_requests');
+    await pullEntity(db, agentId, 'joint_manager_request_decisions');
+    // Holder visibility spans both sides of a relationship: RLS exposes rows
+    // for the signed-in owner/requester as well as Manager participants. Use
+    // the narrow SECURITY DEFINER RPC rather than a manager_id-only table pull,
+    // otherwise Sales/RSR would never receive holders for their clients.
+    const holderResult = await withTimeout(Promise.resolve(supabase.rpc('get_my_client_record_holders')), SYNC_TIMEOUT_MS, 'sync-down client holders');
+    if (holderResult.error) throw new Error(holderResult.error.message);
+    for (const holder of holderResult.data ?? []) {
+      await ENTITY_REGISTRY.client_record_holders.applyRemoteRow(db, holder as Record<string, unknown>, now, agentId);
+    }
+  } catch (err) {
+    console.error('[sync-down] joint-manager pull failed:', err);
+  }
+
+  // The directory RPC is intentionally restricted to Sales/RSR. Managers use
+  // the participant names returned by their approval aggregate instead.
+  if (role === 'sales_specialist' || role === 'rsr') {
+    try {
+      const { data, error } = await withTimeout(Promise.resolve(supabase.rpc('get_manager_directory')), SYNC_TIMEOUT_MS, 'sync-down manager directory');
+      if (error) throw new Error(error.message);
+      await db.withTransactionAsync(async () => {
+        await db.runAsync('DELETE FROM manager_directory_snapshot');
+        for (const row of data ?? []) {
+          const value = row as { id: string; full_name: string; team_id: string | null; is_active?: boolean };
+          if (value.is_active === false) continue;
+          await db.runAsync('INSERT INTO manager_directory_snapshot (profile_id, full_name, team_id, is_active, synced_at) VALUES (?, ?, ?, 1, ?)', [value.id, value.full_name, value.team_id, now]);
+        }
+      });
+    } catch (err) {
+      console.error('[sync-down] manager directory pull failed:', err);
+    }
   }
 
   // No owner info in the snapshot (privacy decision, T-005) — just enough to

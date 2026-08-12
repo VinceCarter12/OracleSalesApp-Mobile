@@ -2,7 +2,7 @@ import { useRef, useState } from 'react';
 import { Alert, Modal, Pressable, StyleSheet, Text, View } from 'react-native';
 import { CameraView, useCameraPermissions, type CameraView as CameraViewType } from 'expo-camera';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Check, X } from 'lucide-react-native';
+import { Check, Flashlight, FlashlightOff, X } from 'lucide-react-native';
 
 interface InAppCameraOverlayProps {
   visible: boolean;
@@ -17,6 +17,7 @@ export function InAppCameraOverlay({ visible, title, facing = 'front', onCancel,
   const [permission, requestPermission] = useCameraPermissions();
   const cameraRef = useRef<CameraViewType>(null);
   const [busy, setBusy] = useState(false);
+  const [flash, setFlash] = useState<'off' | 'on'>('off');
   const insets = useSafeAreaInsets();
 
   async function openCamera(): Promise<void> {
@@ -44,13 +45,20 @@ export function InAppCameraOverlay({ visible, title, facing = 'front', onCancel,
   return (
     <Modal visible={visible} animationType="slide" presentationStyle="fullScreen" onShow={() => { void openCamera(); }}>
       <View style={styles.root}>
-        {permission?.granted ? <CameraView ref={cameraRef} style={StyleSheet.absoluteFill} facing={facing} /> : null}
+        {permission?.granted ? <CameraView ref={cameraRef} style={StyleSheet.absoluteFill} facing={facing} flash={flash} /> : null}
         <View style={[styles.top, { paddingTop: insets.top + 12 }]}>
           <Pressable accessibilityRole="button" accessibilityLabel="Close camera" onPress={onCancel} style={styles.iconButton}>
             <X color="#FFFFFF" size={24} strokeWidth={1.75} />
           </Pressable>
           <Text style={styles.title}>{title}</Text>
-          <View style={styles.iconButton} />
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={flash === 'on' ? 'Turn flash off' : 'Turn flash on'}
+            onPress={() => setFlash((current) => current === 'on' ? 'off' : 'on')}
+            style={styles.iconButton}
+          >
+            {flash === 'on' ? <Flashlight color="#FFFFFF" size={23} strokeWidth={1.75} /> : <FlashlightOff color="#FFFFFF" size={23} strokeWidth={1.75} />}
+          </Pressable>
         </View>
         <View style={[styles.bottom, { paddingBottom: Math.max(insets.bottom, 16) + 12 }]}>
           <Text style={styles.helper}>Camera only · no gallery</Text>
