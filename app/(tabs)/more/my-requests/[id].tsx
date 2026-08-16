@@ -1,4 +1,5 @@
-import { ScrollView } from 'react-native';
+import { useState } from 'react';
+import { Image, Pressable, ScrollView } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLocalSearchParams } from 'expo-router';
 import { FileCheck2, PencilLine, Users } from 'lucide-react-native';
@@ -12,6 +13,7 @@ import { BizSectionHeader } from '../../../../components/bizlink/BizSectionHeade
 import { BizButton } from '../../../../components/bizlink/BizButton';
 import { BizBadge } from '../../../../components/bizlink/BizBadge';
 import { BizDiffBox, type DiffField } from '../../../../components/bizlink/BizDiffBox';
+import { ImagePreviewModal } from '../../../../components/ui/ImagePreviewModal';
 import type { MyRequestRow } from '../../../../lib/my-request-status-service';
 
 const KIND_LABEL: Record<MyRequestRow['requestKind'], string> = {
@@ -56,6 +58,7 @@ export default function MyRequestDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const { rows, loading, error, reload } = useMyRequestStatuses();
   const row = rows.find((r) => r.id === id);
+  const [previewImageUrl, setPreviewImageUrl] = useState<string | null>(null);
 
   if (loading) {
     return (
@@ -132,10 +135,24 @@ export default function MyRequestDetailScreen() {
         {row.requestKind === 'po_confirmation' ? (
           <>
             <BizSectionHeader title="PO evidence" />
-            <BizCard>
-              <Text fontSize={13} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.text}>
-                Attached PO photo: {row.summary.poPhotoPath || 'Available after sync'}
-              </Text>
+            <BizCard gap="$2">
+              {row.summary.poPhotoPath ? (
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="View PO evidence"
+                  onPress={() => setPreviewImageUrl(row.summary.poPhotoPath)}
+                >
+                  <Image
+                    source={{ uri: row.summary.poPhotoPath }}
+                    style={{ width: '100%', height: 220, borderRadius: 16 }}
+                    resizeMode="cover"
+                  />
+                </Pressable>
+              ) : (
+                <Text fontSize={13} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted}>
+                  PO evidence will appear here after it has synced.
+                </Text>
+              )}
             </BizCard>
           </>
         ) : null}
@@ -181,6 +198,12 @@ export default function MyRequestDetailScreen() {
           View-only status. The manager's decision is what the server keeps.
         </Text>
       </ScrollView>
+
+      <ImagePreviewModal
+        visible={Boolean(previewImageUrl)}
+        imageUrl={previewImageUrl}
+        onClose={() => setPreviewImageUrl(null)}
+      />
     </YStack>
   );
 }

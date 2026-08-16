@@ -3,6 +3,7 @@ import { useOfficePins, type OfficePinClient } from './use-office-pins';
 import { useMeetingMapMarkers, type MeetingMapMarker, type MeetingMapDateWindow } from './use-meeting-map-markers';
 import type { MeetingMarkerType } from './policies/meeting-marker-type';
 import { MAP_OFFICE_PIN_COLOR, meetingStatusMarkerColor } from './map-marker-colors';
+import { firstMarkerLetter } from './map-marker-letter';
 import type { ClientStatus } from '../types';
 import type { LeafletMapMarker } from '../components/maps/LeafletWebViewMap';
 
@@ -23,6 +24,7 @@ function buildOfficeMapMarkers(pins: OfficePinClient[]): LeafletMapMarker[] {
     colorHex: MAP_OFFICE_PIN_COLOR,
     radius: 11,
     label: pin.companyName,
+    icon: { kind: 'pin', text: firstMarkerLetter(pin.companyName) },
   }));
 }
 
@@ -40,6 +42,7 @@ function buildMeetingMapMarkers(markers: MeetingMapMarker[], typeLabel: Record<M
     colorHex: meetingStatusMarkerColor(marker.clientStatusAtMeeting),
     radius: 8,
     label: `${marker.clientName} · ${meetingLocationLabel(marker, typeLabel)}`,
+    icon: { kind: 'pin', text: firstMarkerLetter(marker.clientName) },
   }));
 }
 

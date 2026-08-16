@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Pressable, RefreshControl, ScrollView } from 'react-native';
+import { useWindowDimensions } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { BarChart3, Bell, Building2, Map, PencilLine, Pin, RefreshCw, User, Users } from 'lucide-react-native';
@@ -13,6 +14,7 @@ import { BizStatCard } from '../../components/bizlink/BizStatCard';
 import { BizHeroCard } from '../../components/bizlink/BizHeroCard';
 import { BizSectionHeader } from '../../components/bizlink/BizSectionHeader';
 import { BizQuickAction } from '../../components/bizlink/BizQuickAction';
+import { BizQuickActionGrid, computeQuickActionColumns } from '../../components/bizlink/BizQuickActionGrid';
 import { BizButton } from '../../components/bizlink/BizButton';
 import { getDashboardActionHref } from '../../lib/dashboard-action-registry';
 
@@ -29,6 +31,7 @@ import { getDashboardActionHref } from '../../lib/dashboard-action-registry';
  */
 export default function ExecutiveHomeScreen() {
   const insets = useSafeAreaInsets();
+  const { width: windowWidth } = useWindowDimensions();
   const { overview, error, reload } = useExecutiveOverview();
   const freshnessTime = new Date().toLocaleTimeString('en-PH', { hour: 'numeric', minute: '2-digit' });
   // Pull-to-refresh spinner must be bound to a user-gesture-only flag, not
@@ -57,6 +60,16 @@ export default function ExecutiveHomeScreen() {
   }
 
   const { totals, managers } = overview;
+  const quickActionColumns = computeQuickActionColumns(windowWidth, 16);
+  const quickActions = [
+    <BizQuickAction key="teams" icon={<Users size={20} color={BIZLINK_COLORS.ink} strokeWidth={1.75} />} label="Teams" onPress={() => router.push(getDashboardActionHref('executive-teams', 'executive'))} />,
+    <BizQuickAction key="clients" icon={<Building2 size={20} color={BIZLINK_COLORS.ink} strokeWidth={1.75} />} label="Clients" onPress={() => router.push(getDashboardActionHref('executive-clients', 'executive'))} />,
+    <BizQuickAction key="reports" icon={<BarChart3 size={20} color={BIZLINK_COLORS.ink} strokeWidth={1.75} />} label="Reports" onPress={() => router.push(getDashboardActionHref('executive-reports', 'executive'))} />,
+    <BizQuickAction key="maps" icon={<Map size={20} color={BIZLINK_COLORS.ink} strokeWidth={1.75} />} label="Maps" onPress={() => router.push(getDashboardActionHref('executive-maps', 'executive'))} />,
+    <BizQuickAction key="lost-opps" icon={<Pin size={20} color={BIZLINK_COLORS.ink} strokeWidth={1.75} />} label="Lost Opps" onPress={() => router.push('/(executive)/more/lost-opportunity')} />,
+    <BizQuickAction key="tag-along" icon={<PencilLine size={20} color={BIZLINK_COLORS.ink} strokeWidth={1.75} />} label="Tag-Along" onPress={() => router.push('/(executive)/more/approvals-log')} />,
+    <BizQuickAction key="account" icon={<User size={20} color={BIZLINK_COLORS.ink} strokeWidth={1.75} />} label="Account" onPress={() => router.push('/(executive)/more/account')} />,
+  ];
 
   return (
     <YStack flex={1} backgroundColor={BIZLINK_COLORS.canvas} paddingTop={insets.top}>
@@ -150,43 +163,7 @@ export default function ExecutiveHomeScreen() {
         {/* 2026-08-10: with the bottom tab bar removed, this grid is the
             Executive's single navigation hub — every destination lives here. */}
         <BizSectionHeader title="Quick Actions" />
-        <XStack gap="$2.5" flexWrap="wrap" rowGap="$3">
-          <BizQuickAction
-            icon={<Users size={20} color={BIZLINK_COLORS.ink} strokeWidth={1.75} />}
-            label="Teams"
-            onPress={() => router.push(getDashboardActionHref('executive-teams', 'executive'))}
-          />
-          <BizQuickAction
-            icon={<Building2 size={20} color={BIZLINK_COLORS.ink} strokeWidth={1.75} />}
-            label="Clients"
-            onPress={() => router.push(getDashboardActionHref('executive-clients', 'executive'))}
-          />
-          <BizQuickAction
-            icon={<BarChart3 size={20} color={BIZLINK_COLORS.ink} strokeWidth={1.75} />}
-            label="Reports"
-            onPress={() => router.push(getDashboardActionHref('executive-reports', 'executive'))}
-          />
-          <BizQuickAction
-            icon={<Map size={20} color={BIZLINK_COLORS.ink} strokeWidth={1.75} />}
-            label="Maps"
-            onPress={() => router.push(getDashboardActionHref('executive-maps', 'executive'))}
-          />
-          <BizQuickAction
-            icon={<Pin size={20} color={BIZLINK_COLORS.ink} strokeWidth={1.75} />}
-            label="Lost Opps"
-            onPress={() => router.push('/(executive)/more/lost-opportunity')}
-          />
-          <BizQuickAction
-            icon={<PencilLine size={20} color={BIZLINK_COLORS.ink} strokeWidth={1.75} />}
-            label="Tag-Along"
-            onPress={() => router.push('/(executive)/more/approvals-log')}
-          />
-          <BizQuickAction
-            icon={<User size={20} color={BIZLINK_COLORS.ink} strokeWidth={1.75} />}
-            label="Account"
-            onPress={() => router.push('/(executive)/more/account')}
-          />
-        </XStack>
+        <BizQuickActionGrid actions={quickActions} columns={quickActionColumns} />
 
         <BizSectionHeader title="Teams" actionLabel="View all" onAction={() => router.push('/(executive)/teams')} />
         {managers.map((manager) => {

@@ -91,6 +91,7 @@ export interface ClientCompanionRequest {
   status: RemoteTagAlongStatus;
   syncStatus: string;
   createdAt: string;
+  inviteeTeamId: string | null;
 }
 
 interface ClientCompanionRequestRow {
@@ -101,6 +102,7 @@ interface ClientCompanionRequestRow {
   status: RemoteTagAlongStatus;
   sync_status: string;
   created_at: string;
+  invitee_team_id: string | null;
 }
 
 /**
@@ -120,10 +122,12 @@ export async function getClientCompanionRequests(
 ): Promise<ClientCompanionRequest[]> {
   const db = await getDb();
   const rows = await db.getAllAsync<ClientCompanionRequestRow>(
-    `SELECT tar.id, tar.invitee_id, trs.full_name AS invitee_name, tar.invitee_kind,
+    `SELECT tar.id, tar.invitee_id, COALESCE(mds.full_name, trs.full_name) AS invitee_name,
+            COALESCE(mds.team_id, trs.team_id) AS invitee_team_id, tar.invitee_kind,
             tar.status, tar.sync_status, tar.created_at
        FROM tag_along_requests tar
        LEFT JOIN team_roster_snapshot trs ON trs.profile_id = tar.invitee_id
+       LEFT JOIN manager_directory_snapshot mds ON mds.profile_id = tar.invitee_id
       WHERE tar.related_client_id = ? AND tar.requester_id = ?
       ORDER BY tar.created_at DESC`,
     [clientId, requesterId]
@@ -136,6 +140,7 @@ export async function getClientCompanionRequests(
     status: row.status,
     syncStatus: row.sync_status,
     createdAt: row.created_at,
+    inviteeTeamId: row.invitee_team_id,
   }));
 }
 
@@ -166,12 +171,14 @@ interface MyCompanionRequestRow extends ClientCompanionRequestRow {
 export async function getMyCompanionRequests(requesterId: string): Promise<MyCompanionRequest[]> {
   const db = await getDb();
   const rows = await db.getAllAsync<MyCompanionRequestRow>(
-    `SELECT tar.id, tar.invitee_id, trs.full_name AS invitee_name, tar.invitee_kind,
+    `SELECT tar.id, tar.invitee_id, COALESCE(mds.full_name, trs.full_name) AS invitee_name,
+            COALESCE(mds.team_id, trs.team_id) AS invitee_team_id, tar.invitee_kind,
             tar.status, tar.sync_status, tar.created_at,
             tar.related_client_id AS client_id, c.company_name AS client_name,
             tar.related_meeting_id
        FROM tag_along_requests tar
        LEFT JOIN team_roster_snapshot trs ON trs.profile_id = tar.invitee_id
+       LEFT JOIN manager_directory_snapshot mds ON mds.profile_id = tar.invitee_id
        LEFT JOIN clients c ON c.id = tar.related_client_id
       WHERE tar.requester_id = ?
       ORDER BY tar.created_at DESC`,
@@ -188,6 +195,7 @@ export async function getMyCompanionRequests(requesterId: string): Promise<MyCom
     clientId: row.client_id,
     clientName: row.client_name,
     relatedMeetingId: row.related_meeting_id,
+    inviteeTeamId: row.invitee_team_id,
   }));
 }
 
@@ -203,10 +211,12 @@ export async function getMyCompanionRequests(requesterId: string): Promise<MyCom
 export async function getMeetingCompanionRequests(meetingId: string): Promise<ClientCompanionRequest[]> {
   const db = await getDb();
   const rows = await db.getAllAsync<ClientCompanionRequestRow>(
-    `SELECT tar.id, tar.invitee_id, trs.full_name AS invitee_name, tar.invitee_kind,
+    `SELECT tar.id, tar.invitee_id, COALESCE(mds.full_name, trs.full_name) AS invitee_name,
+            COALESCE(mds.team_id, trs.team_id) AS invitee_team_id, tar.invitee_kind,
             tar.status, tar.sync_status, tar.created_at
        FROM tag_along_requests tar
        LEFT JOIN team_roster_snapshot trs ON trs.profile_id = tar.invitee_id
+       LEFT JOIN manager_directory_snapshot mds ON mds.profile_id = tar.invitee_id
       WHERE tar.related_meeting_id = ?
       ORDER BY tar.created_at DESC`,
     [meetingId]
@@ -219,6 +229,7 @@ export async function getMeetingCompanionRequests(meetingId: string): Promise<Cl
     status: row.status,
     syncStatus: row.sync_status,
     createdAt: row.created_at,
+    inviteeTeamId: row.invitee_team_id,
   }));
 }
 

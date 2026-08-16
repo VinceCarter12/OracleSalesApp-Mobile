@@ -1,5 +1,8 @@
 import { useEffect, useState } from 'react';
 import { Alert, ScrollView } from 'react-native';
+import * as DocumentPicker from 'expo-document-picker';
+import * as ImagePicker from 'expo-image-picker';
+import * as ImageManipulator from 'expo-image-manipulator';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAppDb } from '../../../lib/app-db-provider';
 import { router, useLocalSearchParams } from 'expo-router';
@@ -37,6 +40,8 @@ import { KeyboardAwareScrollView } from '../../../components/ui/KeyboardAwareScr
 import { OngoingMeetingWarningDialog } from '../../../components/meetings/OngoingMeetingWarningDialog';
 import { InAppCameraOverlay } from '../../../components/meetings/InAppCameraOverlay';
 import { isCloseDealPoEligible } from '../../../lib/policies/po-confirmation-status-policy';
+import { hasActivePoEvidence } from '../../../lib/po-confirmation-service';
+import { SameClientPoBlockedDialog } from '../../../components/meetings/SameClientPoBlockedDialog';
 import { CLOSE_DEAL_AGENDA, type MeetingOutcome } from '../../../types';
 
 /** mm:ss, matching VisitInProgressPanel's format and the wireframe's `a-visitElapsed`. */
@@ -123,7 +128,10 @@ export default function RecordMeetingScreen() {
   // deal' agenda — capture-only here (camera, no gallery); the actual
   // capture/submit split happens in createMeeting() (lib/meeting-service.ts).
   const [poPhotoUri, setPoPhotoUri] = useState<string | null>(null);
-  const [capturingPoPhoto, setCapturingPoPhoto] = useState(false);
+  const [pickingPoEvidence, setPickingPoEvidence] = useState(false);
+  const [poPreviewOpen, setPoPreviewOpen] = useState(false);
+  const [poBlockedDialogOpen, setPoBlockedDialogOpen] = useState(false);
+  const [skipPoSubmission, setSkipPoSubmission] = useState(false);
 
   const [saving, setSaving] = useState(false);
   const [cancelDialogOpen, setCancelDialogOpen] = useState(false);
@@ -195,7 +203,57 @@ export default function RecordMeetingScreen() {
     void updateDraftAgendas(next);
   }
 
-  function capturePoPhoto() { setCapturingPoPhoto(true); setCameraTarget('po'); }
+  async function preparePoImage(uri: string): Promise<void> {
+    // All PO evidence is normalized to JPEG because the existing storage path
+    // and upload content type are intentionally JPEG-only.
+    const normalized = await ImageManipulator.manipulateAsync(uri, [], {
+      compress: 0.8,
+      format: ImageManipulator.SaveFormat.JPEG,
+    });
+    setPoPhotoUri(normalized.uri);
+    showToast('PO evidence selected. Review it or replace it before saving.');
+  }
+
+  function capturePoPhoto(): void {
+    if (pickingPoEvidence) return;
+    setPickingPoEvidence(true);
+    setCameraTarget('po');
+  }
+
+  async function choosePoFromGallery(): Promise<void> {
+    if (pickingPoEvidence) return;
+    setPickingPoEvidence(true);
+    try {
+      const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (permission.status !== 'granted') {
+        Alert.alert('Permission denied', 'Photo access is required to choose PO evidence from your gallery.');
+        return;
+      }
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: false,
+        quality: 0.8,
+      });
+      if (!result.canceled && result.assets[0]?.uri) await preparePoImage(result.assets[0].uri);
+    } catch (error) {
+      Alert.alert('Could not choose image', error instanceof Error ? error.message : 'Try again.');
+    } finally {
+      setPickingPoEvidence(false);
+    }
+  }
+
+  async function choosePoFromFiles(): Promise<void> {
+    if (pickingPoEvidence) return;
+    setPickingPoEvidence(true);
+    try {
+      const result = await DocumentPicker.getDocumentAsync({ type: 'image/*', multiple: false, copyToCacheDirectory: true });
+      if (!result.canceled && result.assets[0]?.uri) await preparePoImage(result.assets[0].uri);
+    } catch (error) {
+      Alert.alert('Could not choose file', error instanceof Error ? error.message : 'Choose an image file and try again.');
+    } finally {
+      setPickingPoEvidence(false);
+    }
+  }
 
   function selectOutcome(next: MeetingOutcome) {
     if (next === 'Lost Opportunity') {
@@ -205,7 +263,7 @@ export default function RecordMeetingScreen() {
     setOutcome(next);
   }
 
-  async function doSave() {
+  async function doSave(forceSkipPo = false) {
     if (saving) return;
     if (!start) {
       Alert.alert('Start Meeting Required', 'Tap Start meeting to save your location and time before saving.');
@@ -236,6 +294,12 @@ export default function RecordMeetingScreen() {
     if (!clientId) {
       Alert.alert('Client Required', 'Select a client from the client picker before recording a meeting.');
       return;
+    }
+    const poEligible = Boolean(poPhotoUri && client?.cycle_id && isCloseDealPoEligible(client?.status, outcome, selectedAgendas));
+    if (poEligible && client?.cycle_id && !skipPoSubmission && !forceSkipPo) {
+      try {
+        if (await hasActivePoEvidence(db, client.id, client.cycle_id)) { setPoBlockedDialogOpen(true); return; }
+      } catch (error) { Alert.alert('PO status unavailable', error instanceof Error ? error.message : 'Refresh this client before submitting PO evidence.'); return; }
     }
 
     // F-003 gap fix (2026-08-09): capture end GPS silently at Save time —
@@ -297,7 +361,7 @@ export default function RecordMeetingScreen() {
           // from THIS flow. See finishMeeting()'s doc comment in
           // record-visit.tsx for the full "not a bug" explanation.
           poEvidence:
-            poPhotoUri && client?.cycle_id && isCloseDealPoEligible(client?.status, outcome, selectedAgendas)
+            poPhotoUri && client?.cycle_id && poEligible && !skipPoSubmission && !forceSkipPo
               ? { localPhotoUri: poPhotoUri, cycleId: client.cycle_id }
               : null,
           endGps,
@@ -420,7 +484,9 @@ export default function RecordMeetingScreen() {
               agendaOptions={agendaOptions}
               selectedAgendas={selectedAgendas}
               onToggleAgenda={toggleAgenda}
-              agendaNote={<AgendaStageNoteCard stage={agendaStage} loading={agendaOptionsLoading} error={agendaOptionsError} />}
+              // The Advance Deal header already explains the In Progress
+              // journey. Keep this highlighted helper only for Prospect.
+              agendaNote={agendaStage === 'prospect' ? <AgendaStageNoteCard stage={agendaStage} loading={agendaOptionsLoading} error={agendaOptionsError} /> : null}
               remarks={remarks}
               onRemarksChange={setRemarks}
               outcome={outcome}
@@ -440,8 +506,11 @@ export default function RecordMeetingScreen() {
                   // for where the outcome check actually belongs.
                   visible={client?.status === 'in_progress' && selectedAgendas.includes(CLOSE_DEAL_AGENDA)}
                   photoUri={poPhotoUri}
-                  capturing={capturingPoPhoto}
-                  onCapture={capturePoPhoto}
+                  busy={pickingPoEvidence}
+                  onTakePhoto={capturePoPhoto}
+                  onChooseFromGallery={() => { void choosePoFromGallery(); }}
+                  onChooseFromFiles={() => { void choosePoFromFiles(); }}
+                  onPreview={() => setPoPreviewOpen(true)}
                 />
               }
               // Layout change (2026-08-09, Vince direct instruction): the
@@ -496,19 +565,20 @@ export default function RecordMeetingScreen() {
       />
 
       <PhotoLightbox uri={photoUri} visible={selfiePreviewOpen} onClose={() => setSelfiePreviewOpen(false)} />
+      <PhotoLightbox uri={poPhotoUri} visible={poPreviewOpen} onClose={() => setPoPreviewOpen(false)} />
 
       <InAppCameraOverlay
         visible={cameraTarget !== null}
         title={cameraTarget === 'po' ? 'PO evidence' : 'Meeting selfie'}
         facing={cameraTarget === 'po' ? 'back' : 'front'}
-        onCancel={() => { setCameraTarget(null); setCapturingPoPhoto(false); }}
+        onCancel={() => { setCameraTarget(null); setPickingPoEvidence(false); }}
         onCaptured={(uri, capturedAt) => {
           const target = cameraTarget;
           setCameraTarget(null);
           if (target === 'po') {
-            setPoPhotoUri(uri);
-            setCapturingPoPhoto(false);
-            showToast('PO evidence attached. Manager approval is still required.');
+            void preparePoImage(uri)
+              .catch((error) => Alert.alert('Could not prepare image', error instanceof Error ? error.message : 'Try again.'))
+              .finally(() => setPickingPoEvidence(false));
           } else {
             void captureGps().then((gps) => {
               setPhotoUri(uri);
@@ -536,6 +606,12 @@ export default function RecordMeetingScreen() {
         visible={cancelDialogOpen}
         onCancel={() => setCancelDialogOpen(false)}
         onConfirm={cancelMeeting}
+      />
+      <SameClientPoBlockedDialog
+        visible={poBlockedDialogOpen}
+        onViewPo={() => { setPoBlockedDialogOpen(false); router.push('/(tabs)/more/my-requests'); }}
+        onContinue={() => { setPoBlockedDialogOpen(false); setSkipPoSubmission(true); void doSave(true); }}
+        onCancel={() => setPoBlockedDialogOpen(false)}
       />
     </YStack>
   );

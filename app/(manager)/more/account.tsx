@@ -18,6 +18,8 @@ import { BizButton } from '../../../components/bizlink/BizButton';
 import { LockToggleRow } from '../../../components/security/LockToggleRow';
 import { clearSnapshot } from '../../../lib/app-lock/session-snapshot';
 import { useTeamName } from '../../../lib/use-team-name';
+import { useSignOutWithSyncWarning } from '../../../lib/use-sign-out-with-sync-warning';
+import { SignOutSyncWarningDialog } from '../../../components/bizlink/SignOutSyncWarningDialog';
 
 // NOTE (T-014 Phase 3, ADR-024): bypasses the shared `components/account/AccountScreen.tsx`
 // shell — same precedent as the Sales Agent account screen (Phase 2) — since that
@@ -29,7 +31,7 @@ export default function ManagerAccountScreen() {
   const BIZLINK_COLORS = useBizlinkColors();
   const insets = useSafeAreaInsets();
   const { summary } = useManagerDashboard();
-  const { signOut, fullName, teamId, profileId } = useSession();
+  const { signOut, fullName, role, teamId, profileId } = useSession();
   const teamName = useTeamName(teamId);
   const { session, signOut: signOutSupabase } = useAuth();
   const { avatarUri } = useProfileAvatar(session?.user.id);
@@ -50,13 +52,19 @@ export default function ManagerAccountScreen() {
 
   useFocusEffect(useCallback(() => { loadNewClientsCount(); }, [loadNewClientsCount]));
 
-  async function handleSignOut(): Promise<void> {
+  async function completeSignOut(): Promise<void> {
     await signOutSupabase();
     // Batch 5 Slice 1 (ADR-051): must clear on every sign-out path —
     // otherwise the next cold start silently rehydrates this user back in.
     await clearSnapshot();
     signOut();
     router.replace('/(auth)/login');
+  }
+
+  const { requestSignOut, dialogProps } = useSignOutWithSyncWarning();
+
+  function handleSignOut(): void {
+    void requestSignOut({ profileId, teamId, role, completeSignOut });
   }
 
   return (
@@ -109,6 +117,7 @@ export default function ManagerAccountScreen() {
           <BizButton label="Sign Out" variant="red" onPress={handleSignOut} />
         </YStack>
       </ScrollView>
+      <SignOutSyncWarningDialog {...dialogProps} />
     </YStack>
   );
 }

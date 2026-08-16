@@ -14,6 +14,7 @@
     "expo-constants": "~57.0.2",
     "expo-crypto": "~57.0.1",
     "expo-dev-client": "~57.0.9",
+    "expo-document-picker": "~57.0.1",
     "expo-file-system": "~57.0.1",
     "expo-font": "~57.0.0",
     "expo-image-manipulator": "~57.0.6",
@@ -21,6 +22,7 @@
     "expo-linking": "~57.0.4",
     "expo-local-authentication": "~57.0.2",
     "expo-location": "~57.0.6",
+    "expo-media-library": "~57.0.3",
     "expo-router": "~57.0.8",
     "expo-secure-store": "~57.0.1",
     "expo-sharing": "~57.0.10",
@@ -34,6 +36,7 @@
     "react-native-safe-area-context": "~5.7.0",
     "react-native-screens": "~4.26.0",
     "react-native-svg": "15.15.4",
+    "react-native-view-shot": "5.1.0",
     "react-native-webview": "13.16.1",
     "tamagui": "^2.4.0",
     "zod": "^3.25.76"

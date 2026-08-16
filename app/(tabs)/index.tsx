@@ -1,5 +1,4 @@
 import { useCallback, useMemo, useState } from 'react';
-import type { ReactNode } from 'react';
 import { Pressable, RefreshControl, ScrollView, useWindowDimensions } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router, useFocusEffect } from 'expo-router';
@@ -34,6 +33,7 @@ import { BizSectionHeader } from '../../components/bizlink/BizSectionHeader';
 import { BizDashboardAlert } from '../../components/bizlink/BizDashboardAlert';
 import { BizPrimaryActionCard } from '../../components/bizlink/BizPrimaryActionCard';
 import { BizQuickAction } from '../../components/bizlink/BizQuickAction';
+import { BizQuickActionGrid, computeQuickActionColumns } from '../../components/bizlink/BizQuickActionGrid';
 import { AvatarStatusRing } from '../../components/bizlink/AvatarStatusRing';
 import { ActiveMeetingDashboardAlert } from '../../components/meetings/ActiveMeetingDashboardAlert';
 import { SyncStatusChip } from '../../components/sync/SyncStatusChip';
@@ -84,14 +84,6 @@ function AgentHomeHeader({ greetingName, isRsr, fullName, notificationCount }: {
 // instead of reflowing — this computes the real column count from available
 // width so tablets/landscape/wider devices grow to 4+ columns automatically
 // (2026-08-03 responsive-grid fix).
-const QUICK_ACTION_COLUMN_WIDTH = 78;
-const QUICK_ACTION_GAP = 8;
-function computeQuickActionColumns(screenWidth: number, horizontalPadding: number): number {
-  const available = screenWidth - horizontalPadding * 2;
-  const columns = Math.floor((available + QUICK_ACTION_GAP) / (QUICK_ACTION_COLUMN_WIDTH + QUICK_ACTION_GAP));
-  return Math.max(3, columns);
-}
-
 export default function AgentHomeScreen() {
   const BIZLINK_COLORS = useBizlinkColors();
   const insets = useSafeAreaInsets();
@@ -252,33 +244,21 @@ export default function AgentHomeScreen() {
             screens grow past 3 instead of leaving dead space. Complete rows
             spread across the width; a partial final row stays grouped from
             the left. */}
-        <YStack gap={16}>
-          {(() => {
-            const tiles: ReactNode[] = [
-              <BizQuickAction key="my-clients" icon={<Building2 size={20} color={BIZLINK_COLORS.ink} strokeWidth={1.75} />} label="My Clients" onPress={() => router.push(getDashboardActionHref('my-clients', role))} />,
-              <BizQuickAction key="meeting-details" icon={<CalendarDays size={20} color={BIZLINK_COLORS.ink} strokeWidth={1.75} />} label="Meeting Details" onPress={() => router.push('/(tabs)/meetings')} />,
-              <BizQuickAction key="notifications" icon={<Bell size={20} color={BIZLINK_COLORS.ink} strokeWidth={1.75} />} label="Notifications" badgeCount={notificationBadgeCount} onPress={() => router.push('/(tabs)/more/notifications')} />,
-              <BizQuickAction key="clock-in-out" icon={<Clock size={20} color={BIZLINK_COLORS.ink} strokeWidth={1.75} />} label="Clock In/Out" onPress={() => router.push('/(tabs)/more/clock-in-out')} />,
-              <BizQuickAction key="my-requests" icon={<ClipboardCheck size={20} color={BIZLINK_COLORS.ink} strokeWidth={1.75} />} label="My Requests" badgeCount={myRequestsBadgeCount} onPress={() => router.push('/(tabs)/more/my-requests')} />,
-              <BizQuickAction key="sync-history" icon={<History size={20} color={BIZLINK_COLORS.ink} strokeWidth={1.75} />} label="Sync History" onPress={() => router.push('/(tabs)/more/sync-history')} />,
-              <BizQuickAction key="performance" icon={<BarChart3 size={20} color={BIZLINK_COLORS.ink} strokeWidth={1.75} />} label="Performance" onPress={() => router.push('/(tabs)/more/reports')} />,
-              <BizQuickAction key="lost-opportunities" icon={<RotateCcw size={20} color={BIZLINK_COLORS.ink} strokeWidth={1.75} />} label="Lost opportunities" onPress={() => router.push('/(tabs)/more/lost-opportunities')} />,
-              <BizQuickAction key="maps" icon={<MapIcon size={20} color={BIZLINK_COLORS.ink} strokeWidth={1.75} />} label="Maps" onPress={() => router.push('/(tabs)/more/maps')} />,
-              <BizQuickAction key="account" icon={<ShieldCheck size={20} color={BIZLINK_COLORS.ink} strokeWidth={1.75} />} label="Account" onPress={() => router.push('/(tabs)/more/account')} />,
-            ];
-            const rows: ReactNode[][] = [];
-            for (let i = 0; i < tiles.length; i += quickActionColumns) rows.push(tiles.slice(i, i + quickActionColumns));
-            return rows.map((row, index) => (
-              <XStack
-                key={index}
-                gap={QUICK_ACTION_GAP}
-                justifyContent={row.length === quickActionColumns ? 'space-between' : 'flex-start'}
-              >
-                {row}
-              </XStack>
-            ));
-})()}
-        </YStack>
+        <BizQuickActionGrid
+          columns={quickActionColumns}
+          actions={[
+            <BizQuickAction key="my-clients" icon={<Building2 size={20} color={BIZLINK_COLORS.ink} strokeWidth={1.75} />} label="My Clients" onPress={() => router.push(getDashboardActionHref('my-clients', role))} />,
+            <BizQuickAction key="meeting-details" icon={<CalendarDays size={20} color={BIZLINK_COLORS.ink} strokeWidth={1.75} />} label="Meeting Details" onPress={() => router.push('/(tabs)/meetings')} />,
+            <BizQuickAction key="notifications" icon={<Bell size={20} color={BIZLINK_COLORS.ink} strokeWidth={1.75} />} label="Notifications" badgeCount={notificationBadgeCount} onPress={() => router.push('/(tabs)/more/notifications')} />,
+            <BizQuickAction key="clock-in-out" icon={<Clock size={20} color={BIZLINK_COLORS.ink} strokeWidth={1.75} />} label="Clock In/Out" onPress={() => router.push('/(tabs)/more/clock-in-out')} />,
+            <BizQuickAction key="my-requests" icon={<ClipboardCheck size={20} color={BIZLINK_COLORS.ink} strokeWidth={1.75} />} label="My Requests" badgeCount={myRequestsBadgeCount} onPress={() => router.push('/(tabs)/more/my-requests')} />,
+            <BizQuickAction key="sync-history" icon={<History size={20} color={BIZLINK_COLORS.ink} strokeWidth={1.75} />} label="Sync History" onPress={() => router.push('/(tabs)/more/sync-history')} />,
+            <BizQuickAction key="performance" icon={<BarChart3 size={20} color={BIZLINK_COLORS.ink} strokeWidth={1.75} />} label="Performance" onPress={() => router.push('/(tabs)/more/reports')} />,
+            <BizQuickAction key="lost-opportunities" icon={<RotateCcw size={20} color={BIZLINK_COLORS.ink} strokeWidth={1.75} />} label="Lost opportunities" onPress={() => router.push('/(tabs)/more/lost-opportunities')} />,
+            <BizQuickAction key="maps" icon={<MapIcon size={20} color={BIZLINK_COLORS.ink} strokeWidth={1.75} />} label="Maps" onPress={() => router.push('/(tabs)/more/maps')} />,
+            <BizQuickAction key="account" icon={<ShieldCheck size={20} color={BIZLINK_COLORS.ink} strokeWidth={1.75} />} label="Account" onPress={() => router.push('/(tabs)/more/account')} />,
+          ]}
+        />
 
         {/* T-014 Phase 1 (ADR-024): shared, BizLink-styled — same worst-state-wins logic/copy as before.
             2026-08-09 (Vince direction): sits below "Iba pang gawain", above the alert banners. */}

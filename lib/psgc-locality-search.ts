@@ -2,6 +2,22 @@ import { PSGC_LOCALITIES, type PsgcLocality } from './data/psgc-localities';
 
 const DEFAULT_RESULT_LIMIT = 10;
 
+const SUGGESTED_LOCALITY_CODES = [
+  '81300', // Quezon City
+  '0305416000', // City of San Fernando, Pampanga
+  '0300803000', // City of Balanga, Bataan
+  '0401005000', // Batangas City
+] as const;
+
+/** A compact, useful picker starting set before the user starts searching. */
+export function getSuggestedPsgcLocalities(): PsgcLocality[] {
+  const byCode = new Map(PSGC_LOCALITIES.map((locality) => [locality.code, locality]));
+  return SUGGESTED_LOCALITY_CODES.flatMap((code) => {
+    const locality = byCode.get(code);
+    return locality ? [locality] : [];
+  });
+}
+
 /**
  * ADR-055: offline runtime search over the bundled PSGC dataset for the
  * Create Client canonical city/municipality selector. Case-insensitive

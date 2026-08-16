@@ -1,4 +1,5 @@
 import { Animated, Pressable } from 'react-native';
+import { useState } from 'react';
 import { router } from 'expo-router';
 import { Text, XStack, YStack } from 'tamagui';
 import { useBizlinkColors, BIZLINK_FONTS } from '../../lib/theme';
@@ -7,6 +8,8 @@ import { useClientFlowRoutes, type ClientFlowRoutes } from '../../lib/use-role-r
 import { usePulseGlow } from '../../lib/use-pulse-glow';
 import { StatusBadge } from '../ui/StatusBadge';
 import type { Client, ClientStatus } from '../../types';
+import type { ClientActivityReadModel } from '../../lib/client-activity-read-model';
+import { TagAlongWarningDialog } from './TagAlongWarningDialog';
 
 // Record-picker status filter (Wireframe-Sales-BizLink.html #a-record,
 // aRecordPickerFilter/aRenderRecordPicker). Pure UI filter/hint over the
@@ -92,11 +95,21 @@ interface RecordPickerRowProps {
    * the agent immediately spot which exact meeting is the live one.
    */
   isMeetingActive?: boolean;
+  activity?: ClientActivityReadModel;
 }
 
-export function RecordPickerRow({ client, rowNumber, isMeetingActive = false }: RecordPickerRowProps) {
+const TAG_LABELS: Record<ClientActivityReadModel['tagAlong'], string> = { none: '', queued: 'Tag-Along queued', failed: 'Tag-Along failed', pending: 'Tag-Along pending', accepted: 'Tag-Along accepted', declined: 'Tag-Along declined', cancelled: 'Tag-Along cancelled' };
+const PO_LABELS: Record<ClientActivityReadModel['po'], string> = { none: '', draft: 'PO draft', queued: 'PO queued', pending: 'PO pending', approved: 'PO approved', rejected: 'PO rejected', cancelled: 'PO cancelled', duplicate_blocked: 'PO blocked' };
+function formatLatest(value: string | null): string {
+  if (!value) return 'No meetings recorded yet';
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? 'Latest activity unavailable' : `Latest ${parsed.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}`;
+}
+
+export function RecordPickerRow({ client, rowNumber, isMeetingActive = false, activity }: RecordPickerRowProps) {
   const BIZLINK_COLORS = useBizlinkColors();
   const routes = useClientFlowRoutes();
+  const [tagWarningVisible, setTagWarningVisible] = useState(false);
   const status = getClientStatus(client);
   const badge = SALES_CLIENT_STATUS_BADGES[status];
   const hint = recordPickerHint(status);
@@ -104,8 +117,26 @@ export function RecordPickerRow({ client, rowNumber, isMeetingActive = false }: 
   const badgeBg = pulse.interpolate({ inputRange: [0, 1], outputRange: [BIZLINK_COLORS.brand, '#3FA96C'] });
   const badgeShadowOpacity = pulse.interpolate({ inputRange: [0, 1], outputRange: [0.25, 0.6] });
 
+  const hasActiveDraft = activity?.activeDraft !== null && activity?.activeDraft !== undefined;
+  const resumeFlow = (): void => {
+    const draft = activity?.activeDraft;
+    if (draft) {
+      router.push(draft.flow === 'full' ? routes.recordMeeting(client.id) : routes.recordVisit(client.id));
+      return;
+    }
+    openRecordFlow(client, routes);
+  };
+  const continueToFlow = (): void => openRecordFlow(client, routes);
+  const handlePress = (): void => {
+    if (hasActiveDraft || isMeetingActive) return resumeFlow();
+    if (activity?.tagAlong === 'queued' || activity?.tagAlong === 'pending' || activity?.tagAlong === 'failed') { setTagWarningVisible(true); return; }
+    continueToFlow();
+  };
+  const tagLabel = activity ? TAG_LABELS[activity.tagAlong] : '';
+  const poLabel = activity ? PO_LABELS[activity.po] : '';
   return (
-    <Pressable onPress={() => openRecordFlow(client, routes)}>
+    <>
+    <Pressable onPress={handlePress} accessibilityRole="button" accessibilityState={{ disabled: false }} accessibilityLabel={`${client.company_name}${hasActiveDraft || isMeetingActive ? ', Resume meeting' : ', Select client'}`} style={{ minHeight: 44 }}>
       <XStack
         alignItems="center"
         justifyContent="space-between"
@@ -151,12 +182,20 @@ export function RecordPickerRow({ client, rowNumber, isMeetingActive = false }: 
             </Text>
           </YStack>
         )}
-        <YStack gap="$0.5" flex={1}>
+        <YStack gap="$0.5" flex={1} minWidth={0}>
           <Text fontFamily={BIZLINK_FONTS.semibold} fontSize={14} color={BIZLINK_COLORS.text}>{client.company_name}</Text>
-          <Text fontSize={11.5} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted}>{hint}</Text>
+          <Text fontSize={11.5} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted}>{hasActiveDraft || isMeetingActive ? 'Resume meeting' : hint}</Text>
+          {activity ? <Text fontSize={11.5} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted}>{activity.meetingCount} meeting{activity.meetingCount === 1 ? '' : 's'} · {formatLatest(activity.latestMeetingAt)}</Text> : null}
+          {activity?.cycleDataStale ? <Text fontSize={11} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.orange}>Current PO status unavailable until this client syncs.</Text> : null}
+          {tagLabel || poLabel ? <XStack gap="$1" flexWrap="wrap" marginTop="$1">
+            {tagLabel ? <YStack backgroundColor={activity?.tagAlong === 'failed' ? BIZLINK_COLORS.tintB : BIZLINK_COLORS.soft} borderRadius={999} paddingHorizontal="$2" paddingVertical="$1"><Text fontSize={10.5} fontFamily={BIZLINK_FONTS.semibold} color={activity?.tagAlong === 'failed' ? BIZLINK_COLORS.red : BIZLINK_COLORS.muted}>{tagLabel}</Text></YStack> : null}
+            {poLabel ? <YStack backgroundColor={activity?.po === 'rejected' || activity?.po === 'duplicate_blocked' ? BIZLINK_COLORS.tintB : BIZLINK_COLORS.tintA} borderRadius={999} paddingHorizontal="$2" paddingVertical="$1"><Text fontSize={10.5} fontFamily={BIZLINK_FONTS.semibold} color={activity?.po === 'rejected' || activity?.po === 'duplicate_blocked' ? BIZLINK_COLORS.red : BIZLINK_COLORS.brand}>{poLabel}</Text></YStack> : null}
+          </XStack> : null}
         </YStack>
         <StatusBadge {...badge} />
       </XStack>
     </Pressable>
+    <TagAlongWarningDialog visible={tagWarningVisible} onCancel={() => setTagWarningVisible(false)} onContinue={() => { setTagWarningVisible(false); continueToFlow(); }} />
+    </>
   );
 }

@@ -20,6 +20,7 @@ import type { DateRange } from '../../../components/bizlink/DateRangePickerModal
 import { KeyboardAwareFlatList } from '../../../components/ui/KeyboardAwareScrollView';
 import { RecordPickerRow, RECORD_PICKER_FILTERS, type RecordPickerFilter } from '../../../components/meetings/RecordPickerRow';
 import { PAGINATION_PAGE_SIZE, usePagination } from '../../../lib/use-pagination';
+import { useClientActivityReadModel } from '../../../lib/client-activity-read-model';
 
 // Same "no city selected" sentinel as My Clients' `ALL_CITIES`
 // (app/(tabs)/clients/index.tsx) — kept local since each screen owns its
@@ -47,6 +48,8 @@ export default function SelectClientScreen() {
   // badge — re-fetched on focus by the hook itself, same source that
   // already powers the Home dashboard alert/tile glow.
   const { activeMeetingClientIds } = useActiveMeetingDrafts(profileId);
+  const { activities, loading: activityLoading, error: activityError } = useClientActivityReadModel(clients);
+  const activityByClient = useMemo(() => new Map(activities.map((activity) => [activity.clientId, activity])), [activities]);
   // Wireframe-Sales-BizLink.html:1549 — `var aRecordSelectedClientId = null,
   // aRecordPickerFilter = 'all';` — default filter is 'all', not 'existing'.
   const [statusFilter, setStatusFilter] = useState<RecordPickerFilter>('all');
@@ -187,6 +190,7 @@ export default function SelectClientScreen() {
               client={item}
               rowNumber={(page - 1) * PAGINATION_PAGE_SIZE + index + 1}
               isMeetingActive={activeMeetingClientIds.has(item.id)}
+              activity={activityByClient.get(item.id)}
             />
           )}
           refreshControl={<RefreshControl refreshing={loading} onRefresh={refresh} />}
@@ -199,6 +203,9 @@ export default function SelectClientScreen() {
           }
         />
       )}
+
+      {activityLoading && clients.length > 0 ? <Text paddingHorizontal="$4" paddingBottom="$2" fontSize={11.5} color={BIZLINK_COLORS.muted}>Loading meeting activity…</Text> : null}
+      {activityError ? <Text paddingHorizontal="$4" paddingBottom="$2" fontSize={11.5} color={BIZLINK_COLORS.orange}>Some activity details are unavailable on this device.</Text> : null}
 
       {filtered.length > 0 ? (
         <BizFloatingPager page={page} totalPages={totalPages} onPageChange={setPage} bottomOffset={insets.bottom + 16} />

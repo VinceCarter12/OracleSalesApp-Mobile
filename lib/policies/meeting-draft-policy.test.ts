@@ -2,6 +2,11 @@ import { describe, expect, it } from 'vitest';
 import { companionsForDraft, normalizeMeetingDraftPayload, restoreCompanionsFromDraft } from './meeting-draft-policy';
 
 describe('meeting draft companion payload', () => {
+  it('preserves a migrated canonical operation ID across repeated normalization', () => {
+    const payload = { mode: 'in_person' as const, gpsLat: 1, gpsLng: 2, capturedAt: 'today', operationId: 'op-canonical' };
+    expect(normalizeMeetingDraftPayload(payload).operationId).toBe('op-canonical');
+    expect(normalizeMeetingDraftPayload(normalizeMeetingDraftPayload(payload)).operationId).toBe('op-canonical');
+  });
   it('keeps legacy payloads valid without companions', () => {
     expect(normalizeMeetingDraftPayload({ mode: 'in_person', gpsLat: 1, gpsLng: 2, capturedAt: 'today' })).toEqual({
       mode: 'in_person', gpsLat: 1, gpsLng: 2, capturedAt: 'today',

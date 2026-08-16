@@ -139,6 +139,22 @@ async function ensureJointManagerTablesExist(db: SQLiteDatabase): Promise<void> 
 }
 
 /**
+ * The direct Joint Manager holder experiment was retired in favour of the
+ * Meeting Tag-Along authority flow. Remove only its locally queued/read-model
+ * rows so an old pending outbox item can never resurrect that superseded path.
+ * The remote migration history is intentionally left untouched.
+ */
+async function retireLegacyJointManagerData(db: SQLiteDatabase): Promise<void> {
+  await db.execAsync(`
+    DELETE FROM outbox
+     WHERE table_name IN ('joint_manager_requests', 'joint_manager_request_decisions', 'client_record_holders');
+    DELETE FROM joint_manager_request_decisions;
+    DELETE FROM joint_manager_requests;
+    DELETE FROM client_record_holders;
+  `);
+}
+
+/**
  * Runs once per app launch, inside `getDb()`'s `openDb()` (called by
  * `AppDbProvider` on boot — see `lib/app-db-provider.tsx` / app/_layout.tsx).
  * Uses `PRAGMA user_version` so each migration step applies exactly once per
@@ -154,6 +170,7 @@ export async function migrateDbIfNeeded(db: SQLiteDatabase): Promise<void> {
     await ensureSelfieProofColumns(db);
     await ensureCriticalTablesExist(db);
     await ensureJointManagerTablesExist(db);
+    await retireLegacyJointManagerData(db);
     return;
   }
 
@@ -1436,12 +1453,61 @@ export async function migrateDbIfNeeded(db: SQLiteDatabase): Promise<void> {
     currentVersion = 34;
   }
 
+  // Company identity v2: spacing and punctuation no longer let a user bypass
+  // the duplicate check (for example, "Test 1" and "test1"). Rebuild both
+  // local mirrors from the shared normalizer; never delete or merge records.
+  if (currentVersion === 34) {
+    const existingClients = await db.getAllAsync<{ id: string; company_name: string }>(
+      'SELECT id, company_name FROM clients'
+    );
+    for (const client of existingClients) {
+      await db.runAsync('UPDATE clients SET normalized_name = ? WHERE id = ?', [
+        normalizeCompanyName(client.company_name),
+        client.id,
+      ]);
+    }
+
+    const snapshotRows = await db.getAllAsync<{ client_id: string; company_name: string }>(
+      'SELECT client_id, company_name FROM company_names_snapshot'
+    );
+    for (const snapshot of snapshotRows) {
+      await db.runAsync('UPDATE company_names_snapshot SET normalized_name = ? WHERE client_id = ?', [
+        normalizeCompanyName(snapshot.company_name),
+        snapshot.client_id,
+      ]);
+    }
+    currentVersion = 35;
+  }
+
+  // Batch 3: retain offline/two-device PO evidence that loses the current
+  // client/cycle race as an explicit local-only state. This status never
+  // leaves SQLite and is not part of the remote enum.
+  if (currentVersion === 35) {
+    await db.execAsync(`
+      CREATE TABLE po_confirmation_requests_new (
+        id TEXT PRIMARY KEY NOT NULL, client_id TEXT NOT NULL, cycle_id TEXT NOT NULL,
+        meeting_id TEXT NOT NULL, requester_id TEXT NOT NULL, po_photo_path TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'draft'
+          CHECK (status IN ('draft', 'pending', 'approved', 'rejected', 'cancelled', 'duplicate_blocked')),
+        decided_by TEXT, decided_at TEXT, decision_note TEXT, created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL, synced_at TEXT
+      );
+      INSERT INTO po_confirmation_requests_new SELECT * FROM po_confirmation_requests;
+      DROP TABLE po_confirmation_requests;
+      ALTER TABLE po_confirmation_requests_new RENAME TO po_confirmation_requests;
+      CREATE INDEX idx_po_confirmation_meeting ON po_confirmation_requests (meeting_id);
+      CREATE INDEX idx_po_confirmation_requester ON po_confirmation_requests (requester_id, status);
+      CREATE INDEX idx_po_confirmation_client ON po_confirmation_requests (client_id);
+    `);
+    currentVersion = 36;
+  }
+
   // Keep this unconditional as a final defensive check for databases that
   // traversed an older path with a partially-applied v30 block.
   await ensureSelfieProofColumns(db);
   await ensureCriticalTablesExist(db);
   await ensureJointManagerTablesExist(db);
-
+  await retireLegacyJointManagerData(db);
 
   await db.execAsync(`PRAGMA user_version = ${currentVersion}`);
 }

@@ -23,6 +23,7 @@ import { AccountSuspendedScreen } from '../components/security/AccountSuspendedS
 import { LockGate } from '../components/security/LockGate';
 import { useBizlinkColors } from '../lib/theme';
 import { KeyboardResponsiveView } from '../components/ui/KeyboardResponsiveView';
+import { SyncUploadProgressCard } from '../components/sync/SyncUploadProgressCard';
 
 // Keeps the native splash screen up until fonts finish loading (see
 // RootLayout below) instead of the previous `if (!fontsLoaded) return null`
@@ -182,6 +183,10 @@ function ThemedApp() {
           <LockGate>
             <KeyboardResponsiveView>
               <RootNavigator />
+              {/* Floating "Uploading..." push-progress card (2026-08-16) —
+                  mounted once here, above every role's Stack.Protected group,
+                  so it overlays regardless of which role/screen is active. */}
+              <SyncUploadProgressCard />
             </KeyboardResponsiveView>
           </LockGate>
         </AppLockProvider>

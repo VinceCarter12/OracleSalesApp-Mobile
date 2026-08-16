@@ -3,6 +3,7 @@ import { uuidv4 } from '../uuid';
 import { classifySyncError, MAX_OUTBOX_ATTEMPTS } from './outbox-status';
 import { markUploadRow, markUploadSynced, markUploadSyncing, scheduleUploadRetry } from './pending-upload-status';
 import { enqueueSyncAuditRow } from './audit-log';
+import { reportSyncProgressStep } from './sync-progress';
 import {
   enqueuePhotoUrlUpdate,
   PHOTO_UPLOAD_KINDS,
@@ -242,8 +243,16 @@ export async function processPendingUploads(db: SQLiteDatabase, agentId: string)
     try {
       const parentSynced = syncedParents.has(`${row.parent_table}:${row.parent_id}`);
       const outcome = await processOneRow(db, row, parentSynced);
-      if (outcome === 'synced') result.synced++;
-      if (outcome === 'failed') result.failed++;
+      // 'skipped' (parent not yet synced this pass) is deliberately NOT
+      // terminal — see sync-progress.ts's doc comment for why it's excluded.
+      if (outcome === 'synced') {
+        result.synced++;
+        reportSyncProgressStep();
+      }
+      if (outcome === 'failed') {
+        result.failed++;
+        reportSyncProgressStep();
+      }
     } catch (err) {
       // Defensive: an unexpected throw (e.g. a malformed row) must never
       // stop the remaining rows from being attempted this pass.
@@ -258,6 +267,7 @@ export async function processPendingUploads(db: SQLiteDatabase, agentId: string)
       );
       await enqueueUploadAudit(db, row, 'failed', classified);
       result.failed++;
+      reportSyncProgressStep();
     }
   }
   return result;

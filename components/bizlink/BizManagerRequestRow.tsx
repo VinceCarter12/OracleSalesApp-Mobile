@@ -103,7 +103,7 @@ export function BizManagerRequestRow({ row, rowNumber, onPress, onAccept, onDecl
         </Text>
       ) : null}
 
-      {isTagAlong ? (
+      {isTagAlong && row.status === 'pending' ? (
         <XStack gap="$2" marginTop="$1">
           <BizButton label="Decline" variant="white" small disabled={responding} onPress={onDecline} style={{ flex: 1 }} />
           <BizButton label="Accept" small disabled={responding} onPress={onAccept} style={{ flex: 1 }} />

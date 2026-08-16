@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { getCompanionRosterForViewer, inviteeKindForRole } from './companion-roster-policy';
+import { dedupeRosterEntries, getCompanionRosterForViewer, inviteeKindForRole } from './companion-roster-policy';
 import type { TeamRosterEntry } from '../../types';
 
 const manager: TeamRosterEntry = {
@@ -59,14 +59,26 @@ describe('getCompanionRosterForViewer', () => {
     expect(getCompanionRosterForViewer([{ ...manager, isActive: false }, manager], 'sales_specialist', 'team-1')).toEqual([manager]);
   });
 
-  it('fails closed for no team and excludes cross-team cached entries', () => {
+  it('allows an active cross-team manager from the directory for Sales/RSR', () => {
     const crossTeamManager = { ...manager, profileId: 'p-other-manager', teamId: 'team-2' };
-    expect(getCompanionRosterForViewer([manager, crossTeamManager], 'sales_specialist', 'team-1')).toEqual([manager]);
+    expect(getCompanionRosterForViewer([manager, crossTeamManager], 'sales_specialist', 'team-1')).toEqual([manager, crossTeamManager]);
+    expect(getCompanionRosterForViewer([manager, crossTeamManager], 'rsr', 'team-1')).toEqual([manager, crossTeamManager]);
     expect(getCompanionRosterForViewer([manager], 'sales_specialist', null)).toEqual([]);
+  });
+
+  it('keeps cross-team teammates hidden while retaining same-team teammates for policy callers', () => {
+    const crossTeamTeammate = { ...teammate, profileId: 'p-other-teammate', teamId: 'team-2' };
+    expect(getCompanionRosterForViewer([manager, teammate, crossTeamTeammate], 'sales_manager', 'team-1')).toEqual([teammate]);
   });
 
   it('fails closed for legacy cache entries without an affirmative active state', () => {
     expect(getCompanionRosterForViewer([{ ...manager, isActive: false }], 'sales_specialist', 'team-1')).toEqual([]);
+  });
+});
+
+describe('dedupeRosterEntries', () => {
+  it('deduplicates by profile id, keeping the first local mirror row', () => {
+    expect(dedupeRosterEntries([manager, { ...manager, fullName: 'Duplicate' }, teammate])).toEqual([manager, teammate]);
   });
 });
 

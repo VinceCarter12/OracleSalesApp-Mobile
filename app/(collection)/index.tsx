@@ -1,5 +1,5 @@
 import { useCallback, useState } from 'react';
-import { Pressable, RefreshControl, ScrollView } from 'react-native';
+import { Pressable, RefreshControl, ScrollView, useWindowDimensions } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router, useFocusEffect } from 'expo-router';
 import { Bell, ClipboardList, Footprints, History, Hourglass, User, Vault } from 'lucide-react-native';
@@ -13,6 +13,7 @@ import { BizStatCard } from '../../components/bizlink/BizStatCard';
 import { BizSectionHeader } from '../../components/bizlink/BizSectionHeader';
 import { BizDashboardAlert } from '../../components/bizlink/BizDashboardAlert';
 import { BizQuickAction } from '../../components/bizlink/BizQuickAction';
+import { BizQuickActionGrid, computeQuickActionColumns } from '../../components/bizlink/BizQuickActionGrid';
 import { SyncStatusChip } from '../../components/sync/SyncStatusChip';
 import { SyncCenterSheet } from '../../components/sync/SyncCenterSheet';
 import {
@@ -165,6 +166,14 @@ export default function CollectionDashboardScreen() {
   const pendingStores = sortAdditionalFirst(todayStores.filter((s) => isOpenForCollection(s.status)));
   const routePreview = pendingStores.slice(0, 3);
   const greetingName = firstName(fullName) || 'Collector';
+  const { width: windowWidth } = useWindowDimensions();
+  const quickActionColumns = computeQuickActionColumns(windowWidth, 16);
+  const quickActions = [
+    <BizQuickAction key="today" icon={<ClipboardList size={20} color={BIZLINK_COLORS.ink} strokeWidth={1.75} />} label="Today's List" badgeCount={summary.pendingCount} onPress={() => router.push('/(collection)/today')} />,
+    <BizQuickAction key="remit" icon={<Vault size={20} color={BIZLINK_COLORS.ink} strokeWidth={1.75} />} label="Remit" onPress={() => router.push('/(collection)/remit')} />,
+    <BizQuickAction key="history" icon={<History size={20} color={BIZLINK_COLORS.ink} strokeWidth={1.75} />} label="History" onPress={() => router.push('/(collection)/history')} />,
+    <BizQuickAction key="account" icon={<User size={20} color={BIZLINK_COLORS.ink} strokeWidth={1.75} />} label="Account" onPress={() => router.push('/(collection)/account')} />,
+  ];
 
   const openVisit = (storeId: string) =>
     router.push({ pathname: '/(collection)/visit', params: { id: storeId } });
@@ -227,29 +236,7 @@ export default function CollectionDashboardScreen() {
         {/* Wireframe c-home: Actions are the dashboard's main focus, surfaced
             directly under the hero (before the route list, not buried). */}
         <BizSectionHeader title="Actions" />
-        <XStack gap="$2.5" flexWrap="wrap">
-          <BizQuickAction
-            icon={<ClipboardList size={20} color={BIZLINK_COLORS.ink} strokeWidth={1.75} />}
-            label="Today's List"
-            badgeCount={summary.pendingCount}
-            onPress={() => router.push('/(collection)/today')}
-          />
-          <BizQuickAction
-            icon={<Vault size={20} color={BIZLINK_COLORS.ink} strokeWidth={1.75} />}
-            label="Remit"
-            onPress={() => router.push('/(collection)/remit')}
-          />
-          <BizQuickAction
-            icon={<History size={20} color={BIZLINK_COLORS.ink} strokeWidth={1.75} />}
-            label="History"
-            onPress={() => router.push('/(collection)/history')}
-          />
-          <BizQuickAction
-            icon={<User size={20} color={BIZLINK_COLORS.ink} strokeWidth={1.75} />}
-            label="Account"
-            onPress={() => router.push('/(collection)/account')}
-          />
-        </XStack>
+        <BizQuickActionGrid actions={quickActions} columns={quickActionColumns} />
 
         <BizSectionHeader title="Today's route" actionLabel="View all" onAction={() => router.push('/(collection)/today')} />
         {routePreview.length === 0 ? (

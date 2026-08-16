@@ -61,8 +61,7 @@ export function VisitInProgressPanel({
         <Info size={13} color={BIZLINK_COLORS.muted} strokeWidth={1.75} style={{ marginTop: 2 }} />
         <Text fontSize={12} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} flex={1} lineHeight={17}>
           These are service and relationship topics for New/Existing clients. They don't change the client's
-          stage. If a manager hasn't accepted your visit invite yet, the visit waits for their approval; if the
-          invite was to a teammate only, the visit counts right away.
+          stage. If your manager hasn't accepted your visit invite yet, the visit waits for their approval.
         </Text>
       </XStack>
       {selectedAgendas.length === 0 ? (

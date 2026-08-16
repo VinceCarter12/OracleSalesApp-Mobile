@@ -77,6 +77,11 @@ export interface MeetingRow {
   meeting_date: string;
   start_captured_at: string | null;
   end_captured_at: string | null;
+  photo_url?: string | null;
+  start_photo_url?: string | null;
+  end_photo_url?: string | null;
+  end_gps_lat?: number | null;
+  end_gps_lng?: number | null;
   created_at: string;
   // B-095 fix (2026-08-08): optional — Executive's read path
   // (lib/executive-overview-service.ts) doesn't select this column yet
@@ -277,6 +282,15 @@ export function mapMeetingRowToTeamMeeting(row: MeetingRow, clientCustomerType: 
     fastPath: row.outcome === null,
     startTime: row.start_captured_at ? formatTime(row.start_captured_at) : undefined,
     endTime: row.end_captured_at ? formatTime(row.end_captured_at) : undefined,
+    selfieUrl: row.photo_url ?? null,
+    startPhotoUrl: row.start_photo_url ?? null,
+    endPhotoUrl: row.end_photo_url ?? null,
+    startCapturedAt: row.start_captured_at,
+    endCapturedAt: row.end_captured_at,
+    gpsLat: row.gps_lat,
+    gpsLng: row.gps_lng,
+    endGpsLat: row.end_gps_lat ?? null,
+    endGpsLng: row.end_gps_lng ?? null,
     meetingDateIso: row.meeting_date,
     clientStatusAtMeeting: toClientStatusAtMeeting(row.client_status_at_meeting),
   };

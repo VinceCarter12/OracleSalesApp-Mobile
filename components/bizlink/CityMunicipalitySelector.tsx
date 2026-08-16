@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
 import { Pressable, ScrollView, TextInput } from 'react-native';
-import { Check } from 'lucide-react-native';
+import { Check, Search } from 'lucide-react-native';
 import { Text, View, XStack, YStack } from 'tamagui';
 import { useBizlinkColors, BIZLINK_FONTS, BIZLINK_ON_INK } from '../../lib/theme';
-import { searchPsgcLocalities } from '../../lib/psgc-locality-search';
+import { getSuggestedPsgcLocalities, searchPsgcLocalities } from '../../lib/psgc-locality-search';
 import type { PsgcLocality } from '../../lib/data/psgc-localities';
 
 interface CityMunicipalitySelectorProps {
@@ -44,8 +44,9 @@ export function CityMunicipalitySelector({ value, onSelect }: CityMunicipalitySe
     return () => clearTimeout(timer);
   }, [query]);
 
-  const showResults = editing && debouncedQuery.trim().length > 0;
-  const results = showResults ? searchPsgcLocalities(debouncedQuery) : [];
+  const isSearching = debouncedQuery.trim().length > 0;
+  const showResults = editing;
+  const results = isSearching ? searchPsgcLocalities(debouncedQuery) : getSuggestedPsgcLocalities();
 
   function handleChangeText(text: string): void {
     setQuery(text);
@@ -119,7 +120,7 @@ export function CityMunicipalitySelector({ value, onSelect }: CityMunicipalitySe
         onChangeText={handleChangeText}
         onFocus={() => setEditing(true)}
         onBlur={handleBlur}
-        placeholder="Search city..."
+        placeholder="Search or choose a city..."
         placeholderTextColor={BIZLINK_COLORS.muted}
         autoCapitalize="words"
         autoCorrect={false}
@@ -147,6 +148,12 @@ export function CityMunicipalitySelector({ value, onSelect }: CityMunicipalitySe
           shadowRadius={12}
           shadowOffset={{ width: 0, height: 6 }}
         >
+          <XStack alignItems="center" gap="$1.5" paddingHorizontal={12} paddingTop={7} paddingBottom={5}>
+            <Search size={14} color={BIZLINK_COLORS.muted} strokeWidth={2} />
+            <Text fontSize={11.5} fontFamily={BIZLINK_FONTS.semibold} color={BIZLINK_COLORS.muted}>
+              {isSearching ? 'Search results' : 'Suggested cities / municipalities'}
+            </Text>
+          </XStack>
           {results.length === 0 ? (
             <Text
               fontSize={12.5}
@@ -155,7 +162,7 @@ export function CityMunicipalitySelector({ value, onSelect }: CityMunicipalitySe
               paddingHorizontal={12}
               paddingVertical={11}
             >
-              No city/municipality found.
+              No city/municipality found. Try a city, municipality, or province.
             </Text>
           ) : (
             <ScrollView

@@ -11,6 +11,15 @@ export function inviteeKindForRole(role: TeamRosterEntry['role']): 'manager' | '
   return role === 'sales_manager' ? 'manager' : 'teammate';
 }
 
+/** Keep one local snapshot row per profile when directory and team mirrors overlap. */
+export function dedupeRosterEntries(roster: TeamRosterEntry[]): TeamRosterEntry[] {
+  const byProfile = new Map<string, TeamRosterEntry>();
+  for (const entry of roster) {
+    if (!byProfile.has(entry.profileId)) byProfile.set(entry.profileId, entry);
+  }
+  return [...byProfile.values()];
+}
+
 /**
  * ADR-046 decision 4 / correction addendum: a Manager's own meeting form
  * must never expose another Manager as a selectable companion — Manager-
@@ -38,7 +47,9 @@ export function getCompanionRosterForViewer(
   const activeRoster = roster.filter((entry) => entry.isActive && entry.teamId === viewerTeamId);
   if (viewerRole === 'sales_manager') return activeRoster.filter((entry) => entry.role !== 'sales_manager');
   if (viewerRole === 'sales_specialist' || viewerRole === 'rsr') {
-    return activeRoster.filter((entry) => entry.role === 'sales_manager');
+    // Managers come from the restricted company-wide directory for Sales/RSR;
+    // peer teammates remain team-scoped by getTeamRoster().
+    return roster.filter((entry) => entry.isActive && entry.role === 'sales_manager');
   }
   return [];
 }

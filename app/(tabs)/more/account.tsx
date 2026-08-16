@@ -1,4 +1,4 @@
-import { Alert, Image, ScrollView } from 'react-native';
+import { Image, ScrollView } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { Text, View, XStack, YStack } from 'tamagui';
@@ -17,6 +17,8 @@ import { BizButton } from '../../../components/bizlink/BizButton';
 import { LockToggleRow } from '../../../components/security/LockToggleRow';
 import { clearSnapshot } from '../../../lib/app-lock/session-snapshot';
 import { useTeamName } from '../../../lib/use-team-name';
+import { useSignOutWithSyncWarning } from '../../../lib/use-sign-out-with-sync-warning';
+import { SignOutSyncWarningDialog } from '../../../components/bizlink/SignOutSyncWarningDialog';
 
 const APPEARANCE_OPTIONS: Array<{ value: ThemePreference; label: string }> = [
   { value: 'system', label: 'System' },
@@ -32,19 +34,19 @@ const APPEARANCE_OPTIONS: Array<{ value: ThemePreference; label: string }> = [
 /** Wireframe a-account — profile, security actions, session policy, sign out. */
 export default function AgentAccountScreen() {
   const insets = useSafeAreaInsets();
-  const { signOut, fullName, role, teamId } = useSession();
+  const { signOut, fullName, profileId, role, teamId } = useSession();
   const teamName = useTeamName(teamId);
   const { session, signOut: signOutSupabase } = useAuth();
   const { avatarUri } = useProfileAvatar(session?.user.id);
   const BIZLINK_COLORS = useBizlinkColors();
+  const { requestSignOut, dialogProps } = useSignOutWithSyncWarning();
 
   function confirmSignOut(): void {
-    Alert.alert('Sign Out', 'Are you sure you want to sign out?', [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Sign Out',
-        style: 'destructive',
-        onPress: async () => {
+    void requestSignOut({
+      profileId,
+      teamId,
+      role,
+      completeSignOut: async () => {
           await signOutSupabase();
           // Batch 5 Slice 1 (ADR-051): the cold-start snapshot MUST be
           // cleared on every sign-out path — otherwise the next cold start
@@ -52,9 +54,8 @@ export default function AgentAccountScreen() {
           await clearSnapshot();
           signOut();
           router.replace('/(auth)/login');
-        },
       },
-    ]);
+    });
   }
 
   return (
@@ -122,6 +123,7 @@ export default function AgentAccountScreen() {
           <BizButton label="Sign Out" variant="red" onPress={confirmSignOut} />
         </YStack>
       </ScrollView>
+      <SignOutSyncWarningDialog {...dialogProps} />
     </YStack>
   );
 }

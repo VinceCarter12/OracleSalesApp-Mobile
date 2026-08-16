@@ -6,12 +6,9 @@ export type AgendaStage = 'prospect' | 'in_progress';
 
 // Wireframe-Sales-BizLink.html:1733-1735 (`aRenderRecordStage()`) — quoted
 // verbatim, not paraphrased, per the wireframe-fidelity rule.
-export function agendaStageCopy(stage: AgendaStage): { title: string; note: string } {
+export function agendaStageCopy(stage: AgendaStage): { title: string; note: string } | null {
   if (stage === 'in_progress') {
-    return {
-      title: 'In Progress agenda',
-      note: 'Complete the topics not covered in Prospect. Successful + Close deal + approved PO + cleared tag-along gate moves this client to New.',
-    };
+    return null;
   }
   return {
     title: 'Prospect agenda',
@@ -35,14 +32,17 @@ interface AgendaStageNoteCardProps {
 export function AgendaStageNoteCard({ stage, loading, error }: AgendaStageNoteCardProps) {
   const BIZLINK_COLORS = useBizlinkColors();
   const copy = agendaStageCopy(stage);
+  if (!copy && !loading && !error) return null;
   return (
     <BizCard flat borderRadius={20} padding={14} marginBottom="$2.5">
-      <Text fontFamily={BIZLINK_FONTS.semibold} fontSize={13} color={BIZLINK_COLORS.ink}>
-        {copy.title}
-      </Text>
-      <Text fontSize={11.5} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.ink} marginTop="$1" lineHeight={16}>
-        {copy.note}
-      </Text>
+      {copy ? <>
+        <Text fontFamily={BIZLINK_FONTS.semibold} fontSize={13} color={BIZLINK_COLORS.ink}>
+          {copy.title}
+        </Text>
+        <Text fontSize={11.5} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.ink} marginTop="$1" lineHeight={16}>
+          {copy.note}
+        </Text>
+      </> : null}
       {loading ? (
         <XStack alignItems="center" gap="$1.5" marginTop="$2">
           <Spinner size="small" color={BIZLINK_COLORS.brand} />

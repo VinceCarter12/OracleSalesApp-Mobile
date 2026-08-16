@@ -328,6 +328,16 @@ export interface TeamMeeting {
   fastPath?: boolean;
   startTime?: string;
   endTime?: string;
+  /** Evidence URLs are read from the server for Manager-owned and team meetings. */
+  selfieUrl?: string | null;
+  startPhotoUrl?: string | null;
+  endPhotoUrl?: string | null;
+  startCapturedAt?: string | null;
+  endCapturedAt?: string | null;
+  gpsLat?: number | null;
+  gpsLng?: number | null;
+  endGpsLat?: number | null;
+  endGpsLng?: number | null;
   // Quality-gate fix (2026-07-22): raw `meetings.meeting_date` ISO string,
   // real-data-only (real read path via `lib/team-remote-mappers.ts` always
   // sets it; mock fixtures in `lib/manager-data.ts` don't carry one, same

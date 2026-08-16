@@ -59,6 +59,14 @@
           "photosPermission": "Used to save meeting photos to your gallery."
         }
       ],
+      "expo-document-picker",
+      [
+        "expo-media-library",
+        {
+          "photosPermission": "Used to save meeting photos to your gallery.",
+          "savePhotosPermission": "Used to save meeting photos to your gallery."
+        }
+      ],
       "expo-font",
       "expo-sqlite",
       "expo-local-authentication",

@@ -4,14 +4,16 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { X } from 'lucide-react-native';
 import { YStack, XStack } from 'tamagui';
 import { useBizlinkColors } from '../../lib/theme';
+import { MeetingEvidenceDownload, type MeetingEvidenceAuditDetails } from './MeetingEvidenceDownload';
 
 interface ImagePreviewModalProps {
   visible: boolean;
   imageUrl: string | null;
   onClose: () => void;
+  auditDetails?: MeetingEvidenceAuditDetails;
 }
 
-export function ImagePreviewModal({ visible, imageUrl, onClose }: ImagePreviewModalProps) {
+export function ImagePreviewModal({ visible, imageUrl, onClose, auditDetails }: ImagePreviewModalProps) {
   const BIZLINK_COLORS = useBizlinkColors();
   const insets = useSafeAreaInsets();
 
@@ -50,6 +52,7 @@ export function ImagePreviewModal({ visible, imageUrl, onClose }: ImagePreviewMo
               borderRadius: 16,
             }}
           />
+          {auditDetails ? <MeetingEvidenceDownload imageUrl={imageUrl} details={auditDetails} /> : null}
         </ScrollView>
       </YStack>
     </Modal>

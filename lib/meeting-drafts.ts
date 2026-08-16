@@ -2,6 +2,7 @@ import { getDb } from './db';
 import { isSameCalendarDay } from './local-day';
 import type { MeetingMode } from '../types';
 import { normalizeMeetingDraftPayload, type MeetingDraftPayload } from './policies/meeting-draft-policy';
+import { uuidv4 } from './uuid';
 export { companionsForDraft, normalizeMeetingDraftPayload, restoreCompanionsFromDraft } from './policies/meeting-draft-policy';
 export type { MeetingDraftCompanion } from './policies/meeting-draft-policy';
 
@@ -77,6 +78,7 @@ export async function hasOtherActiveDraftForAgent(agentId: string, clientId: str
 // still required even when the UI preflight has already passed: two entry
 // screens can otherwise both observe an empty draft list before either writes.
 let draftWriteQueue: Promise<void> = Promise.resolve();
+let draftMigrationQueue: Promise<void> = Promise.resolve();
 
 async function withDraftWriteLock<T>(operation: () => Promise<T>): Promise<T> {
   const previous = draftWriteQueue;
@@ -90,6 +92,14 @@ async function withDraftWriteLock<T>(operation: () => Promise<T>): Promise<T> {
   } finally {
     release();
   }
+}
+
+async function withDraftMigrationLock<T>(operation: () => Promise<T>): Promise<T> {
+  const previous = draftMigrationQueue;
+  let release: () => void = () => undefined;
+  draftMigrationQueue = new Promise<void>((resolve) => { release = resolve; });
+  await previous;
+  try { return await operation(); } finally { release(); }
 }
 
 /**
@@ -133,6 +143,10 @@ export async function saveDraft(input: SaveDraftInput): Promise<void> {
  * can still resume it after logging back in, within the same day.
  */
 export async function getDraftForClient(clientId: string, agentId: string): Promise<MeetingDraft | null> {
+  return withDraftMigrationLock(() => getDraftForClientUnlocked(clientId, agentId));
+}
+
+async function getDraftForClientUnlocked(clientId: string, agentId: string): Promise<MeetingDraft | null> {
   const db = await getDb();
   const row = await db.getFirstAsync<MeetingDraftRow>(
     'SELECT * FROM meeting_drafts WHERE id = ?',
@@ -146,16 +160,26 @@ export async function getDraftForClient(clientId: string, agentId: string): Prom
     return null;
   }
 
-  return {
-    id: row.id,
-    clientId: row.client_id,
-    agentId: row.agent_id,
-    flow: row.flow === 'full' ? 'full' : 'visit',
-    payload: normalizeMeetingDraftPayload(JSON.parse(row.payload_json)),
-    startCapturedAt: row.start_captured_at,
-    createdAt: row.created_at,
-    updatedAt: row.updated_at,
-  };
+  const rawPayload = JSON.parse(row.payload_json) as Record<string, unknown>;
+  const parsedPayload = normalizeMeetingDraftPayload(rawPayload);
+  const payload: MeetingDraftPayload = { ...parsedPayload, operationId: parsedPayload.operationId ?? uuidv4() };
+  // Older drafts predate the operation ID. Persist the generated ID now so
+  // relaunch/recovery and every later save continue using one canonical ID.
+  if (!parsedPayload.operationId) {
+    await db.runAsync('UPDATE meeting_drafts SET payload_json = ?, updated_at = ? WHERE id = ? AND payload_json = ?', [
+      JSON.stringify(payload), new Date().toISOString(), row.id, row.payload_json,
+    ]);
+    const canonical = await db.getFirstAsync<MeetingDraftRow>('SELECT * FROM meeting_drafts WHERE id = ?', [row.id]);
+    if (canonical) {
+      const canonicalPayload = normalizeMeetingDraftPayload(JSON.parse(canonical.payload_json));
+      return getDraftFromRow(canonical, { ...canonicalPayload, operationId: canonicalPayload.operationId ?? payload.operationId });
+    }
+  }
+  return getDraftFromRow(row, payload);
+}
+
+function getDraftFromRow(row: MeetingDraftRow, payload: MeetingDraftPayload): MeetingDraft {
+  return { id: row.id, clientId: row.client_id, agentId: row.agent_id, flow: row.flow === 'full' ? 'full' : 'visit', payload, startCapturedAt: row.start_captured_at, createdAt: row.created_at, updatedAt: row.updated_at };
 }
 
 /** Deletes a client's draft, if any — called after a successful save, on explicit discard, and when a draft is found stale or orphaned (client no longer exists locally). */
@@ -173,6 +197,10 @@ export async function deleteDraft(clientId: string): Promise<void> {
  * not created today) by filtering + deleting inline, same as that function.
  */
 export async function getActiveDraftsForAgent(agentId: string): Promise<MeetingDraft[]> {
+  return withDraftMigrationLock(() => getActiveDraftsForAgentUnlocked(agentId));
+}
+
+async function getActiveDraftsForAgentUnlocked(agentId: string): Promise<MeetingDraft[]> {
   const db = await getDb();
   const rows = await db.getAllAsync<MeetingDraftRow>(
     'SELECT * FROM meeting_drafts WHERE agent_id = ? ORDER BY start_captured_at DESC',
@@ -185,16 +213,20 @@ export async function getActiveDraftsForAgent(agentId: string): Promise<MeetingD
       await deleteDraft(row.client_id);
       continue;
     }
-    active.push({
-      id: row.id,
-      clientId: row.client_id,
-      agentId: row.agent_id,
-      flow: row.flow === 'full' ? 'full' : 'visit',
-      payload: normalizeMeetingDraftPayload(JSON.parse(row.payload_json)),
-      startCapturedAt: row.start_captured_at,
-      createdAt: row.created_at,
-      updatedAt: row.updated_at,
-    });
+    const parsedPayload = normalizeMeetingDraftPayload(JSON.parse(row.payload_json));
+    const payload: MeetingDraftPayload = { ...parsedPayload, operationId: parsedPayload.operationId ?? uuidv4() };
+    if (!parsedPayload.operationId) {
+      await db.runAsync('UPDATE meeting_drafts SET payload_json = ?, updated_at = ? WHERE id = ? AND payload_json = ?', [
+        JSON.stringify(payload), new Date().toISOString(), row.id, row.payload_json,
+      ]);
+      const canonical = await db.getFirstAsync<MeetingDraftRow>('SELECT * FROM meeting_drafts WHERE id = ?', [row.id]);
+      if (canonical) {
+        const canonicalPayload = normalizeMeetingDraftPayload(JSON.parse(canonical.payload_json));
+        active.push(getDraftFromRow(canonical, { ...canonicalPayload, operationId: canonicalPayload.operationId ?? payload.operationId }));
+        continue;
+      }
+    }
+    active.push(getDraftFromRow(row, payload));
   }
   return active;
 }

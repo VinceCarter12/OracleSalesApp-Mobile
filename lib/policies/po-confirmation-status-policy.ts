@@ -13,7 +13,7 @@ import { CLOSE_DEAL_AGENDA, type ClientStatus, type MeetingOutcome } from '../..
 // captured offline has no server counterpart yet. It is NEVER a valid
 // value on the wire (`RemotePoConfirmationStatus`, types/database.ts) —
 // only a local bookkeeping state.
-export type LocalPoConfirmationStatus = 'draft' | 'pending' | 'approved' | 'rejected' | 'cancelled' | 'superseded';
+export type LocalPoConfirmationStatus = 'draft' | 'pending' | 'approved' | 'rejected' | 'cancelled' | 'superseded' | 'duplicate_blocked';
 
 // ADR-046 point 7's exact display vocabulary: "submission_required /
 // pending / approved / rejected" — 'cancelled' is added for completeness
@@ -30,7 +30,8 @@ export type PoConfirmationDisplayStatus =
   | 'approved'
   | 'rejected'
   | 'cancelled'
-  | 'superseded';
+  | 'superseded'
+  | 'duplicate_blocked';
 
 /**
  * Maps a local row's status to the display vocabulary ADR-046 point 7
@@ -72,6 +73,7 @@ export const PO_CONFIRMATION_STATUS_LABELS: Record<PoConfirmationDisplayStatus, 
   rejected: 'Purchase order photos not accepted',
   cancelled: 'Purchase order request cancelled',
   superseded: 'This can no longer be sent — contact your office administrator',
+  duplicate_blocked: 'PO evidence saved on this device, but another PO is already active for this client cycle',
 };
 
 /** Badge tone tokens (BIZLINK_COLORS keys, matching COMPANION_REQUEST_BADGE_TONES's convention in lib/tag-along-service.ts). */
@@ -85,7 +87,18 @@ export const PO_CONFIRMATION_BADGE_TONES: Record<
   rejected: { background: 'soft', color: 'red' },
   cancelled: { background: 'soft', color: 'muted' },
   superseded: { background: 'soft', color: 'red' },
+  duplicate_blocked: { background: 'soft', color: 'red' },
 };
+
+export const ACTIVE_PO_CONFIRMATION_STATUSES = new Set<LocalPoConfirmationStatus>(['draft', 'pending', 'approved']);
+export function blocksPoConfirmationReplacement(status: LocalPoConfirmationStatus): boolean {
+  return ACTIVE_PO_CONFIRMATION_STATUSES.has(status);
+}
+
+/** Any active row reserves a client/cycle slot; terminal history alone does not. */
+export function hasActivePoConfirmation(rows: readonly LocalPoConfirmationStatus[]): boolean {
+  return rows.some(blocksPoConfirmationReplacement);
+}
 
 // ADR-046 correction addendum point 3: the live discriminator literal —
 // never the shorthand 'po'. Exported so every call site (service, UI) reads
