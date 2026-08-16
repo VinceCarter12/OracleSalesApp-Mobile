@@ -3,7 +3,8 @@ import { supabase } from './supabase';
 // 2026-08-16 (Vince direction): every role with a Maps screen (Sales/RSR,
 // Manager, Executive) can opt into a company-wide layer of prospect-status
 // pins across ALL teams, not just their own team/combined scope — see the
-// web repo's `099_org_wide_prospect_map_markers.sql` migration for the
+// web repo's `100_org_wide_prospect_map_markers.sql` migration (renumbered
+// from 099) for the
 // SECURITY DEFINER RPC this calls. Same pattern as
 // `lib/po-confirmation-manager-service.ts::getManagerApprovalFeed()`: pure
 // I/O, typed row mapping, no UI. Online-only, no local SQLite mirror — an

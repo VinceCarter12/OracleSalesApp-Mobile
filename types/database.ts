@@ -797,7 +797,8 @@ export type Database = {
         Args: Record<string, never>;
         Returns: Array<{ id: string; full_name: string; team_id: string | null; is_active: boolean }>;
       };
-      // Web repo Migration 099 (2026-08-16, PR OPEN — see Sprint.md 2026-08-16):
+      // Web repo Migration 100 (2026-08-16, renumbered from 099 — see
+      // Sprint.md 2026-08-16, PR OPEN):
       // SECURITY DEFINER, gated to roles with a Maps screen
       // (sales_specialist/rsr/sales_manager/executive). Returns only enough
       // to render a pin (no full client record) for clients.customer_type =
