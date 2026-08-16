@@ -1509,7 +1509,6 @@ export async function migrateDbIfNeeded(db: SQLiteDatabase): Promise<void> {
   await ensureJointManagerTablesExist(db);
   await retireLegacyJointManagerData(db);
 
-
   await db.execAsync(`PRAGMA user_version = ${currentVersion}`);
 }
 
