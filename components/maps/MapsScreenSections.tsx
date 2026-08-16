@@ -1,7 +1,8 @@
+import { Pressable } from 'react-native';
 import { WifiOff } from 'lucide-react-native';
 import { Text, View, XStack } from 'tamagui';
 import { BIZLINK_COLORS, BIZLINK_FONTS } from '../../lib/theme';
-import { MAP_MEETING_STATUS_COLORS, MAP_OFFICE_PIN_COLOR } from '../../lib/map-marker-colors';
+import { MAP_MEETING_STATUS_COLORS, MAP_OFFICE_PIN_COLOR, MAP_ORG_WIDE_PROSPECT_COLOR } from '../../lib/map-marker-colors';
 
 // Shared maps-only presentational pieces. The route owns the single map and
 // list implementation; this module intentionally contains no duplicate
@@ -18,10 +19,30 @@ export function OfflineBanner() {
   );
 }
 
+/** Shared by the Sales/RSR and Manager Maps screens for `useOrgWideProspectMarkers()`'s fetch-failure state (2026-08-16) — same amber banner shape as `OfflineBanner`, with a retry action. */
+export function OrgWideProspectErrorBanner({ message, onRetry }: { message: string; onRetry: () => void }) {
+  return (
+    <XStack alignItems="center" gap="$2" backgroundColor={BIZLINK_COLORS.amberSoft} borderRadius={16} paddingHorizontal={14} paddingVertical={10} marginBottom="$3">
+      <Text fontSize={12} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.orange} flex={1}>
+        {message}
+      </Text>
+      <Pressable onPress={onRetry} hitSlop={8}>
+        <Text fontSize={12} fontFamily={BIZLINK_FONTS.semibold} color={BIZLINK_COLORS.orange}>Retry</Text>
+      </Pressable>
+    </XStack>
+  );
+}
+
 export interface LegendEntry {
   color: string;
   label: string;
 }
+
+/** Appended via `extraItems` only when the org-wide prospect filter toggle is ON (2026-08-16). */
+export const ORG_WIDE_PROSPECT_LEGEND_ENTRY: LegendEntry = {
+  color: MAP_ORG_WIDE_PROSPECT_COLOR,
+  label: 'Org-wide prospect',
+};
 
 const BASE_LEGEND_ITEMS: LegendEntry[] = [
   { color: MAP_OFFICE_PIN_COLOR, label: 'Office location' },
@@ -47,7 +68,7 @@ export function MapLegend({ extraItems = [] }: { extraItems?: LegendEntry[] }) {
     <XStack flexWrap="wrap" marginTop="$2.5" paddingHorizontal="$1">
       {items.map((item) => (
         <XStack key={item.label} width="50%" alignItems="center" gap="$1.5" paddingVertical={3}>
-          <View width={10} height={10} borderRadius={5} backgroundColor={item.color} />
+          <View width={16} height={16} borderRadius={8} backgroundColor={item.color} />
           <Text fontSize={11} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted}>{item.label}</Text>
         </XStack>
       ))}

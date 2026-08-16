@@ -14,6 +14,7 @@ import {
   type LocalPoConfirmationStatus,
   type PoConfirmationDisplayStatus,
 } from './policies/po-confirmation-status-policy';
+import { hasActivePoConfirmation } from './policies/po-confirmation-status-policy';
 import type { SQLiteDatabase } from 'expo-sqlite';
 
 // ADR-044 (Migration 039) + ADR-046 point 7 (Batch 3, Slice 5): the Sales/RSR
@@ -99,12 +100,26 @@ export async function capturePoEvidenceLocally(
 ): Promise<string> {
   const id = uuidv4();
   const now = new Date().toISOString();
+  const existing = await db.getAllAsync<{ status: LocalPoConfirmationStatus }>(
+    `SELECT status FROM po_confirmation_requests WHERE client_id = ? AND cycle_id = ? ORDER BY created_at DESC`,
+    [input.clientId, input.cycleId],
+  );
+  // Any active row reserves the client/cycle slot. Terminal history may remain
+  // newest, but must not hide an older draft/pending/approved reservation.
+  const blocked = hasActivePoConfirmation(existing.map((row) => row.status));
   await db.runAsync(
     `INSERT INTO po_confirmation_requests
       (id, client_id, cycle_id, meeting_id, requester_id, po_photo_path, status, created_at, updated_at, synced_at)
-     VALUES (?, ?, ?, ?, ?, ?, 'draft', ?, ?, NULL)`,
-    [id, input.clientId, input.cycleId, input.meetingId, input.requesterId, input.localPhotoUri, now, now]
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)`,
+    [id, input.clientId, input.cycleId, input.meetingId, input.requesterId, input.localPhotoUri,
+      blocked ? 'duplicate_blocked' : 'draft', now, now]
   );
+  if (blocked) {
+    await db.runAsync(
+      `UPDATE po_confirmation_requests SET decision_note = ? WHERE id = ?`,
+      ['A current or approved PO confirmation already exists for this client cycle.', id],
+    );
+  }
   return id;
 }
 
@@ -255,7 +270,18 @@ async function isClientSynced(db: SQLiteDatabase, clientId: string): Promise<boo
 type SubmissionAttemptResult =
   | { kind: 'submitted'; publicUrl: string }
   | { kind: 'rls_rejected'; err: unknown }
+  | { kind: 'duplicate_conflict'; err: unknown }
   | { kind: 'other_error'; err: unknown };
+
+async function remoteRequestExists(requestId: string): Promise<boolean> {
+  const { data, error } = await supabase.from('po_confirmation_requests').select('id').eq('id', requestId).maybeSingle();
+  return !error && data?.id === requestId;
+}
+
+export async function hasActivePoEvidence(db: SQLiteDatabase, clientId: string, cycleId: string): Promise<boolean> {
+  const rows = await db.getAllAsync<{ status: LocalPoConfirmationStatus }>('SELECT status FROM po_confirmation_requests WHERE client_id = ? AND cycle_id = ? ORDER BY created_at DESC', [clientId, cycleId]);
+  return hasActivePoConfirmation(rows.map((row) => row.status));
+}
 
 /**
  * One attempt: upload the photo, then INSERT. Classifies the outcome but
@@ -294,6 +320,10 @@ async function attemptSubmission(row: LocalPoConfirmationRow, userId: string, re
       );
       if (result.code === RLS_PERMISSION_DENIED_CODE) return { kind: 'rls_rejected', err: result };
       return { kind: 'other_error', err: result };
+    }
+    if (!result.ok && result.code === UNIQUE_VIOLATION_CODE) {
+      if (await remoteRequestExists(requestId)) return { kind: 'submitted', publicUrl };
+      return { kind: 'duplicate_conflict', err: result };
     }
     return { kind: 'submitted', publicUrl };
   } catch (err) {
@@ -391,6 +421,15 @@ export async function submitPoConfirmation(
       details = `status=${status} code=${code}`;
     }
     console.error('[po-confirmation-service] submission failed:', details);
+    return 'failed';
+  }
+
+  if (result.kind === 'duplicate_conflict') {
+    const now = new Date().toISOString();
+    await db.runAsync(
+      `UPDATE po_confirmation_requests SET status = 'duplicate_blocked', decision_note = ?, updated_at = ? WHERE id = ?`,
+      ['A different active PO confirmation already exists for this client cycle; this evidence was kept on this device.', now, requestId],
+    );
     return 'failed';
   }
 

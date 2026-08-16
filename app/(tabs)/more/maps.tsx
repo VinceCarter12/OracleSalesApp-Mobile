@@ -1,23 +1,26 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Modal, Pressable, TextInput } from 'react-native';
+import { Modal, Pressable } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect, router } from 'expo-router';
-import { Search, SlidersHorizontal, X } from 'lucide-react-native';
+import { X } from 'lucide-react-native';
 import { Text, View, XStack, YStack } from 'tamagui';
-import { BIZLINK_COLORS, BIZLINK_FONTS, BIZLINK_ON_INK } from '../../../lib/theme';
+import { BIZLINK_COLORS, BIZLINK_FONTS } from '../../../lib/theme';
 import { useAuth } from '../../../lib/useAuth';
 import { useSession } from '../../../lib/session-store';
 import { useUserMapMarker } from '../../../lib/use-user-map-marker';
 import { useMapsScreen, type MeetingTypeFilterValue, type MeetingStatusFilterValue } from '../../../lib/use-maps-screen';
+import { useOrgWideProspectMarkers } from '../../../lib/use-org-wide-prospect-markers';
 import { MEETING_MARKER_TYPE_LABEL } from '../../../lib/policies/meeting-marker-type';
 import { isLikelyOnline } from '../../../lib/sync/connectivity';
 import { BizTopBar } from '../../../components/bizlink/BizTopBar';
 import type { BizFilterOption } from '../../../components/bizlink/BizFilterScroll';
-import { MapLegend, OfflineBanner } from '../../../components/maps/MapsScreenSections';
+import { MapLegend, OfflineBanner, OrgWideProspectErrorBanner, ORG_WIDE_PROSPECT_LEGEND_ENTRY } from '../../../components/maps/MapsScreenSections';
+import { OrgWideProspectFilterRow } from '../../../components/maps/OrgWideProspectFilterRow';
 import { BizFilterSheet } from '../../../components/bizlink/BizFilterSheet';
 import type { DateRange } from '../../../components/bizlink/DateRangePickerModal';
 import { KeyboardAwareScrollView } from '../../../components/ui/KeyboardAwareScrollView';
 import { MapsFilterPanel } from '../../../components/maps/MapsFilterPanel';
+import { MapsSearchFilterBar } from '../../../components/maps/MapsSearchFilterBar';
 import { MapsListSection } from '../../../components/maps/MapsListSection';
 import { LeafletWebViewMapWithControls, type MapTileType } from '../../../components/maps/LeafletWebViewMap';
 import { BizFloatingPager } from '../../../components/bizlink/BizFloatingPager';
@@ -65,12 +68,14 @@ export default function AgentMapsScreen() {
   const { session } = useAuth();
   const { fullName } = useSession();
   const userMarker = useUserMapMarker(session?.user.id, fullName);
+  const orgWideProspects = useOrgWideProspectMarkers();
 
-  // "You here" marker merged into the office/meeting pins — shared by the
-  // inline map and the expanded full-screen map so both show the same set.
+  // "You here" marker + the opt-in org-wide prospect layer merged into the
+  // office/meeting pins — shared by the inline map and the expanded
+  // full-screen map so both show the same set.
   const mapMarkers = useMemo(
-    () => (userMarker ? [...state.mapMarkers, userMarker] : state.mapMarkers),
-    [state.mapMarkers, userMarker]
+    () => [...state.mapMarkers, ...orgWideProspects.mapMarkers, ...(userMarker ? [userMarker] : [])],
+    [state.mapMarkers, orgWideProspects.mapMarkers, userMarker]
   );
 
   const checkOnline = useCallback(() => {
@@ -129,12 +134,16 @@ export default function AgentMapsScreen() {
   }
 
   const filtersActive =
-    datePreset !== 'last7' || state.meetingTypeFilter !== 'all' || state.meetingStatusFilter !== 'all';
+    datePreset !== 'last7' ||
+    state.meetingTypeFilter !== 'all' ||
+    state.meetingStatusFilter !== 'all' ||
+    orgWideProspects.enabled;
 
   function resetFilters(): void {
     handlePresetChange('last7');
     state.setMeetingTypeFilter('all');
     state.setMeetingStatusFilter('all');
+    orgWideProspects.setEnabled(false);
   }
 
   return (
@@ -143,47 +152,13 @@ export default function AgentMapsScreen() {
       <KeyboardAwareScrollView contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 120 }} keyboardShouldPersistTaps="handled">
         {!online ? <OfflineBanner /> : null}
 
-        {/* Search Bar + Filters pill */}
-        <XStack gap="$2" alignItems="center" marginBottom="$3">
-          <XStack flex={1} alignItems="center" gap="$2" height={52} paddingHorizontal={12} backgroundColor={BIZLINK_COLORS.card} borderRadius={16}>
-            <Search size={17} color={BIZLINK_COLORS.muted} strokeWidth={1.75} />
-            <TextInput
-              value={searchQuery}
-              onChangeText={setSearchQuery}
-              placeholder="Search office location..."
-              placeholderTextColor={BIZLINK_COLORS.muted}
-              style={{ flex: 1, color: BIZLINK_COLORS.text, fontFamily: BIZLINK_FONTS.medium, fontSize: 13 }}
-            />
-          </XStack>
-          <Pressable
-            accessibilityLabel="Toggle filters"
-            onPress={() => setFilterOpen((open) => !open)}
-            style={{
-              flexDirection: 'row',
-              alignItems: 'center',
-              gap: 6,
-              backgroundColor: filterOpen || filtersActive ? BIZLINK_COLORS.ink : BIZLINK_COLORS.card,
-              borderRadius: 16,
-              paddingHorizontal: 14,
-              height: 52,
-              borderWidth: 1,
-              borderColor: filterOpen || filtersActive ? BIZLINK_COLORS.ink : BIZLINK_COLORS.line,
-            }}
-          >
-            <SlidersHorizontal
-              size={16}
-              color={filterOpen || filtersActive ? BIZLINK_ON_INK.solid : BIZLINK_COLORS.muted}
-              strokeWidth={1.75}
-            />
-            <Text
-              fontSize={11.5}
-              fontFamily={BIZLINK_FONTS.medium}
-              color={filterOpen || filtersActive ? BIZLINK_ON_INK.solid : BIZLINK_COLORS.muted}
-            >
-              Filters
-            </Text>
-          </Pressable>
-        </XStack>
+        <MapsSearchFilterBar
+          searchQuery={searchQuery}
+          onSearchQueryChange={setSearchQuery}
+          filterOpen={filterOpen}
+          onToggleFilter={() => setFilterOpen((open) => !open)}
+          filtersActive={filtersActive}
+        />
 
         <BizFilterSheet visible={filterOpen} onClose={() => setFilterOpen(false)} filtersActive={filtersActive} onReset={resetFilters}>
           <MapsFilterPanel
@@ -199,7 +174,12 @@ export default function AgentMapsScreen() {
             onMeetingStatusChange={state.setMeetingStatusFilter}
             meetingStatusOptions={MEETING_STATUS_FILTER_OPTIONS}
           />
+          <OrgWideProspectFilterRow enabled={orgWideProspects.enabled} onChange={orgWideProspects.setEnabled} />
         </BizFilterSheet>
+
+        {orgWideProspects.enabled && orgWideProspects.error ? (
+          <OrgWideProspectErrorBanner message={orgWideProspects.error} onRetry={orgWideProspects.retry} />
+        ) : null}
 
         {/* Interactive Map with Controls */}
         <LeafletWebViewMapWithControls
@@ -215,7 +195,7 @@ export default function AgentMapsScreen() {
         <Text fontSize={12} fontFamily={BIZLINK_FONTS.semibold} color={BIZLINK_COLORS.brand} marginTop="$2">
           {state.filteredPins.length} office · {displayedMeetings.length} meeting{displayedMeetings.length === 1 ? '' : 's'}
         </Text>
-<MapLegend />
+<MapLegend extraItems={orgWideProspects.enabled ? [ORG_WIDE_PROSPECT_LEGEND_ENTRY] : []} />
 
         {/* Meetings / Offices Section — office pin cards when Meeting Type = Client Office */}
         <MapsListSection

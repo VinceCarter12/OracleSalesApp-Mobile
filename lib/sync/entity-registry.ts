@@ -7,9 +7,6 @@ import {
   upsertSyncedPurchaseOrder,
   upsertSyncedRemittance,
   upsertSyncedTagAlongRequest,
-  upsertSyncedJointManagerRequest,
-  upsertSyncedJointManagerDecision,
-  upsertSyncedClientRecordHolder,
 } from './entity-appliers';
 import type { SQLiteDatabase } from 'expo-sqlite';
 
@@ -26,10 +23,7 @@ export type EntityTableName =
   | 'collection_visits'
   | 'purchase_orders'
   | 'remittances'
-  | 'cod_remittances'
-  | 'joint_manager_requests'
-  | 'joint_manager_request_decisions'
-  | 'client_record_holders';
+  | 'cod_remittances';
 
 /**
  * Structural constraint for `SyncEntityConfig.applyScope` (ADR-030): matches
@@ -225,21 +219,6 @@ export const ENTITY_REGISTRY: Record<EntityTableName, SyncEntityConfig> = {
     onConflict: 'id',
     applyRemoteRow: upsertSyncedCodRemittance,
     applyScope: (query, agentId) => query.eq('driver_id', agentId),
-  },
-  joint_manager_requests: {
-    remoteTable: 'joint_manager_requests', priority: 25, onConflict: 'id',
-    applyRemoteRow: upsertSyncedJointManagerRequest,
-    applyScope: (query, agentId) => query.eq('requester_id', agentId),
-  },
-  joint_manager_request_decisions: {
-    remoteTable: 'joint_manager_request_decisions', priority: 26, onConflict: 'id',
-    applyRemoteRow: upsertSyncedJointManagerDecision,
-    applyScope: (query, agentId) => query.eq('manager_id', agentId),
-  },
-  client_record_holders: {
-    remoteTable: 'client_record_holders', priority: 27, onConflict: 'client_id,manager_id',
-    applyRemoteRow: upsertSyncedClientRecordHolder,
-    applyScope: (query) => query,
   },
 };
 

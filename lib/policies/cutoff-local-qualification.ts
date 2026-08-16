@@ -12,7 +12,10 @@ export interface MeetingCandidateRow {
   po_confirmation_status: string | null;
 }
 
-const COUNTABLE_OUTCOMES = new Set(['Successful', 'Follow-up Required']);
+// A completed meeting counts regardless of its non-lost outcome. Lost
+// Opportunity is intentionally excluded; a missing outcome is only valid for
+// the New/Existing fast-path, which uses its end photo as completion proof.
+const COUNTABLE_OUTCOMES = new Set(['Successful', 'Follow-up Required', 'No Decision']);
 // Any status after `draft` means the confirmation row reached the server.
 // Approval/rejection is deliberately not part of quota eligibility.
 const SUBMITTED_PO_CONFIRMATION_STATUSES = new Set(['pending', 'approved', 'rejected', 'cancelled']);

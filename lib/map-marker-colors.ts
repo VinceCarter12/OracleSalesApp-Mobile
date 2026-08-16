@@ -25,6 +25,17 @@ export const MAP_OFFICE_PIN_COLOR = BIZLINK_COLORS.brand;
  */
 export const MAP_TEAM_RECORD_COLOR = BIZLINK_COLORS.navy;
 
+/**
+ * Org-wide prospect layer only (2026-08-16, Vince direction) — the new
+ * opt-in, all-teams prospect-pin filter available on all three Maps screens
+ * (Sales/RSR, Manager, Executive). Must read as visually distinct from both
+ * `MAP_MEETING_STATUS_COLORS.prospect` (purple, the viewer's OWN team's
+ * prospect-status meeting pins) and `MAP_TEAM_RECORD_COLOR` (navy, Manager
+ * "My Team"/"Combined" scope) so the three are never confused on the same
+ * map. Hot pink/magenta is not used anywhere else in the marker palette.
+ */
+export const MAP_ORG_WIDE_PROSPECT_COLOR = '#DB2777';
+
 export const MAP_MEETING_STATUS_COLORS: Record<ClientStatus, string> = {
   prospect: '#7C3AED', // purple
   in_progress: '#D97706', // orange

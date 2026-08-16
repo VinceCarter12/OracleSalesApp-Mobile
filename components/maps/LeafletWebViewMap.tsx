@@ -36,6 +36,26 @@ const CARTO_ATTRIBUTION =
 const DEFAULT_CENTER: [number, number] = [14.55, 121.0];
 const DEFAULT_ZOOM = 12;
 
+// Batch (2026-08-16) clustering follow-up: overlapping/near-identical GPS
+// office+meeting pins made the bigger letter-based pins alone useless once
+// several pins sat on top of each other. `Leaflet.markercluster` is loaded
+// from the CDN the same way Leaflet core already is above (Vince's
+// established "no react-native-maps/Google Maps, CDN-in-WebView" pattern) —
+// split into their own string constants (not the main buildMapHtml body) so
+// that already-oversized function stays as small as possible.
+/** `<link>` tags for the plugin's two stylesheets, loaded next to leaflet.css. */
+const MARKERCLUSTER_CSS_LINKS = `<link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css" />`;
+/** `<script>` tag for the plugin itself, loaded right after leaflet.js. */
+const MARKERCLUSTER_SCRIPT_TAG = '<script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>';
+/**
+ * Cluster badge CSS — matches `.pin-marker`'s visual weight (white border,
+ * drop shadow) but filled with Corporate Emerald brand green instead of the
+ * plugin's default yellow/orange/red gradient, so it reads as an
+ * intentional BizLink control, not an unstyled third-party widget.
+ */
+const CLUSTER_BADGE_STYLE = `.cluster-badge{width:40px;height:40px;border-radius:50%;background:#005B36;border:3px solid #FFFFFF;box-shadow:0 2px 6px rgba(0,0,0,0.35);display:flex;align-items:center;justify-content:center;color:#FFFFFF;font-family:Arial,Helvetica,sans-serif;font-weight:700;font-size:15px;}`;
+
 export interface LeafletMapMarker {
   id: string;
   lat: number;
@@ -47,12 +67,16 @@ export interface LeafletMapMarker {
   /** Short popup label shown on tap, before navigation. */
   label: string;
   /**
-   * Optional "you/current user" marker (Vince 2026-08-08): instead of a plain
-   * color dot, render a round chip with the user's profile picture (avatar) or,
-   * when there's no avatar, the first letter of their first name. Only the
-   * user-marker uses this — office/meeting markers stay circleMarkers.
+   * `kind: 'user'` (Vince 2026-08-08): the "you are here" chip — profile
+   * picture (avatar) or, when there's no avatar, the first letter of the
+   * user's first name.
+   * `kind: 'pin'` (Vince 2026-08-16): office/meeting markers were plain same-
+   * size `circleMarker` dots that clumped together at close zoom, making it
+   * impossible to tell how many pins/which one was where — same enlarged-
+   * letter treatment as the user chip, colored per `colorHex` (status/office
+   * color system is unchanged, only the shape).
    */
-  icon?: { kind: 'user'; imageUrl: string | null; text: string };
+  icon?: { kind: 'user'; imageUrl: string | null; text: string } | { kind: 'pin'; text: string };
 }
 
 interface LeafletWebViewMapProps {
@@ -97,18 +121,36 @@ function buildMapHtml(markers: LeafletMapMarker[], tileType: MapTileType, focuse
 <head>
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  ${MARKERCLUSTER_CSS_LINKS}
   <style>html,body,#map{height:100%;margin:0;padding:0;background:${BIZLINK_COLORS.canvas};}
     .user-marker{width:40px;height:40px;border-radius:50%;background:#0B2545;border:3px solid #FFFFFF;box-shadow:0 2px 6px rgba(0,0,0,0.35);overflow:hidden;display:flex;align-items:center;justify-content:center;color:#FFFFFF;font-family:Arial,Helvetica,sans-serif;font-weight:700;font-size:16px;}
-    .user-avatar{width:100%;height:100%;object-fit:cover;display:block;}</style>
+    .user-avatar{width:100%;height:100%;object-fit:cover;display:block;}
+    .pin-marker{width:34px;height:34px;border-radius:50%;border:2.5px solid #FFFFFF;box-shadow:0 2px 5px rgba(0,0,0,0.3);display:flex;align-items:center;justify-content:center;color:#FFFFFF;font-family:Arial,Helvetica,sans-serif;font-weight:700;font-size:15px;}
+    ${CLUSTER_BADGE_STYLE}</style>
 </head>
 <body>
   <div id="map"></div>
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  ${MARKERCLUSTER_SCRIPT_TAG}
   <script>
     var markers = ${markersJson};
     var focusedMarkerId = ${focusedMarkerIdJson};
     var map = L.map('map', { zoomControl: true, attributionControl: false, maxZoom: ${tileMaxZoom} });
     L.tileLayer('${tileUrl}', { attribution: '${CARTO_ATTRIBUTION}', maxZoom: ${tileMaxZoom} }).addTo(map);
+
+    // Office/meeting pins (and plain fallback dots) cluster together when
+    // close - the "you are here" user marker and the single draggable
+    // editablePin below are deliberately never added to this group, they
+    // are added straight to map instead.
+    var clusterGroup = L.markerClusterGroup({
+      iconCreateFunction: function (cluster) {
+        var chip = document.createElement('div');
+        chip.className = 'cluster-badge';
+        chip.textContent = String(cluster.getChildCount());
+        return L.divIcon({ className: '', html: chip, iconSize: [40, 40], iconAnchor: [20, 20] });
+      },
+    });
+    map.addLayer(clusterGroup);
 
     // JSON.stringify(undefined) returns undefined (not a string), which made
     // the controls-only map crash while constructing its memoized HTML.
@@ -156,6 +198,21 @@ function buildMapHtml(markers: LeafletMapMarker[], tileType: MapTileType, focuse
         marker = L.marker([m.lat, m.lng], {
           icon: L.divIcon({ className: '', html: chip, iconSize: [40, 40], iconAnchor: [20, 20] }),
         }).addTo(map);
+        // Never clustered — there's only ever one, and it must stay
+        // independently visible/tappable at every zoom level.
+      } else if (m.icon && m.icon.kind === 'pin') {
+        // Office/meeting marker (Vince 2026-08-16): enlarged letter chip
+        // instead of a tiny same-size dot, same divIcon pattern as the user
+        // marker above -- color still comes from m.colorHex (status/office
+        // color system unchanged), only the shape/size changed.
+        var pinChip = document.createElement('div');
+        pinChip.className = 'pin-marker';
+        pinChip.style.background = m.colorHex;
+        pinChip.textContent = m.icon.text;
+        marker = L.marker([m.lat, m.lng], {
+          icon: L.divIcon({ className: '', html: pinChip, iconSize: [34, 34], iconAnchor: [17, 17] }),
+        });
+        clusterGroup.addLayer(marker);
       } else {
         marker = L.circleMarker([m.lat, m.lng], {
           radius: m.radius,
@@ -163,7 +220,8 @@ function buildMapHtml(markers: LeafletMapMarker[], tileType: MapTileType, focuse
           weight: 2,
           fillColor: m.colorHex,
           fillOpacity: 1,
-        }).addTo(map);
+        });
+        clusterGroup.addLayer(marker);
       }
       // Set via textContent (never innerHTML/a raw string) so a company or
       // "Others" free-text location name can never be interpreted as HTML —

@@ -1,6 +1,8 @@
 import NetInfo from '@react-native-community/netinfo';
 import { supabase } from '../supabase';
 import { withTimeout } from '../with-timeout';
+export { type ConnectivityState, isOfflineState } from './connectivity-state';
+import type { ConnectivityState } from './connectivity-state';
 
 // T-014 (ADR-022 #3): a network/auth problem is not a per-record problem —
 // runSync must tell "nothing is reachable" apart from "this row is bad"
@@ -10,13 +12,6 @@ import { withTimeout } from '../with-timeout';
 
 const REACHABILITY_TIMEOUT_MS = 4000;
 const SUPABASE_URL = process.env.EXPO_PUBLIC_SUPABASE_URL;
-
-export type ConnectivityState =
-  | 'offline'
-  | 'no_internet'
-  | 'backend_unreachable'
-  | 'auth_required'
-  | 'online';
 
 /**
  * Three layers, in order: (a) NetInfo link-level state — no radio connection

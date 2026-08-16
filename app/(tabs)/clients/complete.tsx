@@ -4,8 +4,6 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router, useLocalSearchParams } from 'expo-router';
 import { Spinner, Text, XStack, YStack } from 'tamagui';
 import { useSession } from '../../../lib/session-store';
-import { createJointManagerRequest, getLocalManagerDirectory } from '../../../lib/joint-manager-service';
-import { JointManagerPicker, type JointManagerOption } from '../../../components/bizlink/JointManagerPicker';
 import { getClientById, ClientUpdateConflictError } from '../../../lib/client-service';
 import { getPendingEditRequestForClient, ClientNotFoundLocallyError, type ClientEditRequest } from '../../../lib/client-edit-request-service';
 import { submitCompleteInfo, splitCompleteInfoChanges } from '../../../lib/complete-info-submit';
@@ -66,15 +64,10 @@ export default function CompleteInfoScreen() {
   // 2026-08-09 (field validation): the 09-format hint only appears after the
   // user leaves the field or tries to save — never mid-typing.
   const [contactNumberTouched, setContactNumberTouched] = useState(false);
-  const [managerOptions, setManagerOptions] = useState<JointManagerOption[]>([]);
-  const [selectedManagerIds, setSelectedManagerIds] = useState<string[]>([]);
 
   useEffect(() => {
     if (!clientId) return;
-    Promise.all([getClientById(clientId), getPendingEditRequestForClient(clientId), getLocalManagerDirectory(role)]).then(([foundClient, pending, directory]) => {
-      // The restricted directory intentionally returns team ids only; never
-      // surface a raw UUID as a human-facing team label.
-      setManagerOptions(directory.map((entry) => ({ id: entry.id, name: entry.name, teamName: null })));
+    Promise.all([getClientById(clientId), getPendingEditRequestForClient(clientId)]).then(([foundClient, pending]) => {
       if (!foundClient) {
         Alert.alert('Error', 'Client not found.');
       } else {
@@ -156,10 +149,6 @@ export default function CompleteInfoScreen() {
         form: { contactPerson, position, contactNumber, officeAddress, channel, existingOverride, minorNotes },
       });
 
-      if (selectedManagerIds.length > 0 && (role === 'sales_specialist' || role === 'rsr')) {
-        await createJointManagerRequest(clientId, profileId, selectedManagerIds, teamId);
-      }
-
       if (branch === 'blocked_pending') return;
 
       const TOASTS: Record<Exclude<Awaited<ReturnType<typeof submitCompleteInfo>>, 'blocked_pending'>, string> = {
@@ -207,6 +196,12 @@ export default function CompleteInfoScreen() {
               <Text fontFamily={BIZLINK_FONTS.semibold} color={BIZLINK_COLORS.text}>they take effect immediately</Text>, no approval
               needed (this is part of creating the client, not an edit).
             </>
+          ) : isManagerOwnClient ? (
+            <>
+              This is your client record —{' '}
+              <Text fontFamily={BIZLINK_FONTS.semibold} color={BIZLINK_COLORS.text}>your changes take effect immediately</Text>.
+              {' '}No approval is needed.
+            </>
           ) : (
             <>
               This client's info is complete —{' '}
@@ -226,7 +221,6 @@ export default function CompleteInfoScreen() {
             are view-only here — not part of the wireframe's a-complete form,
             and editing them isn't in scope for info completion. */}
         <CompleteInfoReadOnlyHeader companyName={client.company_name} city={client.city} />
-        {managerOptions.length > 0 && (role === 'sales_specialist' || role === 'rsr') ? <JointManagerPicker options={managerOptions} selectedIds={selectedManagerIds} onChange={setSelectedManagerIds} /> : null}
         <BizField
           label="CONTACT PERSON"
           value={contactPerson}
@@ -280,18 +274,19 @@ export default function CompleteInfoScreen() {
         <Text fontSize={12} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} marginBottom="$2" lineHeight={17}>
           All new clients start as Prospect. The status automatically updates after a validated meeting.
         </Text>
-        <XStack gap="$2" flexWrap="wrap">
+        <XStack gap="$2" alignItems="center">
           <BizChip label="Existing client" selected={existingOverride} onPress={() => setExistingOverride((prev) => !prev)} />
+          {canDeclareLost ? (
+            <DeclareLostOpportunityAction
+              clientId={client.id}
+              profileId={profileId}
+              teamId={teamId}
+              onSuspended={markSuspended}
+              onDeclared={() => router.back()}
+              inline
+            />
+          ) : null}
         </XStack>
-        {existingOverride && canDeclareLost ? (
-          <DeclareLostOpportunityAction
-            clientId={client.id}
-            profileId={profileId}
-            teamId={teamId}
-            onSuspended={markSuspended}
-            onDeclared={() => router.back()}
-          />
-        ) : null}
 
         <BizSectionHeader title="Sales channel" />
         <XStack gap="$2" flexWrap="wrap">
@@ -321,16 +316,6 @@ export default function CompleteInfoScreen() {
             disabled={!canSubmit}
           />
         </YStack>
-
-        {canDeclareLost ? (
-          <DeclareLostOpportunityAction
-            clientId={client.id}
-            profileId={profileId}
-            teamId={teamId}
-            onSuspended={markSuspended}
-            onDeclared={() => router.back()}
-          />
-        ) : null}
       </KeyboardAwareScrollView>
     </YStack>
   );

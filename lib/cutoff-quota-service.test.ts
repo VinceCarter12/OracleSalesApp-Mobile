@@ -13,6 +13,14 @@ const baseMeeting: MeetingCandidateRow = {
 };
 
 describe('isQualifyingLocalMeeting', () => {
+  it('counts a completed No Decision meeting because quota tracks meetings, not only wins', () => {
+    expect(isQualifyingLocalMeeting({ ...baseMeeting, outcome: 'No Decision' })).toBe(true);
+  });
+
+  it('still excludes a completed Lost Opportunity meeting', () => {
+    expect(isQualifyingLocalMeeting({ ...baseMeeting, outcome: 'Lost Opportunity' })).toBe(false);
+  });
+
   it.each(['draft', 'superseded', null])(
     'excludes an In Progress Close deal meeting when PO status is %s',
     (po_confirmation_status) => {

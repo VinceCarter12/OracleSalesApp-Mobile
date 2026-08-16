@@ -4,10 +4,11 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router, useFocusEffect } from 'expo-router';
 import { Bell, Hourglass } from 'lucide-react-native';
 import { Spinner, Text, XStack, YStack } from 'tamagui';
-import { BIZLINK_COLORS, BIZLINK_FONTS } from '../../lib/theme';
+import { BIZLINK_COLORS, BIZLINK_FONTS, BIZLINK_ON_INK } from '../../lib/theme';
 import { useManagerDashboard } from '../../lib/useManagerDashboard';
-import { getIncomingCompanionRequests } from '../../lib/tag-along-invitee-service';
 import { useManagerApprovalFeed } from '../../lib/use-manager-approval-feed';
+import { useManagerActionableRequests } from '../../lib/use-manager-actionable-requests';
+import { usePendingTagAlongCount } from '../../lib/use-pending-tag-along-count';
 import { useSession } from '../../lib/session-store';
 import { useManagerScope } from '../../lib/manager-scope-store';
 import { useActiveMeetingDrafts } from '../../lib/use-active-meeting-drafts';
@@ -90,8 +91,10 @@ export default function ManagerDashboardScreen() {
   // Approvals screen — replaced by a real count of pending tag-along
   // requests needing this manager's accept/reject (the one remaining
   // "needs my action" queue for a manager, B-053's real invitee-side data).
-  const [pendingTagAlongCount, setPendingTagAlongCount] = useState(0);
-  
+  // 2026-08-16 bugfix: extracted into `usePendingTagAlongCount` — see that
+  // file's doc comment — so it refreshes on sync-complete, not just focus.
+  const { count: pendingTagAlongCount } = usePendingTagAlongCount(profileId);
+
   // Manager Approvals badge (2026-08-04 Full Badge Implementation)
   const { rows: approvalRows } = useManagerApprovalFeed();
   const pendingApprovalCount = useMemo(
@@ -99,14 +102,18 @@ export default function ManagerDashboardScreen() {
     [approvalRows]
   );
 
-  const loadPendingTagAlong = useCallback(() => {
-    if (!profileId) return;
-    getIncomingCompanionRequests(profileId)
-      .then((requests) => setPendingTagAlongCount(requests.filter((r) => r.status === 'pending').length))
-      .catch((err) => console.error('[ManagerHome] pending tag-along count failed:', err instanceof Error ? err.message : String(err)));
-  }, [profileId]);
-
-  useFocusEffect(useCallback(() => { loadPendingTagAlong(); }, [loadPendingTagAlong]));
+  // 2026-08-16 (requirement C): the bell badge reflects real *unread*
+  // pending client_edit/po_confirmation/tag_along — not merely "is anything
+  // pending" — refreshed on focus and after every foreground sync
+  // (`use-manager-actionable-requests.ts`'s own `subscribeSyncComplete`).
+  // Originally kept as a plain dot per Wireframe-Manager-BizLink.html's
+  // `#bellDot` (no digit variant) — Vince explicitly overrode that
+  // wireframe-parity reasoning later the same day and asked for a real
+  // number, so the badge below now reuses `BizQuickAction`'s exact numeric
+  // badge styling (`components/bizlink/BizQuickAction.tsx` lines 35-52)
+  // instead of the dot.
+  const { unreadPendingItems } = useManagerActionableRequests(profileId);
+  const unreadRequestCount = unreadPendingItems.length;
 
   useFocusEffect(
     useCallback(() => {
@@ -137,7 +144,6 @@ export default function ManagerDashboardScreen() {
     );
   }
 
-  const approvalBadge = pendingTagAlongCount + pendingApprovalCount;
   const initials = initialsFromName(fullName);
   const greetingName = firstName(fullName) || summary.managerName;
 
@@ -159,8 +165,23 @@ export default function ManagerDashboardScreen() {
         <Pressable onPress={() => router.push('/(manager)/more/notifications')} style={{ marginLeft: 'auto' }} hitSlop={6}>
           <YStack width={44} height={44} borderRadius={22} backgroundColor={BIZLINK_COLORS.card} alignItems="center" justifyContent="center" position="relative">
             <Bell size={17} color={BIZLINK_COLORS.text} strokeWidth={1.75} />
-            {approvalBadge > 0 ? (
-              <YStack position="absolute" top={9} right={10} width={8} height={8} borderRadius={4} backgroundColor={BIZLINK_COLORS.red} />
+            {unreadRequestCount > 0 ? (
+              <YStack
+                position="absolute"
+                top={-4}
+                right={-4}
+                backgroundColor={BIZLINK_COLORS.red}
+                borderRadius={999}
+                paddingHorizontal={5}
+                minWidth={16}
+                height={16}
+                alignItems="center"
+                justifyContent="center"
+              >
+                <Text fontSize={9.5} fontFamily={BIZLINK_FONTS.semibold} color={BIZLINK_ON_INK.solid}>
+                  {unreadRequestCount}
+                </Text>
+              </YStack>
             ) : null}
           </YStack>
         </Pressable>

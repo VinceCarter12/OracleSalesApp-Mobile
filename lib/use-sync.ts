@@ -3,6 +3,8 @@ import { AppState } from 'react-native';
 import NetInfo from '@react-native-community/netinfo';
 import { getOutboxCounts, runSync, type OutboxCounts } from './sync-engine';
 import { createAdaptiveForegroundScheduler } from './sync/adaptive-foreground-scheduler';
+import { formatReconnectToastMessage, shouldShowReconnectToast } from './sync/reconnect-toast';
+import { showToast } from './toast';
 import type { ConnectivityState } from './sync/connectivity';
 import type { AppStateStatus } from 'react-native';
 import type { UserRole } from '../types';
@@ -36,6 +38,17 @@ export function useSync(agentId: string | null, teamId?: string | null, role?: U
   const [outboxCounts, setOutboxCounts] = useState<OutboxCounts>(EMPTY_OUTBOX_COUNTS);
   const [lastSyncedAt, setLastSyncedAt] = useState<Date | null>(null);
   const [connectivity, setConnectivity] = useState<ConnectivityState | null>(null);
+  // "Reconnected — synced online" toast (Vince direction, 2026-08-16): tracks
+  // the previous PASS's connectivity (not NetInfo's link-level state, which
+  // `wasOffline` below already uses for a different purpose — triggering the
+  // adaptive scheduler's immediate pass). Reset to null whenever `agentId`
+  // changes so a fresh login/account switch never fires off a stale prior
+  // session's connectivity read. See lib/sync/reconnect-toast.ts.
+  const previousConnectivityRef = useRef<ConnectivityState | null>(null);
+
+  useEffect(() => {
+    previousConnectivityRef.current = null;
+  }, [agentId]);
 
   const refreshPendingCount = useCallback(() => {
     getOutboxCounts()
@@ -55,6 +68,11 @@ export function useSync(agentId: string | null, teamId?: string | null, role?: U
     try {
       const result = await runSync(agentId, teamId, role);
       if (result) {
+        const previousConnectivity = previousConnectivityRef.current;
+        previousConnectivityRef.current = result.connectivity;
+        if (shouldShowReconnectToast(previousConnectivity, result.connectivity, result.synced)) {
+          showToast(formatReconnectToastMessage(result.synced));
+        }
         setConnectivity(result.connectivity);
         if (result.connectivity === 'online') {
           setLastSyncedAt(new Date());

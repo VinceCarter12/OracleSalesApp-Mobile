@@ -5,6 +5,8 @@ import {
   derivePoConfirmationDisplayStatus,
   isCloseDealPoEligible,
   PO_CONFIRMATION_REQUEST_KIND,
+  blocksPoConfirmationReplacement,
+  hasActivePoConfirmation,
   type LocalPoConfirmationStatus,
 } from './po-confirmation-status-policy';
 
@@ -28,6 +30,19 @@ describe('canSubmitPoConfirmation', () => {
     expect(canSubmitPoConfirmation('approved')).toBe(false);
     expect(canSubmitPoConfirmation('rejected')).toBe(false);
     expect(canSubmitPoConfirmation('cancelled')).toBe(false);
+  });
+});
+
+describe('current-cycle duplicate guard', () => {
+  it.each(['draft', 'pending', 'approved'] as const)('blocks %s as an active reservation', (status) => {
+    expect(blocksPoConfirmationReplacement(status)).toBe(true);
+  });
+  it.each(['rejected', 'cancelled', 'superseded', 'duplicate_blocked'] as const)('permits replacement after %s', (status) => {
+    expect(blocksPoConfirmationReplacement(status)).toBe(false);
+  });
+  it('does not let terminal history hide an older active reservation', () => {
+    expect(hasActivePoConfirmation(['rejected', 'approved'])).toBe(true);
+    expect(hasActivePoConfirmation(['duplicate_blocked', 'cancelled'])).toBe(false);
   });
 });
 

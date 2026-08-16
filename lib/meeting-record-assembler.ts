@@ -13,6 +13,7 @@ import type { MeetingMode, MeetingOutcome } from '../types';
  */
 
 export interface MeetingStartCapture {
+  operationId?: string;
   capturedAt: string;
   gpsLat: number;
   gpsLng: number;
@@ -73,6 +74,7 @@ export type BuildMeetingRecordInput = BuildFullMeetingRecordInput | BuildVisitMe
  */
 export function buildMeetingRecord(input: BuildMeetingRecordInput): NewMeetingRecord {
   const base: NewMeetingRecord = {
+    operationId: input.start.operationId,
     client_id: input.clientId,
     agent_id: input.agentId,
     gps_lat: input.start.gpsLat,

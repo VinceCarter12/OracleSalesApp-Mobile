@@ -28,10 +28,7 @@ type RemoteTableName =
   | 'collection_visits'
   | 'purchase_orders'
   | 'remittances'
-  | 'cod_remittances'
-  | 'joint_manager_requests'
-  | 'joint_manager_request_decisions'
-  | 'client_record_holders';
+  | 'cod_remittances';
 
 // Remote column is `assigned_agent_id` on `clients` — confirmed via
 // PostgREST introspection (2026-07-15); `meetings.agent_id` is correct
@@ -56,9 +53,6 @@ const AGENT_SCOPED_COLUMN: Record<EntityTableName, string> = {
   // exhaustive, same as the entries above.
   remittances: 'collector_id',
   cod_remittances: 'driver_id',
-  joint_manager_requests: 'requester_id',
-  joint_manager_request_decisions: 'manager_id',
-  client_record_holders: 'client_id',
 };
 
 async function pullEntity(db: SQLiteDatabase, agentId: string, tableName: EntityTableName): Promise<void> {
@@ -161,22 +155,6 @@ export async function syncDown(agentId: string, teamId?: string | null, role?: U
     await pullEntity(db, agentId, 'cod_remittances');
   } catch (err) {
     console.error('[sync-down] cod_remittances pull failed:', err);
-  }
-
-  try {
-    await pullEntity(db, agentId, 'joint_manager_requests');
-    await pullEntity(db, agentId, 'joint_manager_request_decisions');
-    // Holder visibility spans both sides of a relationship: RLS exposes rows
-    // for the signed-in owner/requester as well as Manager participants. Use
-    // the narrow SECURITY DEFINER RPC rather than a manager_id-only table pull,
-    // otherwise Sales/RSR would never receive holders for their clients.
-    const holderResult = await withTimeout(Promise.resolve(supabase.rpc('get_my_client_record_holders')), SYNC_TIMEOUT_MS, 'sync-down client holders');
-    if (holderResult.error) throw new Error(holderResult.error.message);
-    for (const holder of holderResult.data ?? []) {
-      await ENTITY_REGISTRY.client_record_holders.applyRemoteRow(db, holder as Record<string, unknown>, now, agentId);
-    }
-  } catch (err) {
-    console.error('[sync-down] joint-manager pull failed:', err);
   }
 
   // The directory RPC is intentionally restricted to Sales/RSR. Managers use

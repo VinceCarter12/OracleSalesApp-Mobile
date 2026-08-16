@@ -1,11 +1,10 @@
 import { Text, XStack } from 'tamagui';
 import { useBizlinkColors, BIZLINK_FONTS } from '../../lib/theme';
-import { inviteeKindForRole } from '../../lib/team-roster';
+import { useSession } from '../../lib/session-store';
+import { companionRoleLabel } from '../../lib/policies/companion-label-policy';
 import { BizChip } from '../bizlink/BizChip';
 import { BizSectionHeader } from '../bizlink/BizSectionHeader';
 import type { TeamRosterEntry } from '../../types';
-
-const ROSTER_KIND_LABEL: Record<'manager' | 'teammate', string> = { manager: 'Manager', teammate: 'Teammate' };
 
 interface CompanionPickerProps {
   roster: TeamRosterEntry[];
@@ -25,6 +24,7 @@ interface CompanionPickerProps {
  */
 export function CompanionPicker({ roster, selected, onToggle }: CompanionPickerProps) {
   const BIZLINK_COLORS = useBizlinkColors();
+  const { teamId } = useSession();
   return (
     <>
       <BizSectionHeader title="Companions on this visit" helper="optional · max 2" />
@@ -41,7 +41,7 @@ export function CompanionPicker({ roster, selected, onToggle }: CompanionPickerP
           {roster.map((entry) => (
             <BizChip
               key={entry.profileId}
-              label={`${entry.fullName} · ${ROSTER_KIND_LABEL[inviteeKindForRole(entry.role)]}`}
+              label={`${entry.fullName} · ${companionRoleLabel(entry, teamId)}`}
               selected={selected.some((p) => p.profileId === entry.profileId)}
               onPress={() => onToggle(entry)}
             />

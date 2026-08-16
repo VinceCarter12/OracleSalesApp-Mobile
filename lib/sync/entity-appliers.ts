@@ -388,47 +388,6 @@ export async function upsertSyncedClientEditRequest(
   );
 }
 
-export async function upsertSyncedJointManagerRequest(db: SQLiteDatabase, row: Record<string, unknown>, now: string, agentId: string): Promise<void> {
-  void agentId;
-  await db.runAsync(`INSERT INTO joint_manager_requests
-    (id, client_id, requester_id, origin_team_id, manager_ids, action_kind, action_payload,
-     base_updated_at, status, required_count, created_at, updated_at, applied_at, sync_status)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'synced')
-    ON CONFLICT(id) DO UPDATE SET status=excluded.status, updated_at=excluded.updated_at,
-      applied_at=excluded.applied_at, sync_status='synced'`, [
-    row.id as string, row.client_id as string, row.requester_id as string,
-    (row.origin_team_id as string) ?? null, JSON.stringify(row.manager_ids ?? []),
-    (row.action_kind as string) ?? 'holder_assignment', JSON.stringify(row.action_payload ?? {}),
-    row.base_updated_at as string, (row.status as string) ?? 'pending',
-    (row.required_count as number) ?? 1, (row.created_at as string) ?? now,
-    (row.updated_at as string) ?? now, (row.applied_at as string) ?? null,
-  ]);
-}
-
-export async function upsertSyncedJointManagerDecision(db: SQLiteDatabase, row: Record<string, unknown>, now: string, agentId: string): Promise<void> {
-  void agentId;
-  await db.runAsync(`INSERT INTO joint_manager_request_decisions
-    (id, request_id, manager_id, decision, decided_at, synced_at) VALUES (?, ?, ?, ?, ?, ?)
-    ON CONFLICT(id) DO UPDATE SET decision=excluded.decision, decided_at=excluded.decided_at, synced_at=excluded.synced_at`, [
-    row.id as string, row.request_id as string, row.manager_id as string,
-    (row.decision as string) ?? 'pending', (row.decided_at as string) ?? null, now,
-  ]);
-}
-
-export async function upsertSyncedClientRecordHolder(db: SQLiteDatabase, row: Record<string, unknown>, now: string, agentId: string): Promise<void> {
-  void agentId;
-  await db.runAsync(`INSERT INTO client_record_holders
-    (client_id, manager_id, manager_name, active, origin_team_id, updated_at, synced_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?)
-    ON CONFLICT(client_id, manager_id) DO UPDATE SET manager_name=excluded.manager_name,
-      active=excluded.active, origin_team_id=excluded.origin_team_id,
-      updated_at=excluded.updated_at, synced_at=excluded.synced_at`, [
-    row.client_id as string, row.manager_id as string, (row.manager_name as string) ?? null,
-    row.active === false ? 0 : 1, (row.origin_team_id as string) ?? null,
-    (row.updated_at as string) ?? now, now,
-  ]);
-}
-
 /**
  * F-007 (web 043/045/046): LWW-safe upsert of a synced-down collection_visit
  * into the local mirror. Read path (Phase 1) — the field app never invents

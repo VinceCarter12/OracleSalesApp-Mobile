@@ -130,7 +130,7 @@ function toRow(row: RemoteMyRequestRow, nameByClientId: Map<string, string>): My
  */
 export async function fetchMyRequestStatuses(): Promise<MyRequestRow[]> {
   const { data, error } = await supabase.rpc('get_my_request_statuses');
-  if (error) throw error;
+  if (error) throw new Error(error.message);
   const rows = (data ?? []) as RemoteMyRequestRow[];
 
   const clientIds = Array.from(new Set(rows.map((row) => row.client_id)));

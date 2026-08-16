@@ -11,6 +11,7 @@ import {
   UNIQUE_VIOLATION_CODE,
   type ClassifiedError,
 } from './outbox-status';
+import { reportSyncProgressStep } from './sync-progress';
 import type { SQLiteDatabase } from 'expo-sqlite';
 import type { OutboxRow } from './outbox-row';
 
@@ -122,6 +123,7 @@ async function resolveConflictServerWins(
   }
   await enqueueAuditForRow(db, row, 'conflict_resolved_adopt_server', classified, agentId);
   result.synced++;
+  reportSyncProgressStep();
 }
 
 async function handleRowFailure(
@@ -140,6 +142,7 @@ async function handleRowFailure(
     if (row.table_name === AUDIT_OUTBOX_TABLE_NAME) {
       await recordSynced(db, row, agentId);
       result.synced++;
+      reportSyncProgressStep();
       return;
     }
     // F-007 (web 070/069/046): a unique-violation conflict on a Collection &
@@ -155,22 +158,27 @@ async function handleRowFailure(
     await markOutboxRow(db, row.id, row.record_id, row.table_name, 'conflict', classified, row.retry_count);
     await enqueueAuditForRow(db, row, 'conflict', classified, agentId);
     result.conflicted++;
+    reportSyncProgressStep();
     return;
   }
   if (classified.kind === 'transient') {
     const nextRetryCount = row.retry_count + 1;
     if (nextRetryCount < MAX_OUTBOX_ATTEMPTS) {
+      // Not terminal — this row goes back into the queue for a later
+      // attempt, so it must NOT count as "processed" for progress purposes.
       await scheduleRetry(db, row.id, nextRetryCount, classified);
       return;
     }
     await markOutboxRow(db, row.id, row.record_id, row.table_name, 'failed', classified, nextRetryCount);
     await enqueueAuditForRow(db, { ...row, retry_count: nextRetryCount }, 'failed', classified, agentId);
     result.failed++;
+    reportSyncProgressStep();
     return;
   }
   await markOutboxRow(db, row.id, row.record_id, row.table_name, 'failed', classified, row.retry_count);
   await enqueueAuditForRow(db, row, 'failed', classified, agentId);
   result.failed++;
+  reportSyncProgressStep();
 }
 
 async function pushAndClassifyRow(
@@ -193,6 +201,7 @@ async function pushAndClassifyRow(
   // re-confirm 'synced' rather than misclassify this as a push failure.
   await recordSynced(db, row, agentId);
   result.synced++;
+  reportSyncProgressStep();
 }
 
 /**
@@ -262,6 +271,7 @@ async function pushInsertRows(
       for (const row of rowsChunk) {
         await recordSynced(db, row, agentId);
         result.synced++;
+        reportSyncProgressStep();
       }
     } catch {
       // Chunk-level failure loses per-row error attribution — fall back to
@@ -310,6 +320,7 @@ async function failUnregisteredRows(db: SQLiteDatabase, rows: OutboxRow[], resul
   for (const row of rows) {
     await markOutboxRow(db, row.id, row.record_id, row.table_name, 'failed', classified, row.retry_count);
     result.failed++;
+    reportSyncProgressStep();
   }
 }
 

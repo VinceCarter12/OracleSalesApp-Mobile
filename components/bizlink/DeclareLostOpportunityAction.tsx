@@ -10,6 +10,8 @@ interface DeclareLostOpportunityActionProps {
   onSuspended: () => void;
   /** Called after a successful declare (post sync-down) — caller navigates away. */
   onDeclared: () => void;
+  /** Keeps this destructive action beside a related compact control. */
+  inline?: boolean;
 }
 
 /**
@@ -26,13 +28,14 @@ export function DeclareLostOpportunityAction({
   teamId,
   onSuspended,
   onDeclared,
+  inline = false,
 }: DeclareLostOpportunityActionProps) {
   const { visible, open, close, reason, setReason, reasonError, submitting, confirm } =
     useDeclareLostOpportunity({ clientId, profileId, teamId, onSuspended, onDeclared });
 
   return (
-    <YStack marginTop="$3">
-      <BizButton label="Declare lost opportunity" variant="red" onPress={open} />
+    <YStack marginTop={inline ? 0 : '$3'} flex={inline ? 1 : undefined}>
+      <BizButton label="Declare lost opportunity" variant="red" small={inline} onPress={open} />
       <LostOpportunityDialog
         visible={visible}
         onCancel={close}

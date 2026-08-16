@@ -4,6 +4,8 @@ import {
   type ManagerApprovalFeedRow,
 } from './manager-approval-feed-service';
 import { getIncomingCompanionRequests, type IncomingCompanionRequest } from './tag-along-invitee-service';
+import { getMyPoConfirmationStatuses } from './po-confirmation-service';
+import { getClientById } from './client-service';
 
 // Manager Requests inbox (design-only merge, 2026-08-10): combines the
 // Manager Approvals inbox (`fetchManagerApprovalFeed()` — client_edit +
@@ -63,16 +65,44 @@ function toTagAlongRow(row: IncomingCompanionRequest): ManagerRequestRow {
   return {
     requestId: row.id,
     kind: 'tag_along',
-    // Every row reaching here already passed the `status === 'pending'`
-    // filter below — a decided tag-along disappears from this feed the same
-    // way the old `app/(manager)/tag-along.tsx` dropped it after `load()`.
-    status: 'pending',
+    // Unlike the old `app/(manager)/tag-along.tsx`, this feed intentionally
+    // keeps decided rows (not just pending) so approved/declined Tag-Along
+    // stays visible as read-only Manager history. Tag-along uses accepted /
+    // declined remotely, while this unified screen uses approval badges.
+    status: row.status === 'accepted' ? 'approved' : row.status === 'declined' ? 'rejected' : 'pending',
     createdAt: row.createdAt,
     requesterName,
     clientName: row.clientName ?? 'Client',
     summary: `Kasama sana kita: ${requesterName}`,
     tagAlong: row,
   };
+}
+
+/**
+ * Manager-authored Close Deal records are auto-approved server-side. Keep a
+ * local requester-side fallback here so the Manager still sees their own PO
+ * history even if the team approval RPC has not returned that just-synced row.
+ */
+async function getOwnPoHistory(profileId: string, existingIds: Set<string>): Promise<ManagerRequestRow[]> {
+  const records = await getMyPoConfirmationStatuses(profileId);
+  const rows = await Promise.all(records.map(async (record) => {
+    if (existingIds.has(record.id) || !['pending', 'approved', 'rejected'].includes(record.displayStatus)) return null;
+    const client = await getClientById(record.clientId);
+    const approval: ManagerApprovalFeedRow = {
+      requestId: record.id,
+      requestKind: 'po_confirmation',
+      requesterId: profileId,
+      requesterName: 'You',
+      clientId: record.clientId,
+      clientName: client?.company_name ?? 'Client',
+      status: record.displayStatus as ApprovalDecisionStatus,
+      createdAt: record.createdAt,
+      decidedAt: record.displayStatus === 'pending' ? null : record.updatedAt,
+      summary: { poPhotoPath: record.poPhotoPath, meetingId: record.meetingId },
+    };
+    return toApprovalRow(approval);
+  }));
+  return rows.filter((row): row is ManagerRequestRow => row !== null);
 }
 
 /**
@@ -86,9 +116,12 @@ export async function fetchManagerRequestFeed(profileId: string): Promise<Manage
     getIncomingCompanionRequests(profileId),
   ]);
 
+  const ownPoRows = await getOwnPoHistory(profileId, new Set(approvalRows.map((row) => row.requestId)));
+
   const rows: ManagerRequestRow[] = [
     ...approvalRows.map(toApprovalRow),
-    ...tagAlongRows.filter((r) => r.status === 'pending').map(toTagAlongRow),
+    ...ownPoRows,
+    ...tagAlongRows.map(toTagAlongRow),
   ];
 
   return rows.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());

@@ -12,6 +12,7 @@ import { useUserMapMarker } from './use-user-map-marker';
 import { useManagerScope } from './manager-scope-store';
 import type { ManagerScope } from './manager-scope';
 import { MAP_OFFICE_PIN_COLOR, MAP_TEAM_RECORD_COLOR, meetingStatusMarkerColor } from './map-marker-colors';
+import { firstMarkerLetter } from './map-marker-letter';
 import type { MeetingMarkerType } from './policies/meeting-marker-type';
 import type { MeetingMapDateWindow, MeetingMapMarker } from './use-meeting-map-markers';
 import type { OfficePinClient } from './use-office-pins';
@@ -77,6 +78,7 @@ function buildPinMarkers(pins: ManagerOfficePinDisplay[]): LeafletMapMarker[] {
     colorHex: pin.isTeam ? MAP_TEAM_RECORD_COLOR : MAP_OFFICE_PIN_COLOR,
     radius: 11,
     label: pin.companyName,
+    icon: { kind: 'pin', text: firstMarkerLetter(pin.companyName) },
   }));
 }
 
@@ -88,6 +90,7 @@ function buildMeetingMarkers(markers: ManagerMeetingMarkerDisplay[], typeLabel: 
     colorHex: marker.isTeam ? MAP_TEAM_RECORD_COLOR : meetingStatusMarkerColor(marker.clientStatusAtMeeting),
     radius: 8,
     label: `${marker.clientName} · ${meetingLocationLabel(marker, typeLabel)}`,
+    icon: { kind: 'pin', text: firstMarkerLetter(marker.clientName) },
   }));
 }
 

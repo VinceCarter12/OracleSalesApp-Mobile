@@ -13,6 +13,8 @@ import { BizSectionHeader } from '../../../components/bizlink/BizSectionHeader';
 import { BizButton } from '../../../components/bizlink/BizButton';
 import { LockToggleRow } from '../../../components/security/LockToggleRow';
 import { clearSnapshot } from '../../../lib/app-lock/session-snapshot';
+import { useSignOutWithSyncWarning } from '../../../lib/use-sign-out-with-sync-warning';
+import { SignOutSyncWarningDialog } from '../../../components/bizlink/SignOutSyncWarningDialog';
 
 // NOTE (T-014 Phase 4, ADR-024): bypasses the shared `components/account/AccountScreen.tsx`
 // shell — same precedent as Sales (Phase 2) and Manager (Phase 3), both of which
@@ -21,17 +23,23 @@ import { clearSnapshot } from '../../../lib/app-lock/session-snapshot';
 /** Wireframe x-account — Executive profile, security row, sign out. Avatar is read-only (admin/web-managed, F-014 follow-up 2026-08-09). */
 export default function ExecutiveAccountScreen() {
   const insets = useSafeAreaInsets();
-  const { signOut } = useSession();
+  const { signOut, profileId, role, teamId } = useSession();
   const { session, signOut: signOutSupabase } = useAuth();
   const { avatarUri } = useProfileAvatar(session?.user.id);
 
-  async function handleSignOut(): Promise<void> {
+  async function completeSignOut(): Promise<void> {
     await signOutSupabase();
     // Batch 5 Slice 1 (ADR-051): must clear on every sign-out path —
     // otherwise the next cold start silently rehydrates this user back in.
     await clearSnapshot();
     signOut();
     router.replace('/(auth)/login');
+  }
+
+  const { requestSignOut, dialogProps } = useSignOutWithSyncWarning();
+
+  function handleSignOut(): void {
+    void requestSignOut({ profileId, teamId, role, completeSignOut });
   }
 
   return (
@@ -66,6 +74,7 @@ export default function ExecutiveAccountScreen() {
           <BizButton label="Sign Out" variant="red" onPress={handleSignOut} />
         </YStack>
       </ScrollView>
+      <SignOutSyncWarningDialog {...dialogProps} />
     </YStack>
   );
 }

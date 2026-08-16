@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { buildMeetingRecord, type MeetingStartCapture } from './meeting-record-assembler';
 import type { CompanionSelection } from './tag-along-service';
 
-const START: MeetingStartCapture = { capturedAt: '2026-08-02T09:00:00.000Z', gpsLat: 14.5995, gpsLng: 120.9842 };
+const START: MeetingStartCapture = { operationId: 'meeting-op-1', capturedAt: '2026-08-02T09:00:00.000Z', gpsLat: 14.5995, gpsLng: 120.9842 };
 
 const COMPANIONS: CompanionSelection[] = [
   { profileId: 'mgr-1', kind: 'manager' },

@@ -554,24 +554,6 @@ export type Database = {
         Update: Partial<Database['public']['Tables']['cod_payments']['Row']>;
         Relationships: [];
       };
-      joint_manager_requests: {
-        Row: { id: string; client_id: string; requester_id: string; origin_team_id: string | null; manager_ids: string[]; action_kind: string; action_payload: Record<string, unknown>; base_updated_at: string; status: string; required_count: number; created_at: string; updated_at: string; applied_at: string | null; };
-        Insert: Partial<Database['public']['Tables']['joint_manager_requests']['Row']>;
-        Update: Partial<Database['public']['Tables']['joint_manager_requests']['Row']>;
-        Relationships: [];
-      };
-      joint_manager_request_decisions: {
-        Row: { id: string; request_id: string; manager_id: string; decision: string; decided_at: string | null; };
-        Insert: Partial<Database['public']['Tables']['joint_manager_request_decisions']['Row']>;
-        Update: Partial<Database['public']['Tables']['joint_manager_request_decisions']['Row']>;
-        Relationships: [];
-      };
-      client_record_holders: {
-        Row: { client_id: string; manager_id: string; manager_name: string | null; active: boolean; origin_team_id: string | null; updated_at: string; };
-        Insert: Partial<Database['public']['Tables']['client_record_holders']['Row']>;
-        Update: Partial<Database['public']['Tables']['client_record_holders']['Row']>;
-        Relationships: [];
-      };
       manager_directory_snapshot: {
         Row: { profile_id: string; full_name: string; team_id: string | null; is_active: boolean; synced_at: string };
         Insert: Partial<Database['public']['Tables']['manager_directory_snapshot']['Row']>;
@@ -811,21 +793,18 @@ export type Database = {
           remaining: number | null;
         }[];
       };
-      get_manager_joint_requests: {
-        Args: Record<string, never>;
-        Returns: Array<Record<string, unknown>>;
-      };
       get_manager_directory: {
         Args: Record<string, never>;
         Returns: Array<{ id: string; full_name: string; team_id: string | null; is_active: boolean }>;
       };
-      get_my_client_record_holders: {
+      // Web repo Migration 099 (2026-08-16, PR OPEN — see Sprint.md 2026-08-16):
+      // SECURITY DEFINER, gated to roles with a Maps screen
+      // (sales_specialist/rsr/sales_manager/executive). Returns only enough
+      // to render a pin (no full client record) for clients.customer_type =
+      // 'prospect' across ALL teams — see lib/org-wide-prospect-markers.ts.
+      get_org_wide_prospect_map_markers: {
         Args: Record<string, never>;
-        Returns: Array<{ client_id: string; manager_id: string; manager_name: string | null; active: boolean; origin_team_id: string | null; updated_at: string }>;
-      };
-      decide_joint_manager_request: {
-        Args: { p_request_id: string; p_decision: 'approved' | 'declined' };
-        Returns: { ok: boolean; code: string; client?: Record<string, unknown> };
+        Returns: Array<{ id: string; lat: number | null; lng: number | null; label: string | null }>;
       };
     };
     Enums: Record<string, never>;

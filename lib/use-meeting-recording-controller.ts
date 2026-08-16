@@ -20,8 +20,10 @@ import { checkMeetingStartAllowed } from './meeting-ongoing-guard';
 import { OngoingMeetingLimitError } from './meeting-drafts';
 import type { Client, MeetingMode, TeamRosterEntry } from '../types';
 import { companionSelectionsForRecording } from './policies/manager-companion-policy';
+import { uuidv4 } from './uuid';
 
 export interface MeetingStartCapture {
+  operationId?: string;
   capturedAt: string;
   gpsLat: number;
   gpsLng: number;
@@ -177,6 +179,7 @@ export function useMeetingRecordingController({ clientId, flow }: UseMeetingReco
       setLastAutoResumedDraftId(autoResumeDraft.id);
       setMode(autoResumeDraft.payload.mode);
       setStart({
+        operationId: autoResumeDraft.payload.operationId,
         capturedAt: autoResumeDraft.payload.capturedAt,
         gpsLat: autoResumeDraft.payload.gpsLat,
         gpsLng: autoResumeDraft.payload.gpsLng,
@@ -235,12 +238,14 @@ export function useMeetingRecordingController({ clientId, flow }: UseMeetingReco
     try {
       const gps = await captureGps();
       const capturedAt = new Date().toISOString();
+      const operationId = uuidv4();
       try {
         await saveDraft({
           clientId,
           agentId: profileId,
           flow,
           payload: {
+            operationId,
             mode,
             gpsLat: gps.lat,
             gpsLng: gps.lng,
@@ -248,7 +253,7 @@ export function useMeetingRecordingController({ clientId, flow }: UseMeetingReco
             companions: companionsForDraft(currentVisibleCompanions()),
           },
         });
-        setStart({ capturedAt, gpsLat: gps.lat, gpsLng: gps.lng });
+        setStart({ operationId, capturedAt, gpsLat: gps.lat, gpsLng: gps.lng });
         // From this point on, this JS process "owns" the meeting — leaving
         // and returning to this screen (still the same app run) must never
         // ask again; see lib/meeting-live-session.ts.
@@ -287,6 +292,7 @@ export function useMeetingRecordingController({ clientId, flow }: UseMeetingReco
           agentId: profileId,
           flow,
           payload: {
+            operationId: start.operationId,
             mode,
             gpsLat: start.gpsLat,
             gpsLng: start.gpsLng,
@@ -317,6 +323,7 @@ export function useMeetingRecordingController({ clientId, flow }: UseMeetingReco
     }
     setMode(pendingDraft.payload.mode);
     setStart({
+      operationId: pendingDraft.payload.operationId,
       capturedAt: pendingDraft.payload.capturedAt,
       gpsLat: pendingDraft.payload.gpsLat,
       gpsLng: pendingDraft.payload.gpsLng,

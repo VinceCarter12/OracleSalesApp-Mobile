@@ -1,13 +1,12 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Pressable, TextInput } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect, router } from 'expo-router';
-import { Search, SlidersHorizontal } from 'lucide-react-native';
 import { Text, XStack, YStack } from 'tamagui';
-import { BIZLINK_COLORS, BIZLINK_FONTS, BIZLINK_ON_INK } from '../../../lib/theme';
+import { BIZLINK_COLORS, BIZLINK_FONTS } from '../../../lib/theme';
 import { useAuth } from '../../../lib/useAuth';
 import { useSession } from '../../../lib/session-store';
 import { useManagerMapsScreen } from '../../../lib/use-manager-maps-screen';
+import { useOrgWideProspectMarkers } from '../../../lib/use-org-wide-prospect-markers';
 import { MEETING_MARKER_TYPE_LABEL } from '../../../lib/policies/meeting-marker-type';
 import type { MeetingTypeFilterValue, MeetingStatusFilterValue } from '../../../lib/use-maps-screen';
 import { MAP_TEAM_RECORD_COLOR } from '../../../lib/map-marker-colors';
@@ -16,13 +15,15 @@ import { BizTopBar } from '../../../components/bizlink/BizTopBar';
 import { useManagerScope } from '../../../lib/manager-scope-store';
 import { DEFAULT_MANAGER_SCOPE, type ManagerScope } from '../../../lib/manager-scope';
 import type { BizFilterOption } from '../../../components/bizlink/BizFilterScroll';
-import { MapLegend, OfflineBanner } from '../../../components/maps/MapsScreenSections';
+import { MapLegend, OfflineBanner, OrgWideProspectErrorBanner, ORG_WIDE_PROSPECT_LEGEND_ENTRY } from '../../../components/maps/MapsScreenSections';
+import { OrgWideProspectFilterRow } from '../../../components/maps/OrgWideProspectFilterRow';
 import { ManagerTeamMapStatusBanner } from '../../../components/maps/ManagerTeamMapStatusBanner';
 import { ManagerMapScopeFilterRow } from '../../../components/maps/ManagerMapScopeFilterRow';
 import { BizFilterSheet } from '../../../components/bizlink/BizFilterSheet';
 import type { DateRange } from '../../../components/bizlink/DateRangePickerModal';
 import { KeyboardAwareScrollView } from '../../../components/ui/KeyboardAwareScrollView';
 import { MapsFilterPanel } from '../../../components/maps/MapsFilterPanel';
+import { MapsSearchFilterBar } from '../../../components/maps/MapsSearchFilterBar';
 import { MapsListSection } from '../../../components/maps/MapsListSection';
 import { LeafletWebViewMapWithControls, type MapTileType } from '../../../components/maps/LeafletWebViewMap';
 import { MapExpandedModal } from '../../../components/maps/MapExpandedModal';
@@ -77,6 +78,8 @@ export default function ManagerMapsScreen() {
     fullName
   );
   const { own } = managerMaps;
+  const orgWideProspects = useOrgWideProspectMarkers();
+  const mapMarkers = [...managerMaps.mapMarkers, ...orgWideProspects.mapMarkers];
 
   const checkOnline = useCallback(() => {
     isLikelyOnline().then(setOnline);
@@ -162,13 +165,15 @@ export default function ManagerMapsScreen() {
     own.meetingTypeFilter !== 'all' ||
     own.meetingStatusFilter !== 'all' ||
     scope !== DEFAULT_MANAGER_SCOPE ||
-    teamAgentFilter !== null;
+    teamAgentFilter !== null ||
+    orgWideProspects.enabled;
 
   function resetFilters(): void {
     handlePresetChange('last7');
     own.setMeetingTypeFilter('all');
     own.setMeetingStatusFilter('all');
     handleScopeChange(DEFAULT_MANAGER_SCOPE);
+    orgWideProspects.setEnabled(false);
   }
 
   return (
@@ -177,46 +182,13 @@ export default function ManagerMapsScreen() {
       <KeyboardAwareScrollView contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 120 }}>
         {!online ? <OfflineBanner /> : null}
 
-        <XStack gap="$2" alignItems="center" marginBottom="$3">
-          <XStack flex={1} alignItems="center" gap="$2" height={52} paddingHorizontal={12} backgroundColor={BIZLINK_COLORS.card} borderRadius={16}>
-            <Search size={17} color={BIZLINK_COLORS.muted} strokeWidth={1.75} />
-            <TextInput
-              value={searchQuery}
-              onChangeText={setSearchQuery}
-              placeholder="Search office location..."
-              placeholderTextColor={BIZLINK_COLORS.muted}
-              style={{ flex: 1, color: BIZLINK_COLORS.text, fontFamily: BIZLINK_FONTS.medium, fontSize: 13 }}
-            />
-          </XStack>
-          <Pressable
-            accessibilityLabel="Toggle filters"
-            onPress={() => setFilterOpen((open) => !open)}
-            style={{
-              flexDirection: 'row',
-              alignItems: 'center',
-              gap: 6,
-              backgroundColor: filterOpen || filtersActive ? BIZLINK_COLORS.ink : BIZLINK_COLORS.card,
-              borderRadius: 16,
-              paddingHorizontal: 14,
-              height: 52,
-              borderWidth: 1,
-              borderColor: filterOpen || filtersActive ? BIZLINK_COLORS.ink : BIZLINK_COLORS.line,
-            }}
-          >
-            <SlidersHorizontal
-              size={16}
-              color={filterOpen || filtersActive ? BIZLINK_ON_INK.solid : BIZLINK_COLORS.muted}
-              strokeWidth={1.75}
-            />
-            <Text
-              fontSize={11.5}
-              fontFamily={BIZLINK_FONTS.medium}
-              color={filterOpen || filtersActive ? BIZLINK_ON_INK.solid : BIZLINK_COLORS.muted}
-            >
-              Filters
-            </Text>
-          </Pressable>
-        </XStack>
+        <MapsSearchFilterBar
+          searchQuery={searchQuery}
+          onSearchQueryChange={setSearchQuery}
+          filterOpen={filterOpen}
+          onToggleFilter={() => setFilterOpen((open) => !open)}
+          filtersActive={filtersActive}
+        />
 
         <BizFilterSheet visible={filterOpen} onClose={() => setFilterOpen(false)} filtersActive={filtersActive} onReset={resetFilters}>
           <ManagerMapScopeFilterRow
@@ -239,10 +211,15 @@ export default function ManagerMapsScreen() {
             onMeetingStatusChange={own.setMeetingStatusFilter}
             meetingStatusOptions={MEETING_STATUS_FILTER_OPTIONS}
           />
+          <OrgWideProspectFilterRow enabled={orgWideProspects.enabled} onChange={orgWideProspects.setEnabled} />
         </BizFilterSheet>
 
+        {orgWideProspects.enabled && orgWideProspects.error ? (
+          <OrgWideProspectErrorBanner message={orgWideProspects.error} onRetry={orgWideProspects.retry} />
+        ) : null}
+
         <LeafletWebViewMapWithControls
-          markers={managerMaps.mapMarkers}
+          markers={mapMarkers}
           selectedMarkerIds={Array.from(selectedMarkerIds)}
           height={300}
           tileType={mapType}
@@ -254,7 +231,7 @@ export default function ManagerMapsScreen() {
         <Text fontSize={12} fontFamily={BIZLINK_FONTS.semibold} color={BIZLINK_COLORS.brand} marginTop="$2">
           {managerMaps.filteredPins.length} office · {displayedMeetings.length} meeting{displayedMeetings.length === 1 ? '' : 's'}
         </Text>
-        <MapLegend extraItems={scope !== 'mine' ? [{ color: MAP_TEAM_RECORD_COLOR, label: 'Team record' }] : []} />
+        <MapLegend extraItems={[...(scope !== 'mine' ? [{ color: MAP_TEAM_RECORD_COLOR, label: 'Team record' }] : []), ...(orgWideProspects.enabled ? [ORG_WIDE_PROSPECT_LEGEND_ENTRY] : [])]} />
 
         <ManagerTeamMapStatusBanner
           scope={scope}
@@ -287,7 +264,7 @@ export default function ManagerMapsScreen() {
 
       {mapExpanded && (
         <MapExpandedModal
-          markers={managerMaps.mapMarkers}
+          markers={mapMarkers}
           selectedMarkerIds={Array.from(selectedMarkerIds)}
           tileType={mapType}
           onTileTypeChange={setMapType}

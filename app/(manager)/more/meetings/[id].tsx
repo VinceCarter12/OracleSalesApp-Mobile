@@ -1,4 +1,5 @@
-import { ScrollView } from 'react-native';
+import { Image, Pressable, ScrollView } from 'react-native';
+import { useEffect, useState } from 'react';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLocalSearchParams } from 'expo-router';
 import { Camera, Check, MapPin, Tag, User, Users as UsersIcon, Video } from 'lucide-react-native';
@@ -16,6 +17,11 @@ import { avatarPaletteFor } from '../../../../lib/avatar-palette';
 import { initialsFromName } from '../../../../lib/display-name';
 import { useSession } from '../../../../lib/session-store';
 import { MANAGER_OUTCOME_LABELS } from '../../../../types';
+import { getManagerApprovalFeed, type ManagerApprovalFeedItem } from '../../../../lib/po-confirmation-manager-service';
+import { getOwnMeetingCompanionRequest, type IncomingCompanionRequest } from '../../../../lib/tag-along-invitee-service';
+import { ImagePreviewModal } from '../../../../components/ui/ImagePreviewModal';
+import type { MeetingEvidenceAuditDetails } from '../../../../components/ui/MeetingEvidenceDownload';
+import type { TeamClient, TeamMeeting } from '../../../../types';
 
 /** Wireframe s-meetingdetail. Branches on fastPath (ADR-015) and meetingMode (ADR-012). Real data (B-054 Phase 1). */
 export default function ManagerMeetingDetailScreen() {
@@ -23,6 +29,20 @@ export default function ManagerMeetingDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const { overview, loading, error, reload } = useTeamOverview();
   const { profileId, fullName } = useSession();
+  const [localCompanion, setLocalCompanion] = useState<IncomingCompanionRequest | null>(null);
+  const [preview, setPreview] = useState<{ url: string; details: MeetingEvidenceAuditDetails } | null>(null);
+
+  useEffect(() => {
+    let active = true;
+    setLocalCompanion(null);
+    if (!profileId || !id) {
+      return () => { active = false; };
+    }
+    getOwnMeetingCompanionRequest(profileId, id)
+      .then((request) => { if (active) setLocalCompanion(request); })
+      .catch((error) => console.error('[ManagerMeetingDetail] local companion load failed:', error instanceof Error ? error.message : String(error)));
+    return () => { active = false; };
+  }, [id, profileId]);
 
   if (loading) {
     return (
@@ -54,6 +74,27 @@ export default function ManagerMeetingDetailScreen() {
   const agent = overview?.agents.find((a) => a.id === meeting.agentId)
     ?? (profileId === meeting.agentId && fullName ? { id: profileId, name: fullName, initials: initialsFromName(fullName) } : undefined);
   const isOnline = meeting.meetingMode === 'online';
+  const sharedMeeting = Boolean(localCompanion);
+  const sharedManagerName = localCompanion ? (fullName?.trim() || 'You') : undefined;
+  const sharedStatus = localCompanion?.status === 'pending'
+    ? 'pending'
+    : localCompanion?.status === 'accepted'
+      ? 'approved'
+      : localCompanion?.status === 'declined'
+        ? 'rejected'
+        : undefined;
+  const openEvidence = (url: string, title: string, capturedAt?: string | null, location?: string): void => {
+    setPreview({
+      url,
+      details: {
+        title,
+        capturedAt: capturedAt ?? meeting.meetingDateIso ?? null,
+        clientStatus: formatClientStatus(meeting.clientStatusAtMeeting ?? client?.status),
+        location: location ?? meeting.location ?? meeting.gps ?? 'Not recorded',
+        duration: formatEvidenceDuration(meeting.startCapturedAt, meeting.endCapturedAt),
+      },
+    });
+  };
 
   const ModeBadge = isOnline ? (
     <XStack alignItems="center" gap="$1" backgroundColor={BIZLINK_COLORS.soft} borderRadius={999} paddingHorizontal={10} paddingVertical={3}>
@@ -68,6 +109,7 @@ export default function ManagerMeetingDetailScreen() {
         <BizTopBar title="Meeting Detail" fallbackHref="/(manager)/more/meetings" />
         <ScrollView contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 24 }}>
           <HeaderCard agentName={agent?.name} agentId={agent?.id} initials={agent?.initials} clientName={client?.name} />
+          <ManagerSharedRecordCard shared={sharedMeeting} managerName={sharedManagerName} status={sharedStatus} />
           <BizSectionHeader title="Status" />
           <XStack alignItems="center" gap="$2" flexWrap="wrap">
             {meetingBadge(meeting)}
@@ -80,9 +122,10 @@ export default function ManagerMeetingDetailScreen() {
           </XStack>
 
           <BizSectionHeader title="Start" />
-          <PhotoRow label="Start photo" time={meeting.startTime} />
+          <PhotoRow label="Start photo" time={meeting.startTime} imageUrl={meeting.startPhotoUrl} onOpenImage={(url) => openEvidence(url, 'Start photo', meeting.startCapturedAt, meeting.gps)} />
           <BizSectionHeader title="End" />
-          <PhotoRow label="End photo" time={meeting.endTime} />
+          <PhotoRow label="End photo" time={meeting.endTime} imageUrl={meeting.endPhotoUrl} onOpenImage={(url) => openEvidence(url, 'End photo', meeting.endCapturedAt, formatCoordinates(meeting.endGpsLat, meeting.endGpsLng) ?? meeting.gps)} />
+          <ManagerMeetingPoEvidence meetingId={meeting.id} onOpenImage={(url) => openEvidence(url, 'PO evidence')} />
 
           {meeting.agenda.length ? (
             <>
@@ -99,6 +142,7 @@ export default function ManagerMeetingDetailScreen() {
             Duration is computed in the Excel export (web side) — it isn't shown here.
           </Text>
         </ScrollView>
+        <ImagePreviewModal visible={preview !== null} imageUrl={preview?.url ?? null} auditDetails={preview?.details} onClose={() => setPreview(null)} />
       </YStack>
     );
   }
@@ -116,6 +160,7 @@ export default function ManagerMeetingDetailScreen() {
       <BizTopBar title="Meeting Detail" fallbackHref="/(manager)/more/meetings" />
       <ScrollView contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 24 }}>
         <HeaderCard agentName={agent?.name} agentId={agent?.id} initials={agent?.initials} clientName={client?.name} />
+        <ManagerSharedRecordCard shared={sharedMeeting} managerName={sharedManagerName} status={sharedStatus} />
 
         <BizSectionHeader title="Outcome" />
         <XStack alignItems="center" gap="$2" flexWrap="wrap">
@@ -152,15 +197,22 @@ export default function ManagerMeetingDetailScreen() {
             <Text fontSize={12.5} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted}>{meeting.date} · {meeting.time}</Text>
           </XStack>
           <XStack alignItems="center" gap="$2.5" paddingVertical="$1.5">
-            <YStack width={60} height={60} borderRadius={16} backgroundColor={BIZLINK_COLORS.soft} alignItems="center" justifyContent="center">
-              <Camera size={22} color={BIZLINK_COLORS.muted} strokeWidth={1.75} />
-            </YStack>
+            {meeting.selfieUrl ? (
+              <Pressable accessibilityRole="button" accessibilityLabel="View meeting photo" onPress={() => openEvidence(meeting.selfieUrl!, 'Meeting selfie')}>
+                <Image source={{ uri: meeting.selfieUrl }} style={{ width: 60, height: 60, borderRadius: 16 }} />
+              </Pressable>
+            ) : (
+              <YStack width={60} height={60} borderRadius={16} backgroundColor={BIZLINK_COLORS.soft} alignItems="center" justifyContent="center">
+                <Camera size={22} color={BIZLINK_COLORS.muted} strokeWidth={1.75} />
+              </YStack>
+            )}
             <YStack flex={1}>
               <Text fontSize={12} fontFamily={BIZLINK_FONTS.semibold} color={BIZLINK_COLORS.text}>Meeting photo captured</Text>
-              <Text fontSize={11.5} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted}>{gpsNote}</Text>
+              <Text fontSize={11.5} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted}>{gpsNote} Tap photo to view or download.</Text>
             </YStack>
           </XStack>
         </BizCard>
+        <ManagerMeetingPoEvidence meetingId={meeting.id} onOpenImage={(url) => openEvidence(url, 'PO evidence')} />
 
         <BizSectionHeader title="Details" />
         <BizCard>
@@ -190,6 +242,7 @@ export default function ManagerMeetingDetailScreen() {
           </XStack>
         ) : null}
       </ScrollView>
+      <ImagePreviewModal visible={preview !== null} imageUrl={preview?.url ?? null} auditDetails={preview?.details} onClose={() => setPreview(null)} />
     </YStack>
   );
 }
@@ -209,7 +262,7 @@ function HeaderCard({ agentName, agentId, initials, clientName }: { agentName?: 
   );
 }
 
-function PhotoRow({ label, time }: { label: string; time?: string }) {
+function PhotoRow({ label, time, imageUrl, onOpenImage }: { label: string; time?: string; imageUrl?: string | null; onOpenImage: (url: string) => void }) {
   return (
     <BizCard flat>
       <XStack alignItems="center" gap="$2.5" paddingVertical="$1.5">
@@ -218,16 +271,91 @@ function PhotoRow({ label, time }: { label: string; time?: string }) {
         <Text fontSize={12.5} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted}>{time}</Text>
       </XStack>
       <XStack alignItems="center" gap="$2.5" paddingVertical="$1.5">
-        <YStack width={60} height={60} borderRadius={16} backgroundColor={BIZLINK_COLORS.soft} alignItems="center" justifyContent="center">
-          <Camera size={22} color={BIZLINK_COLORS.muted} strokeWidth={1.75} />
-        </YStack>
+        {imageUrl ? (
+          <Pressable accessibilityRole="button" accessibilityLabel={`View ${label}`} onPress={() => onOpenImage(imageUrl)}>
+            <Image source={{ uri: imageUrl }} style={{ width: 60, height: 60, borderRadius: 16 }} />
+          </Pressable>
+        ) : (
+          <YStack width={60} height={60} borderRadius={16} backgroundColor={BIZLINK_COLORS.soft} alignItems="center" justifyContent="center">
+            <Camera size={22} color={BIZLINK_COLORS.muted} strokeWidth={1.75} />
+          </YStack>
+        )}
         <YStack>
           <Text fontSize={12} fontFamily={BIZLINK_FONTS.semibold} color={BIZLINK_COLORS.text}>{label}</Text>
-          <Text fontSize={11.5} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted}>Saved</Text>
+          <Text fontSize={11.5} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted}>Tap to view or download</Text>
         </YStack>
       </XStack>
     </BizCard>
   );
+}
+
+function ManagerSharedRecordCard({ shared, managerName, status }: { shared: boolean; managerName?: string; status?: 'pending' | 'approved' | 'rejected' }) {
+  return (
+    <BizCard marginTop="$3" gap="$1.5">
+      <Text fontFamily={BIZLINK_FONTS.semibold} fontSize={13.5} color={BIZLINK_COLORS.text}>{shared ? 'Shared meeting record' : 'Canonical meeting record'}</Text>
+      {managerName ? (
+        <Text fontFamily={BIZLINK_FONTS.medium} fontSize={12} color={BIZLINK_COLORS.muted}>
+          Selected manager: {managerName}{status ? ` · ${status === 'pending' ? 'Pending' : status === 'approved' ? 'Accepted' : 'Declined'}` : ''}
+        </Text>
+      ) : (
+        <Text fontFamily={BIZLINK_FONTS.medium} fontSize={12} color={BIZLINK_COLORS.muted}>No manager attendee is available in this local record.</Text>
+      )}
+      <Text fontFamily={BIZLINK_FONTS.medium} fontSize={11.5} color={BIZLINK_COLORS.muted} lineHeight={16}>
+        {shared ? 'This is one canonical meeting record. A team-wide attendee list is not available offline yet.' : 'This meeting has no locally recorded manager attendee.'}
+      </Text>
+    </BizCard>
+  );
+}
+
+function ManagerMeetingPoEvidence({ meetingId, onOpenImage }: { meetingId: string; onOpenImage: (url: string) => void }) {
+  const [record, setRecord] = useState<ManagerApprovalFeedItem | null>(null);
+  useEffect(() => {
+    let active = true;
+    getManagerApprovalFeed()
+      .then((items) => {
+        const match = items.find((item) => item.requestKind === 'po_confirmation' && item.summary.meeting_id === meetingId) ?? null;
+        if (active) setRecord(match);
+      })
+      .catch((error) => console.error('[ManagerMeetingDetail] PO load failed:', error instanceof Error ? error.message : String(error)));
+    return () => { active = false; };
+  }, [meetingId]);
+  if (!record || record.requestKind !== 'po_confirmation') return null;
+  const photoPath = typeof record.summary.po_photo_path === 'string' && record.summary.po_photo_path ? record.summary.po_photo_path : null;
+  return (
+    <>
+      <BizSectionHeader title="PO evidence" />
+      <BizCard flat>
+        <XStack alignItems="center" gap="$3">
+          {photoPath ? (
+            <Pressable accessibilityRole="button" accessibilityLabel="View PO evidence" onPress={() => onOpenImage(photoPath)}>
+              <Image source={{ uri: photoPath }} style={{ width: 64, height: 64, borderRadius: 16 }} />
+            </Pressable>
+          ) : null}
+          <YStack flex={1}>
+            <Text fontSize={13} fontFamily={BIZLINK_FONTS.semibold} color={BIZLINK_COLORS.text}>PO confirmation</Text>
+            <Text fontSize={11.5} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted}>{record.status === 'approved' ? 'Approved' : record.status === 'rejected' ? 'Rejected' : 'Pending approval'} · Tap image to view or download</Text>
+          </YStack>
+        </XStack>
+      </BizCard>
+    </>
+  );
+}
+
+function formatClientStatus(status: TeamMeeting['clientStatusAtMeeting'] | TeamClient['status'] | null | undefined): string {
+  if (!status) return 'Not recorded';
+  return status.replace(/_/g, ' ').replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
+function formatCoordinates(lat: number | null | undefined, lng: number | null | undefined): string | null {
+  return lat !== null && lat !== undefined && lng !== null && lng !== undefined ? `${lat.toFixed(4)}° N, ${lng.toFixed(4)}° E` : null;
+}
+
+function formatEvidenceDuration(start: string | null | undefined, end: string | null | undefined): string {
+  if (!start || !end) return 'Not recorded';
+  const durationMs = new Date(end).getTime() - new Date(start).getTime();
+  if (!Number.isFinite(durationMs) || durationMs < 0) return 'Not recorded';
+  const minutes = Math.floor(durationMs / 60000);
+  return minutes < 60 ? `${minutes} min` : `${Math.floor(minutes / 60)}h ${minutes % 60}m`;
 }
 
 function DetailRow({ icon, label, extra, last }: { icon: React.ReactNode; label: string; extra?: string; last?: boolean }) {

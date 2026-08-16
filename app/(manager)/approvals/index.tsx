@@ -1,10 +1,10 @@
-import { useEffect, useState } from 'react';
-import { ScrollView } from 'react-native';
+import { useState } from 'react';
+import { Pressable, ScrollView, TextInput } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { router } from 'expo-router';
-import { CircleCheckBig } from 'lucide-react-native';
-import { Button, Spinner, Text, YStack } from 'tamagui';
-import { BIZLINK_FONTS, useBizlinkColors } from '../../../lib/theme';
+import { router, useLocalSearchParams } from 'expo-router';
+import { CircleCheckBig, Search, SlidersHorizontal } from 'lucide-react-native';
+import { Spinner, Text, XStack, YStack } from 'tamagui';
+import { BIZLINK_FONTS, BIZLINK_ON_INK, useBizlinkColors } from '../../../lib/theme';
 import { useSession } from '../../../lib/session-store';
 import { useManagerRequestFeed } from '../../../lib/use-manager-request-feed';
 import type { ManagerRequestKind, ManagerRequestRow } from '../../../lib/manager-request-feed-service';
@@ -16,7 +16,9 @@ import { BizButton } from '../../../components/bizlink/BizButton';
 import { BizManagerRequestRow } from '../../../components/bizlink/BizManagerRequestRow';
 import { BizFilterScroll, type BizFilterOption } from '../../../components/bizlink/BizFilterScroll';
 import { BizFloatingPager } from '../../../components/bizlink/BizFloatingPager';
-import { decideJointManagerRequest, fetchManagerJointRequests, type JointManagerRequest } from '../../../lib/joint-manager-service';
+import { BizFilterSheet } from '../../../components/bizlink/BizFilterSheet';
+import { BizFilterSheetRow } from '../../../components/bizlink/BizFilterSheetRow';
+import { BizOfflineNotice } from '../../../components/bizlink/BizOfflineNotice';
 
 type StatusFilterValue = 'all' | ApprovalDecisionStatus;
 type KindFilterValue = 'all' | ManagerRequestKind;
@@ -41,6 +43,12 @@ const KIND_FILTER_OPTIONS: BizFilterOption<ManagerRequestKind>[] = [
   { value: 'tag_along', label: 'Tag-Along' },
 ];
 
+const KIND_FILTER_VALUES: readonly ManagerRequestKind[] = ['po_confirmation', 'client_edit', 'tag_along'];
+
+function isManagerRequestKind(value: string | string[] | undefined): value is ManagerRequestKind {
+  return typeof value === 'string' && (KIND_FILTER_VALUES as readonly string[]).includes(value);
+}
+
 /**
  * Manager Requests inbox (design-only merge, 2026-08-10) — combines the
  * former `app/(manager)/approvals/index.tsx` (client_edit + po_confirmation,
@@ -58,32 +66,40 @@ export default function ManagerRequestsScreen() {
   const BIZLINK_COLORS = useBizlinkColors();
   const insets = useSafeAreaInsets();
   const { profileId } = useSession();
-  const { rows, loading, error, reload } = useManagerRequestFeed(profileId);
+  const { rows, loading, error, offline, reload } = useManagerRequestFeed(profileId);
+  // Manager Notifications' Tag-Along item taps in here with `?kind=tag_along`
+  // so the merged inbox opens pre-filtered (2026-08-16) — read once as the
+  // initial state, same as any other deep-link-style entry param in this
+  // app; the in-screen Filters chips still fully control it afterward.
+  const { kind: initialKindParam } = useLocalSearchParams<{ kind?: string }>();
   const [statusFilter, setStatusFilter] = useState<StatusFilterValue>('all');
-  const [kindFilter, setKindFilter] = useState<KindFilterValue>('all');
+  const [kindFilter, setKindFilter] = useState<KindFilterValue>(() =>
+    isManagerRequestKind(initialKindParam) ? initialKindParam : 'all'
+  );
+  const [search, setSearch] = useState('');
+  const [filtersOpen, setFiltersOpen] = useState(false);
   const [respondingId, setRespondingId] = useState<string | null>(null);
   const [respondError, setRespondError] = useState<string | null>(null);
-  const [jointRows, setJointRows] = useState<JointManagerRequest[]>([]);
-  const [jointLoading, setJointLoading] = useState(false);
-
-  async function reloadJoint(): Promise<void> {
-    setJointLoading(true);
-    try { setJointRows(await fetchManagerJointRequests()); } catch (err) { setRespondError(err instanceof Error ? err.message : String(err)); } finally { setJointLoading(false); }
-  }
-
-  useEffect(() => { void reloadJoint(); }, []);
-
   function handleKindChipPress(kind: ManagerRequestKind): void {
     setKindFilter((current) => (current === kind ? 'all' : kind));
   }
 
+  const normalizedSearch = search.trim().toLowerCase();
   const filteredRows = rows.filter((row) => {
     const statusMatches = statusFilter === 'all' || row.status === statusFilter;
     const kindMatches = kindFilter === 'all' || row.kind === kindFilter;
-    return statusMatches && kindMatches;
+    const searchMatches = !normalizedSearch || [row.clientName, row.requesterName, row.summary]
+      .some((value) => value.toLowerCase().includes(normalizedSearch));
+    return statusMatches && kindMatches && searchMatches;
   });
 
-  const { page, totalPages, pageItems, setPage } = usePagination(filteredRows, `${statusFilter}|${kindFilter}`);
+  const { page, totalPages, pageItems, setPage } = usePagination(filteredRows, `${statusFilter}|${kindFilter}|${normalizedSearch}`);
+  const filtersActive = statusFilter !== 'all' || kindFilter !== 'all';
+
+  function resetFilters(): void {
+    setStatusFilter('all');
+    setKindFilter('all');
+  }
 
   // Same accept/decline write-back as the retired `tag-along.tsx`: on
   // success the row disappears from `rows` on the next `reload()` (only
@@ -119,14 +135,27 @@ export default function ManagerRequestsScreen() {
           (you appear in their photo as proof) — here you only confirm that you joined.
         </Text>
 
-        <BizFilterScroll options={STATUS_FILTER_OPTIONS} value={statusFilter} onChange={setStatusFilter} />
-        <YStack marginTop="$2" marginBottom="$3">
-          <BizFilterScroll
-            options={KIND_FILTER_OPTIONS}
-            value={kindFilter === 'all' ? null : kindFilter}
-            onChange={handleKindChipPress}
-          />
-        </YStack>
+        <XStack gap="$2" marginBottom="$3">
+          <XStack flex={1} height={52} alignItems="center" gap="$2" paddingHorizontal={14} backgroundColor={BIZLINK_COLORS.card} borderRadius={16}>
+            <Search size={17} color={BIZLINK_COLORS.muted} strokeWidth={1.75} />
+            <TextInput
+              value={search}
+              onChangeText={setSearch}
+              placeholder="Search client or requester..."
+              placeholderTextColor={BIZLINK_COLORS.muted}
+              autoCapitalize="none"
+              style={{ flex: 1, fontFamily: BIZLINK_FONTS.medium, fontSize: 13, color: BIZLINK_COLORS.text }}
+            />
+          </XStack>
+          <Pressable
+            accessibilityLabel="Open request filters"
+            onPress={() => setFiltersOpen(true)}
+            style={{ flexDirection: 'row', alignItems: 'center', gap: 6, minHeight: 52, borderRadius: 16, paddingHorizontal: 14, backgroundColor: filtersActive ? BIZLINK_COLORS.ink : BIZLINK_COLORS.card, borderWidth: 1, borderColor: filtersActive ? BIZLINK_COLORS.ink : BIZLINK_COLORS.line }}
+          >
+            <SlidersHorizontal size={16} color={filtersActive ? BIZLINK_ON_INK.solid : BIZLINK_COLORS.muted} strokeWidth={1.75} />
+            <Text fontSize={11.5} fontFamily={BIZLINK_FONTS.medium} color={filtersActive ? BIZLINK_ON_INK.solid : BIZLINK_COLORS.muted}>Filters</Text>
+          </Pressable>
+        </XStack>
 
         {respondError ? (
           <Text fontSize={12.5} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.red} marginBottom="$2">
@@ -134,17 +163,14 @@ export default function ManagerRequestsScreen() {
           </Text>
         ) : null}
 
-        {jointLoading ? <Spinner size="small" color={BIZLINK_COLORS.brand} /> : jointRows.map((request) => (
-          <YStack key={`joint-${request.id}`} padding="$3" marginBottom="$2" borderWidth={1} borderColor={BIZLINK_COLORS.line} borderRadius={10} gap="$2">
-            <Text color={BIZLINK_COLORS.text} fontFamily={BIZLINK_FONTS.semibold}>Joint record-holder request</Text>
-            <Text color={BIZLINK_COLORS.muted} fontFamily={BIZLINK_FONTS.medium}>{request.managerNames.join(', ') || 'Manager'} · {request.requiredCount} holder{request.requiredCount === 1 ? '' : 's'}</Text>
-            {request.status === 'pending' ? <YStack flexDirection="row" gap="$2"><Button minHeight={44} onPress={() => { void decideJointManagerRequest(request.id, 'approved').then(reloadJoint).catch((err: unknown) => setRespondError(err instanceof Error ? err.message : String(err))); }}>Approve</Button><Button minHeight={44} onPress={() => { void decideJointManagerRequest(request.id, 'declined').then(reloadJoint).catch((err: unknown) => setRespondError(err instanceof Error ? err.message : String(err))); }}>Decline</Button></YStack> : null}
-          </YStack>
-        ))}
-
         {loading ? (
           <YStack alignItems="center" paddingVertical="$6">
             <Spinner size="large" color={BIZLINK_COLORS.brand} />
+          </YStack>
+        ) : offline && error ? (
+          <YStack paddingVertical="$4" gap="$3">
+            <BizOfflineNotice message={error} />
+            <BizButton small label="Try again" variant="white" onPress={reload} />
           </YStack>
         ) : error ? (
           <YStack alignItems="center" paddingVertical="$6" gap="$3">
@@ -157,7 +183,7 @@ export default function ManagerRequestsScreen() {
           <YStack alignItems="center" paddingVertical="$6" gap="$2">
             <CircleCheckBig size={28} color={BIZLINK_COLORS.muted} strokeWidth={1.75} />
             <Text fontSize={13} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} textAlign="center">
-              {rows.length === 0 ? 'You have no requests waiting.' : 'No request matches this filter.'}
+              {rows.length === 0 ? 'You have no requests yet.' : 'No request matches your search or filters.'}
             </Text>
           </YStack>
         ) : (
@@ -178,6 +204,15 @@ export default function ManagerRequestsScreen() {
       {filteredRows.length > 0 ? (
         <BizFloatingPager page={page} totalPages={totalPages} onPageChange={setPage} bottomOffset={insets.bottom + 16} />
       ) : null}
+
+      <BizFilterSheet visible={filtersOpen} onClose={() => setFiltersOpen(false)} filtersActive={filtersActive} onReset={resetFilters}>
+        <BizFilterSheetRow label="Status" value={STATUS_FILTER_OPTIONS.find((option) => option.value === statusFilter)?.label ?? 'All'}>
+          <BizFilterScroll options={STATUS_FILTER_OPTIONS} value={statusFilter} onChange={setStatusFilter} />
+        </BizFilterSheetRow>
+        <BizFilterSheetRow label="Request type" value={kindFilter === 'all' ? 'All types' : KIND_FILTER_OPTIONS.find((option) => option.value === kindFilter)?.label ?? 'All types'}>
+          <BizFilterScroll options={KIND_FILTER_OPTIONS} value={kindFilter === 'all' ? null : kindFilter} onChange={handleKindChipPress} />
+        </BizFilterSheetRow>
+      </BizFilterSheet>
     </YStack>
   );
 }

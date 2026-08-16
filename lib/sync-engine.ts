@@ -8,7 +8,13 @@ import { pruneSyncedOutboxRows, recoverStuckSyncingRows, type OutboxStatus } fro
 import { setLastSyncAt } from './sync/last-sync';
 import { healStuckFieldRoleConflicts, pushDueOutboxRows, type OutboxRow, type OutboxSyncResult } from './sync/push-batch';
 import { AUDIT_OUTBOX_TABLE_NAME } from './sync/audit-log';
-import { processPendingUploads, recoverStuckPendingUploads } from './sync/photo-uploads';
+import {
+  processPendingUploads,
+  recoverStuckPendingUploads,
+  type PendingUploadSyncResult,
+} from './sync/photo-uploads';
+import { countDueOutboxRows, countDuePendingUploads } from './sync/due-counts';
+import { beginSyncProgress, endSyncProgress } from './sync/sync-progress';
 import { reconcileAdditionalAcks } from './sync/additional-acks';
 import { processCollectionPayments } from './sync/collection-payments';
 import { processCodPayments } from './sync/cod-payments';
@@ -195,21 +201,44 @@ async function runSyncOnce(agentId: string, teamId?: string | null, role?: UserR
     return { synced: 0, failed: 0, connectivity };
   }
 
-  const outboxResult = await processOutbox(agentId);
-  // T-014 Phase C (ADR-026 P1 item 4): queued photo uploads run after the
-  // regular outbox pass (a photo's parent meeting must already be
-  // 'synced' — see photo-uploads.ts's dependency guard). A row that just
-  // reached 'synced' here enqueued a fresh `meetings` outbox UPDATE
-  // (enqueueMeetingPhotoUrlUpdate) to patch photo_url/end_photo_url — push
-  // it immediately with one more processOutbox() pass instead of waiting
-  // for the next idle tick. (That function also makes its own best-effort
-  // `runSync()` call, guarded by `isSyncRunning()` — see
-  // photo-upload-registry.ts — so it doesn't queue a redundant coalesced
-  // rerun for a row this very pass's extra processOutbox() call already covers.)
-  const uploadResult = await processPendingUploads(db, agentId);
-  await syncPendingAvatarUpload();
-  const photoPatchResult =
-    uploadResult.synced > 0 ? await processOutbox(agentId) : { synced: 0, failed: 0, conflicted: 0 };
+  // Floating "Uploading..." progress card (components/sync/
+  // SyncUploadProgressCard.tsx, Vince direction 2026-08-16): seed the pass's
+  // total from a snapshot of due outbox + pending_uploads rows BEFORE either
+  // lane starts pushing (lib/sync/due-counts.ts mirrors each lane's own
+  // due-row query so this can't drift from what actually gets pushed).
+  // Deliberately excludes the smaller collection/COD payment lanes below —
+  // see lib/sync/sync-progress.ts's doc comment for that and the other
+  // accepted simplifications. Skipped entirely (no card) when nothing is due.
+  const progressPassStartedAt = new Date().toISOString();
+  const dueOutboxCount = await countDueOutboxRows(db, progressPassStartedAt);
+  const duePendingUploadCount = await countDuePendingUploads(db, agentId, progressPassStartedAt);
+  const progressTotal = dueOutboxCount + duePendingUploadCount;
+  if (progressTotal > 0) beginSyncProgress(progressTotal);
+
+  let outboxResult: OutboxSyncResult;
+  let uploadResult: PendingUploadSyncResult;
+  let photoPatchResult: OutboxSyncResult;
+  try {
+    outboxResult = await processOutbox(agentId);
+    // T-014 Phase C (ADR-026 P1 item 4): queued photo uploads run after the
+    // regular outbox pass (a photo's parent meeting must already be
+    // 'synced' — see photo-uploads.ts's dependency guard). A row that just
+    // reached 'synced' here enqueued a fresh `meetings` outbox UPDATE
+    // (enqueueMeetingPhotoUrlUpdate) to patch photo_url/end_photo_url — push
+    // it immediately with one more processOutbox() pass instead of waiting
+    // for the next idle tick. (That function also makes its own best-effort
+    // `runSync()` call, guarded by `isSyncRunning()` — see
+    // photo-upload-registry.ts — so it doesn't queue a redundant coalesced
+    // rerun for a row this very pass's extra processOutbox() call already covers.)
+    uploadResult = await processPendingUploads(db, agentId);
+    await syncPendingAvatarUpload();
+    photoPatchResult =
+      uploadResult.synced > 0 ? await processOutbox(agentId) : { synced: 0, failed: 0, conflicted: 0 };
+  } finally {
+    // Unconditional (safe no-op if never begun, e.g. progressTotal was 0) —
+    // guarantees the card can never get stuck open if something above threw.
+    endSyncProgress();
+  }
   // F-007 Partial payment (web 070): upload each queued payment's proof photos
   // then INSERT it (collector RLS is insert-only, so URLs ride in the insert).
   // Runs BEFORE syncDown so the server trigger's roll-up onto the visit

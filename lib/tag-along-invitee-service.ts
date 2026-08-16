@@ -34,6 +34,39 @@ export interface IncomingCompanionRequest {
   relatedMeetingId: string | null;
 }
 
+export async function getOwnMeetingCompanionRequest(
+  inviteeId: string,
+  meetingId: string,
+): Promise<IncomingCompanionRequest | null> {
+  const db = await getDb();
+  const row = await db.getFirstAsync<IncomingCompanionRequestRow>(
+    `SELECT tar.id, tar.requester_id, trs.full_name AS requester_name, tar.invitee_kind,
+            tar.status, tar.sync_status, tar.created_at,
+            tar.related_client_id AS client_id, c.company_name AS client_name,
+            tar.related_meeting_id
+       FROM tag_along_requests tar
+       LEFT JOIN team_roster_snapshot trs ON trs.profile_id = tar.requester_id
+       LEFT JOIN clients c ON c.id = tar.related_client_id
+      WHERE tar.invitee_id = ? AND tar.related_meeting_id = ?
+        AND tar.context = 'meeting' AND tar.status <> 'cancelled'
+      ORDER BY tar.created_at DESC LIMIT 1`,
+    [inviteeId, meetingId],
+  );
+  if (!row) return null;
+  return {
+    id: row.id,
+    requesterId: row.requester_id,
+    requesterName: row.requester_name,
+    inviteeKind: row.invitee_kind,
+    status: row.status,
+    syncStatus: row.sync_status,
+    createdAt: row.created_at,
+    clientId: row.client_id,
+    clientName: row.client_name,
+    relatedMeetingId: row.related_meeting_id,
+  };
+}
+
 interface IncomingCompanionRequestRow {
   id: string;
   requester_id: string;

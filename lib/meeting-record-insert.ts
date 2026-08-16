@@ -39,6 +39,12 @@ export interface InsertMeetingRecordParams {
 export async function insertMeetingRecord(params: InsertMeetingRecordParams): Promise<void> {
   const { db, id, outboxId, record, agendaIds, clientStatusAtMeeting, remotePayload, createdOnline, validityStatus, now } = params;
 
+  // Idempotent recovery: a process kill can occur after SQLite committed but
+  // before the caller cleared its draft. Reusing the operation ID must return
+  // the existing canonical meeting rather than attempting a second insert.
+  const alreadyInserted = await db.getFirstAsync<{ id: string }>('SELECT id FROM meetings WHERE id = ?', [id]);
+  if (alreadyInserted) return;
+
   await withInsertTransactionRetry(
     db,
     async () => {

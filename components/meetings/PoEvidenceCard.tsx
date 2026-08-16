@@ -1,55 +1,59 @@
-import { FileCheck2, Paperclip, Check } from 'lucide-react-native';
-import { Text, YStack } from 'tamagui';
+import { Image } from 'react-native';
+import { Camera, Check, FileCheck2, FileImage, ImagePlus } from 'lucide-react-native';
+import { Text, XStack, YStack } from 'tamagui';
 import { useBizlinkColors, BIZLINK_FONTS } from '../../lib/theme';
 import { BizButton } from '../bizlink/BizButton';
 
 interface PoEvidenceCardProps {
-  /** Only rendered when the In Progress agenda includes 'Close deal' (Wireframe-Sales-BizLink.html `#a-poEvidence`, `aTogglePoEvidence`). */
   visible: boolean;
   photoUri: string | null;
-  capturing: boolean;
-  onCapture: () => void;
+  busy: boolean;
+  onTakePhoto: () => void;
+  onChooseFromGallery: () => void;
+  onChooseFromFiles: () => void;
+  onPreview: () => void;
 }
 
 /**
- * Wireframe `#a-poEvidence` card, 1:1: title, helper copy, and a single
- * capture button that locks into a "ready to submit" state once a photo is
- * attached (`aConfirmPoEvidence()`). Camera-only (hard project constraint) —
- * the actual `launchCameraAsync` call lives in the caller (record.tsx),
- * matching how `captureSelfie` is already owned by that screen rather than
- * this presentational card.
+ * Close Deal evidence stays local until Save. Replacing it before Save only
+ * changes the pending local URI, so it cannot create a duplicate approval.
  */
-export function PoEvidenceCard({ visible, photoUri, capturing, onCapture }: PoEvidenceCardProps) {
-  const BIZLINK_COLORS = useBizlinkColors();
+export function PoEvidenceCard({
+  visible, photoUri, busy, onTakePhoto, onChooseFromGallery, onChooseFromFiles, onPreview,
+}: PoEvidenceCardProps) {
+  const colors = useBizlinkColors();
   if (!visible) return null;
 
   return (
-    <YStack backgroundColor={BIZLINK_COLORS.card} borderRadius={20} padding={16} marginTop="$2.5" gap="$1.5">
+    <YStack backgroundColor={colors.card} borderRadius={20} padding={16} marginTop="$2.5" gap="$1.5">
       <YStack flexDirection="row" alignItems="center" gap="$2">
-        {photoUri ? (
-          <Check size={16} color={BIZLINK_COLORS.brand} strokeWidth={1.75} />
-        ) : (
-          <FileCheck2 size={16} color={BIZLINK_COLORS.text} strokeWidth={1.75} />
-        )}
-        <Text fontSize={13} fontFamily={BIZLINK_FONTS.semibold} color={BIZLINK_COLORS.text}>
+        {photoUri ? <Check size={16} color={colors.brand} strokeWidth={1.75} /> : <FileCheck2 size={16} color={colors.text} strokeWidth={1.75} />}
+        <Text fontSize={13} fontFamily={BIZLINK_FONTS.semibold} color={colors.text}>
           {photoUri ? 'PO evidence ready to submit' : 'PO evidence required'}
         </Text>
       </YStack>
-      {!photoUri ? (
-        <Text fontSize={12} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} lineHeight={17}>
-          Take a PO photo. When online, it will be sent for Manager approval; the meeting stays In Progress while
-          waiting.
+
+      {photoUri ? (
+        <XStack alignItems="center" gap="$2" marginTop="$1">
+          <Image source={{ uri: photoUri }} style={{ width: 52, height: 52, borderRadius: 12 }} resizeMode="cover" />
+          <YStack flex={1} gap="$1">
+            <Text fontSize={11.5} fontFamily={BIZLINK_FONTS.medium} color={colors.muted} lineHeight={16}>
+              Review it before saving. You can replace a wrong attachment.
+            </Text>
+            <BizButton label="Preview evidence" variant="white" small onPress={onPreview} />
+          </YStack>
+        </XStack>
+      ) : (
+        <Text fontSize={12} fontFamily={BIZLINK_FONTS.medium} color={colors.muted} lineHeight={17}>
+          Attach an image from your camera, gallery, or Files. When online, it will be sent for Manager approval.
         </Text>
-      ) : null}
-      <BizButton
-        label={photoUri ? 'PO evidence attached' : capturing ? 'Opening camera…' : 'Attach PO evidence'}
-        variant="white"
-        small
-        disabled={!!photoUri || capturing}
-        icon={<Paperclip size={14} color={BIZLINK_COLORS.text} strokeWidth={1.75} />}
-        onPress={onCapture}
-        style={{ marginTop: 4 }}
-      />
+      )}
+
+      <YStack gap="$2" marginTop="$1">
+        <BizButton label={photoUri ? 'Replace with camera' : busy ? 'Opening source...' : 'Take photo'} variant="white" small disabled={busy} icon={<Camera size={14} color={colors.text} strokeWidth={1.75} />} onPress={onTakePhoto} />
+        <BizButton label="Choose from gallery" variant="white" small disabled={busy} icon={<ImagePlus size={14} color={colors.text} strokeWidth={1.75} />} onPress={onChooseFromGallery} />
+        <BizButton label="Choose image from Files" variant="white" small disabled={busy} icon={<FileImage size={14} color={colors.text} strokeWidth={1.75} />} onPress={onChooseFromFiles} />
+      </YStack>
     </YStack>
   );
 }

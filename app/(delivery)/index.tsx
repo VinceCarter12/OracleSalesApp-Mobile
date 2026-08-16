@@ -1,5 +1,5 @@
 import { useCallback, useState } from 'react';
-import { Pressable, RefreshControl, ScrollView } from 'react-native';
+import { Pressable, RefreshControl, ScrollView, useWindowDimensions } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router, useFocusEffect } from 'expo-router';
 import { Bell, History, Package, PackageX, Truck, User, Vault } from 'lucide-react-native';
@@ -14,6 +14,7 @@ import { BizHeroCard } from '../../components/bizlink/BizHeroCard';
 import { BizSectionHeader } from '../../components/bizlink/BizSectionHeader';
 import { BizDashboardAlert } from '../../components/bizlink/BizDashboardAlert';
 import { BizQuickAction } from '../../components/bizlink/BizQuickAction';
+import { BizQuickActionGrid, computeQuickActionColumns } from '../../components/bizlink/BizQuickActionGrid';
 import { SyncStatusChip } from '../../components/sync/SyncStatusChip';
 import { SyncCenterSheet } from '../../components/sync/SyncCenterSheet';
 import {
@@ -119,6 +120,14 @@ export default function DeliveryDashboardScreen() {
   const summary = getDeliverySummary(todayPos);
   const preview = todayPos.filter((p) => isOpenForDelivery(p.status)).slice(0, 3);
   const greetingName = firstName(fullName) || 'Driver';
+  const { width: windowWidth } = useWindowDimensions();
+  const quickActionColumns = computeQuickActionColumns(windowWidth, 16);
+  const quickActions = [
+    <BizQuickAction key="po-list" icon={<Package size={20} color={BIZLINK_COLORS.ink} strokeWidth={1.75} />} label="PO List" badgeCount={summary.pendingCount} onPress={() => router.push('/(delivery)/pos')} />,
+    <BizQuickAction key="remit" icon={<Vault size={20} color={BIZLINK_COLORS.ink} strokeWidth={1.75} />} label="Remit" onPress={() => router.push('/(delivery)/remit')} />,
+    <BizQuickAction key="history" icon={<History size={20} color={BIZLINK_COLORS.ink} strokeWidth={1.75} />} label="History" onPress={() => router.push('/(delivery)/history')} />,
+    <BizQuickAction key="account" icon={<User size={20} color={BIZLINK_COLORS.ink} strokeWidth={1.75} />} label="Account" onPress={() => router.push('/(delivery)/account')} />,
+  ];
 
   const openDeliver = (id: string) =>
     router.push({ pathname: '/(delivery)/deliver', params: { id } });
@@ -182,29 +191,7 @@ export default function DeliveryDashboardScreen() {
         {/* Wireframe d-home: Actions are the dashboard's main focus, surfaced
             directly under the hero (before the deliveries list, not buried). */}
         <BizSectionHeader title="Actions" />
-        <XStack gap="$2.5" flexWrap="wrap">
-          <BizQuickAction
-            icon={<Package size={20} color={BIZLINK_COLORS.ink} strokeWidth={1.75} />}
-            label="PO List"
-            badgeCount={summary.pendingCount}
-            onPress={() => router.push('/(delivery)/pos')}
-          />
-          <BizQuickAction
-            icon={<Vault size={20} color={BIZLINK_COLORS.ink} strokeWidth={1.75} />}
-            label="Remit"
-            onPress={() => router.push('/(delivery)/remit')}
-          />
-          <BizQuickAction
-            icon={<History size={20} color={BIZLINK_COLORS.ink} strokeWidth={1.75} />}
-            label="History"
-            onPress={() => router.push('/(delivery)/history')}
-          />
-          <BizQuickAction
-            icon={<User size={20} color={BIZLINK_COLORS.ink} strokeWidth={1.75} />}
-            label="Account"
-            onPress={() => router.push('/(delivery)/account')}
-          />
-        </XStack>
+        <BizQuickActionGrid actions={quickActions} columns={quickActionColumns} />
 
         <BizSectionHeader title="Today's deliveries" actionLabel="View all" onAction={() => router.push('/(delivery)/pos')} />
         {preview.length === 0 ? (

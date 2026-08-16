@@ -33,6 +33,8 @@ export { buildMeetingPhotoStoragePath, uploadMeetingPhoto, enqueueMeetingPhotoUr
 // call, not confirmed spec) live in lib/remote-meeting-mapping.ts.
 
 export interface NewMeetingRecord {
+  /** Stable operation ID persisted in the meeting draft and reused on retries. */
+  operationId?: string;
   client_id: string | null;
   agent_id: string;
   /** Start-of-meeting GPS (existing-client fast path: bound to the Start button tap, no photo — see 2026-07-16 revision). */
@@ -104,7 +106,21 @@ export interface NewMeetingRecord {
  * pushed by the outbox; the local SQLite row keeps mobile's own field names
  * (agendas, meeting_mode, selfie_url, logged_at), same split as clients.
  */
-export async function createMeeting(record: NewMeetingRecord): Promise<string> {
+const inFlightMeetingSaves = new Map<string, Promise<string>>();
+
+/** Service-level guard: repeat taps/retries for one draft share one save. */
+export function createMeeting(record: NewMeetingRecord): Promise<string> {
+  const operationId = record.operationId ?? uuidv4();
+  const existing = inFlightMeetingSaves.get(operationId);
+  if (existing) return existing;
+  const promise = createMeetingOnce({ ...record, operationId }).finally(() => {
+    inFlightMeetingSaves.delete(operationId);
+  });
+  inFlightMeetingSaves.set(operationId, promise);
+  return promise;
+}
+
+async function createMeetingOnce(record: NewMeetingRecord): Promise<string> {
   // Batch 5 Slice 2 (ADR-051) trigger point 2: fail-open on 'active'/
   // 'unverified' (offline agents must keep working); only a confirmed
   // 'suspended' blocks the write, via a typed error the calling UI must
@@ -115,7 +131,7 @@ export async function createMeeting(record: NewMeetingRecord): Promise<string> {
   }
 
   const db = await getDb();
-  const id = uuidv4();
+  const id = record.operationId ?? uuidv4();
   const outboxId = uuidv4();
   const now = new Date().toISOString();
 

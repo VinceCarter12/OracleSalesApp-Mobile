@@ -6,6 +6,8 @@ export interface MeetingDraftCompanion {
 }
 
 export interface MeetingDraftPayload {
+  /** Stable client-generated meeting operation ID shared by draft/save/outbox. */
+  operationId?: string;
   mode: MeetingMode;
   gpsLat: number;
   gpsLng: number;
@@ -57,6 +59,7 @@ export function normalizeMeetingDraftPayload(value: unknown): MeetingDraftPayloa
     capturedAt: record.capturedAt,
     ...(companions ? { companions } : {}),
     ...(agendas ? { agendas } : {}),
+    ...(typeof record.operationId === 'string' && record.operationId.length > 0 ? { operationId: record.operationId } : {}),
   };
 }
 

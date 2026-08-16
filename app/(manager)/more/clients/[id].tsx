@@ -1,7 +1,7 @@
 import { ScrollView } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router, useLocalSearchParams } from 'expo-router';
-import { Calendar, Handshake, Repeat, Users as UsersIcon } from 'lucide-react-native';
+import { Calendar, Handshake, Pencil, Repeat, Users as UsersIcon } from 'lucide-react-native';
 import { Spinner, Text, XStack, YStack } from 'tamagui';
 import { BIZLINK_COLORS, BIZLINK_FONTS } from '../../../../lib/theme';
 import { CLIENT_STATUS_BADGES } from '../../../../lib/client-status';
@@ -143,14 +143,26 @@ export default function ManagerClientDetailScreen() {
           </Text>
         </YStack>
 
-        <YStack marginTop="$3">
-          <BizButton
-            label="Reassign client"
-            variant="navy"
-            icon={<Repeat size={17} color="#FFFFFF" strokeWidth={1.75} />}
-            onPress={() => router.push(`/(manager)/more/clients/reassign?clientId=${encodeURIComponent(client.id)}`)}
-          />
-        </YStack>
+        <XStack gap="$2" marginTop="$3">
+          {isManagerOwned ? (
+            <YStack flex={1}>
+              <BizButton
+                label="Edit info"
+                variant="white"
+                icon={<Pencil size={16} color={BIZLINK_COLORS.text} strokeWidth={1.75} />}
+                onPress={() => router.push(`/(manager)/clients/complete?clientId=${encodeURIComponent(client.id)}`)}
+              />
+            </YStack>
+          ) : null}
+          <YStack flex={1}>
+            <BizButton
+              label="Reassign client"
+              variant="navy"
+              icon={<Repeat size={17} color="#FFFFFF" strokeWidth={1.75} />}
+              onPress={() => router.push(`/(manager)/more/clients/reassign?clientId=${encodeURIComponent(client.id)}`)}
+            />
+          </YStack>
+        </XStack>
 
         <BizSectionHeader title="Meeting history" />
         {clientMeetings.length === 0 ? (

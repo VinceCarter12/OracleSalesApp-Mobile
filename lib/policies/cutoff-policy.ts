@@ -132,7 +132,9 @@ export function getClientCap(
  * MeetingOutcome enum — see the file-header ambiguity note). Requires valid
  * required evidence; a countable outcome alone is not sufficient.
  */
-const COUNTABLE_OUTCOMES: readonly MeetingOutcome[] = ['Successful', 'Follow-up Required'];
+// Quota tracks completed meetings, not only wins. Lost Opportunity remains
+// excluded; all other currently supported outcomes require evidence.
+const COUNTABLE_OUTCOMES: readonly MeetingOutcome[] = ['Successful', 'Follow-up Required', 'No Decision'];
 
 function hasCountableOutcome(meeting: Pick<CutoffMeetingInput, 'outcome' | 'hasRequiredEvidence'>): boolean {
   if (!meeting.outcome) return false;
@@ -149,7 +151,7 @@ function hasCountableOutcome(meeting: Pick<CutoffMeetingInput, 'outcome' | 'hasR
 function isInvalidRegardlessOfCap(meeting: CutoffMeetingInput): boolean {
   if (meeting.tagAlongDeclined) return true;
   if (meeting.isDuplicate) return true;
-  if (meeting.validityStatus === 'pending_confirmation') return false; // pending, not invalid — handled separately
+  // Pending manager Tag-Along approval is separate from quota completion.
   return !hasCountableOutcome(meeting);
 }
 
@@ -186,10 +188,6 @@ export function classifyClientMeetings(
     const period = findActiveCutoffPeriod(periods, meeting.startCapturedAtIso);
     if (!period) {
       result.set(meeting.id, 'unattributed');
-      continue;
-    }
-    if (meeting.validityStatus === 'pending_confirmation') {
-      result.set(meeting.id, 'pending_validity');
       continue;
     }
     if (isInvalidRegardlessOfCap(meeting)) {

@@ -1,8 +1,9 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import { Alert, Pressable, ScrollView } from 'react-native';
 import { router, useFocusEffect } from 'expo-router';
+import type { Href } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { AlertTriangle, Archive, Bell, PencilLine, RefreshCw, RotateCcw, SlidersHorizontal } from 'lucide-react-native';
+import { AlertTriangle, Archive, Bell, PencilLine, RefreshCw, RotateCcw, SlidersHorizontal, Users } from 'lucide-react-native';
 import { Spinner, Text, XStack, YStack } from 'tamagui';
 import { BizTopBar } from '../../../components/bizlink/BizTopBar';
 import { BizFilterScroll, type BizFilterOption } from '../../../components/bizlink/BizFilterScroll';
@@ -10,21 +11,34 @@ import { BizFilterSheet } from '../../../components/bizlink/BizFilterSheet';
 import { BizFilterSheetRow } from '../../../components/bizlink/BizFilterSheetRow';
 import { DateRangeFilterRow } from '../../../components/bizlink/DateRangeFilterRow';
 import type { DateRange } from '../../../components/bizlink/DateRangePickerModal';
-import { useBizlinkColors, BIZLINK_FONTS } from '../../../lib/theme';
+import { useBizlinkColors, BIZLINK_FONTS, BIZLINK_ON_INK } from '../../../lib/theme';
 import { useSession } from '../../../lib/session-store';
-import { getManagerNotificationFeedItems, type ManagerNotificationCategory, type ManagerNotificationFeedItem } from '../../../lib/manager-notification-feed-service';
+import { getManagerNotificationFeedItems, managerNotificationDestination, type ManagerNotificationCategory, type ManagerNotificationFeedItem } from '../../../lib/manager-notification-feed-service';
 import { archiveNotifications, clearNotifications, getArchivedNotificationIds, getClearedNotificationIds, getReadNotificationIds, markNotificationRead } from '../../../lib/notification-unread';
 import { isWithinDateRange } from '../../../lib/date-range';
 import { timeAgo } from '../../../lib/time-ago';
+import { checkConnectivity, isOfflineState } from '../../../lib/sync/connectivity';
+import { BizOfflineNotice } from '../../../components/bizlink/BizOfflineNotice';
+
+// 2026-08-16 (Vince): `getManagerNotificationFeedItems()` calls
+// `fetchManagerApprovalFeed()`, an online-only Supabase RPC with no local
+// SQLite mirror (ADR-044 decision 5) — same reasoning as
+// `lib/use-manager-request-feed.ts`'s identical constant, kept separate
+// since this screen's load() isn't hook-extracted.
+const NOTIFICATIONS_OFFLINE_MESSAGE = 'Notifications need an internet connection to load — connect and try again.';
 
 type Filter = 'all' | ManagerNotificationCategory;
 type StatusFilter = 'all' | 'archived';
-// Keep the two primary filters visible in the compact chip row. Secondary
-// notification categories live in the Filters sheet below, matching the
-// Manager wireframe's compact header treatment.
+// Keep the primary filters visible in the compact chip row (this order
+// mirrors Wireframe-Manager-BizLink.html renderNotifications()'s `filters`
+// array: `[['all','All'],['approval','Approvals'],['tag','Tag-Along'],
+// ['lost','Lost'],['sync','Sync']]` — Tag-Along sits right after Approvals
+// there, same as here). Lost/Sync stay in the Filters sheet below, matching
+// the Manager wireframe's compact header treatment already established here.
 const QUICK_FILTERS: BizFilterOption<Filter>[] = [
   { value: 'all', label: 'All' },
   { value: 'approvals', label: 'Approvals' },
+  { value: 'tag_along', label: 'Tag-Along' },
 ];
 const CATEGORY_FILTERS: BizFilterOption<Filter>[] = [
   { value: 'all', label: 'All' },
@@ -48,13 +62,34 @@ export default function ManagerNotificationsScreen() {
   const [loading, setLoading] = useState(true);
   const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [offline, setOffline] = useState(false);
+  // Focus can re-trigger load() before a prior call settles; an older call's
+  // catch-path connectivity check must not clobber a newer call's result —
+  // same guard lib/use-manager-request-feed.ts uses for the identical race.
+  const requestSeq = useRef(0);
 
   const load = useCallback(() => {
-    setLoading(true); setError(null);
+    const seq = ++requestSeq.current;
+    setLoading(true); setError(null); setOffline(false);
     Promise.all([getManagerNotificationFeedItems(profileId), getReadNotificationIds(), getArchivedNotificationIds(), getClearedNotificationIds()])
-      .then(([items, ids, archived, cleared]) => { setFeed(items); setReadIds(ids); setArchivedIds(archived); setClearedIds(cleared); })
-      .catch((err: unknown) => { setError(err instanceof Error ? err.message : 'Could not load notifications.'); })
-      .finally(() => { setLoading(false); setLoaded(true); });
+      .then(([items, ids, archived, cleared]) => {
+        if (seq !== requestSeq.current) return;
+        setFeed(items); setReadIds(ids); setArchivedIds(archived); setClearedIds(cleared);
+      })
+      .catch(async (err: unknown) => {
+        if (seq !== requestSeq.current) return;
+        const connectivity = await checkConnectivity();
+        if (seq !== requestSeq.current) return;
+        if (isOfflineState(connectivity)) {
+          setError(NOTIFICATIONS_OFFLINE_MESSAGE);
+          setOffline(true);
+        } else {
+          setError(err instanceof Error ? err.message : 'Could not load notifications.');
+        }
+      })
+      .finally(() => {
+        if (seq === requestSeq.current) { setLoading(false); setLoaded(true); }
+      });
   }, [profileId]);
   useFocusEffect(useCallback(() => { load(); }, [load]));
 
@@ -68,14 +103,15 @@ export default function ManagerNotificationsScreen() {
 
   function icon(item: ManagerNotificationFeedItem): React.ReactNode {
     if (item.category === 'approvals') return <PencilLine size={18} color={colors.brand} strokeWidth={1.8} />;
+    if (item.category === 'tag_along') return <Users size={18} color={colors.brand} strokeWidth={1.8} />;
     if (item.category === 'lost') return <RotateCcw size={18} color={colors.orange} strokeWidth={1.8} />;
     return item.syncKind === 'failed' ? <AlertTriangle size={18} color={colors.red} strokeWidth={1.8} /> : <RefreshCw size={18} color={colors.brand} strokeWidth={1.8} />;
   }
   function press(item: ManagerNotificationFeedItem): void {
     if (!readIds.has(item.id)) { setReadIds((prev) => new Set(prev).add(item.id)); markNotificationRead(item.id).catch(() => undefined); }
-    if (item.category === 'approvals') router.push('/(manager)/approvals');
-    else if (item.category === 'sync') router.push('/(manager)/more/sync-history');
-    else router.push('/(manager)/more/lost-opportunities/index');
+    const destination = managerNotificationDestination(item);
+    const href = (destination.params ? { pathname: destination.pathname, params: destination.params } : destination.pathname) as Href;
+    router.push(href);
   }
   function confirmArchive(ids: string[]): void {
     if (ids.length === 0) return;
@@ -109,17 +145,38 @@ export default function ManagerNotificationsScreen() {
   function resetFilters(): void { setFilter('all'); setDateRange(null); setStatusFilter('all'); }
 
   return <YStack flex={1} backgroundColor={colors.canvas} paddingTop={insets.top}>
-    <BizTopBar title="Notifications" fallbackHref="/(manager)" />
+    <BizTopBar
+      title="Notifications"
+      fallbackHref="/(manager)"
+      right={
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Open notification filters"
+          onPress={() => setFilterOpen(true)}
+          style={{
+            flexDirection: 'row',
+            alignItems: 'center',
+            gap: 6,
+            minHeight: 44,
+            borderRadius: 14,
+            paddingHorizontal: 12,
+            backgroundColor: filtersActive ? colors.ink : colors.card,
+            borderWidth: 1,
+            borderColor: filtersActive ? colors.ink : colors.line,
+          }}
+        >
+          <SlidersHorizontal size={16} color={filtersActive ? BIZLINK_ON_INK.solid : colors.muted} strokeWidth={1.75} />
+          <Text fontSize={11.5} fontFamily={BIZLINK_FONTS.medium} color={filtersActive ? BIZLINK_ON_INK.solid : colors.muted}>Filters</Text>
+        </Pressable>
+      }
+    />
     <ScrollView contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 24 }} keyboardShouldPersistTaps="handled">
-      <XStack alignItems="flex-start" justifyContent="space-between" gap="$3" marginBottom="$2.5">
-        <Text flex={1} fontSize={13} fontFamily={BIZLINK_FONTS.medium} color={colors.muted} lineHeight={18}>Requests, approval outcomes, Tag-Along responses, and sync alerts. A local action is never presented as server-final until sync confirms it.</Text>
-        <Pressable accessibilityRole="button" accessibilityLabel="Open notification filters" onPress={() => setFilterOpen(true)} style={{ minWidth: 44, minHeight: 44, alignItems: 'center', justifyContent: 'center', borderRadius: 14, backgroundColor: colors.card, borderWidth: 1, borderColor: colors.line }}><SlidersHorizontal size={18} color={colors.brand} strokeWidth={1.8} /></Pressable>
-      </XStack>
+      <Text fontSize={13} fontFamily={BIZLINK_FONTS.medium} color={colors.muted} lineHeight={18} marginBottom="$2.5">Requests, approval outcomes, Tag-Along responses, and sync alerts. A local action is never presented as server-final until sync confirms it.</Text>
       <YStack marginBottom="$3"><BizFilterScroll options={QUICK_FILTERS} value={filter} onChange={setFilter} /></YStack>
-      {loading && !loaded ? <YStack alignItems="center" padding="$8"><Spinner size="large" color={colors.brand} /></YStack> : error ? <YStack alignItems="center" padding="$8" gap="$2.5"><Text fontSize={13} fontFamily={BIZLINK_FONTS.medium} color={colors.red} textAlign="center">{error}</Text><Pressable onPress={load} hitSlop={8}><Text fontSize={13} fontFamily={BIZLINK_FONTS.semibold} color={colors.brand}>Retry</Text></Pressable></YStack> : visible.length === 0 ? <YStack alignItems="center" padding="$8" gap="$2.5"><Bell size={40} color={colors.muted} strokeWidth={1.75} /><Text fontSize={13} fontFamily={BIZLINK_FONTS.medium} color={colors.muted} textAlign="center">Wala pang notification sa filter na ito.</Text></YStack> : visible.map((item) => { const unread = !readIds.has(item.id); return <Pressable key={item.id} onPress={() => press(item)} hitSlop={4}><XStack gap="$3" alignItems="flex-start" backgroundColor={unread ? colors.tintA : colors.card} borderRadius={20} padding={16} marginBottom={10} minHeight={44}><YStack width={36} height={36} borderRadius={18} alignItems="center" justifyContent="center" backgroundColor={colors.soft}>{icon(item)}</YStack><YStack flex={1} gap="$1"><XStack alignItems="center" gap="$1.5"><Text flex={1} fontFamily={BIZLINK_FONTS.semibold} fontSize={13.5} color={colors.text}>{item.title}</Text>{unread ? <YStack width={7} height={7} borderRadius={3.5} backgroundColor={colors.brand} /> : null}<Pressable accessibilityRole="button" accessibilityLabel={`Archive ${item.title}`} onPress={(event) => { event.stopPropagation(); confirmArchive([item.id]); }} hitSlop={8} style={{ minWidth: 44, minHeight: 44, alignItems: 'center', justifyContent: 'center' }}><Archive size={17} color={colors.muted} strokeWidth={1.75} /></Pressable></XStack><Text fontSize={12} fontFamily={BIZLINK_FONTS.medium} color={colors.muted} lineHeight={17}>{item.body}</Text><Text fontSize={11} fontFamily={BIZLINK_FONTS.regular} color={colors.muted} marginTop="$1">{timeAgo(item.timestamp)}</Text></YStack></XStack></Pressable>; })}
+      {loading && !loaded ? <YStack alignItems="center" padding="$8"><Spinner size="large" color={colors.brand} /></YStack> : offline && error ? <YStack padding="$6" gap="$3"><BizOfflineNotice message={error} /><Pressable onPress={load} hitSlop={8}><Text fontSize={13} fontFamily={BIZLINK_FONTS.semibold} color={colors.brand}>Retry</Text></Pressable></YStack> : error ? <YStack alignItems="center" padding="$8" gap="$2.5"><Text fontSize={13} fontFamily={BIZLINK_FONTS.medium} color={colors.red} textAlign="center">{error}</Text><Pressable onPress={load} hitSlop={8}><Text fontSize={13} fontFamily={BIZLINK_FONTS.semibold} color={colors.brand}>Retry</Text></Pressable></YStack> : visible.length === 0 ? <YStack alignItems="center" padding="$8" gap="$2.5"><Bell size={40} color={colors.muted} strokeWidth={1.75} /><Text fontSize={13} fontFamily={BIZLINK_FONTS.medium} color={colors.muted} textAlign="center">Wala pang notification sa filter na ito.</Text></YStack> : visible.map((item) => { const unread = !readIds.has(item.id); return <Pressable key={item.id} onPress={() => press(item)} hitSlop={4}><XStack gap="$3" alignItems="flex-start" backgroundColor={unread ? colors.tintA : colors.card} borderRadius={20} padding={16} marginBottom={10} minHeight={44}><YStack width={36} height={36} borderRadius={18} alignItems="center" justifyContent="center" backgroundColor={colors.soft}>{icon(item)}</YStack><YStack flex={1} gap="$1"><XStack alignItems="center" gap="$1.5"><Text flex={1} fontFamily={BIZLINK_FONTS.semibold} fontSize={13.5} color={colors.text}>{item.title}</Text>{unread ? <YStack width={7} height={7} borderRadius={3.5} backgroundColor={colors.brand} /> : null}<Pressable accessibilityRole="button" accessibilityLabel={`Archive ${item.title}`} onPress={(event) => { event.stopPropagation(); confirmArchive([item.id]); }} hitSlop={8} style={{ minWidth: 44, minHeight: 44, alignItems: 'center', justifyContent: 'center' }}><Archive size={17} color={colors.muted} strokeWidth={1.75} /></Pressable></XStack><Text fontSize={12} fontFamily={BIZLINK_FONTS.medium} color={colors.muted} lineHeight={17}>{item.body}</Text><Text fontSize={11} fontFamily={BIZLINK_FONTS.regular} color={colors.muted} marginTop="$1">{timeAgo(item.timestamp)}</Text></YStack></XStack></Pressable>; })}
     </ScrollView>
     <BizFilterSheet visible={filterOpen} onClose={() => setFilterOpen(false)} filtersActive={filtersActive} onReset={resetFilters}>
-      <BizFilterSheetRow label="Category" value={filter === 'approvals' ? 'Approvals' : CATEGORY_FILTERS.find((option) => option.value === filter)?.label ?? 'All'}><BizFilterScroll options={CATEGORY_FILTERS} value={filter} onChange={setFilter} /></BizFilterSheetRow>
+      <BizFilterSheetRow label="Category" value={filter === 'approvals' ? 'Approvals' : filter === 'tag_along' ? 'Tag-Along' : CATEGORY_FILTERS.find((option) => option.value === filter)?.label ?? 'All'}><BizFilterScroll options={CATEGORY_FILTERS} value={filter} onChange={setFilter} /></BizFilterSheetRow>
       <DateRangeFilterRow range={dateRange} onApply={setDateRange} />
       <BizFilterSheetRow label="Status" value={statusFilter === 'archived' ? 'Archived' : 'All'}><BizFilterScroll options={STATUS_FILTERS} value={statusFilter} onChange={setStatusFilter} /></BizFilterSheetRow>
       <YStack gap="$2" paddingTop="$4">

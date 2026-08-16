@@ -8,8 +8,6 @@ import { Spinner, Text, XStack, YStack } from 'tamagui';
 import { rowToMeeting, type LocalMeetingRow } from '../../../lib/local-meeting-mapper';
 import {
   getMeetingCompanionRequests,
-  companionRequestDisplayStatus,
-  COMPANION_REQUEST_STATUS_LABELS,
   type ClientCompanionRequest,
 } from '../../../lib/tag-along-service';
 import { getPoConfirmationForMeeting, type PoConfirmationRecord } from '../../../lib/po-confirmation-service';
@@ -25,12 +23,16 @@ import { BizCard } from '../../../components/bizlink/BizCard';
 import { BizSectionHeader } from '../../../components/bizlink/BizSectionHeader';
 import { StatusBadge } from '../../../components/ui/StatusBadge';
 import { ImagePreviewModal } from '../../../components/ui/ImagePreviewModal';
+import type { MeetingEvidenceAuditDetails } from '../../../components/ui/MeetingEvidenceDownload';
 import { SyncBadge } from '../../../components/sync/SyncBadge';
 import { SelectedClientCard } from '../../../components/meetings/SelectedClientCard';
 import { formatMeetingLocation } from '../../../lib/format-meeting-location';
 import type { OutboxStatus } from '../../../lib/sync/outbox-status';
 import type { Client, Meeting } from '../../../types';
 import { mapMeetingPhotoEvidence } from '../../../lib/meeting-photo-evidence';
+import { useSession } from '../../../lib/session-store';
+import { classifyMeetingManagerAttendees } from '../../../lib/meeting-attendee-policy';
+import { MeetingAttendeeCard } from '../../../components/meetings/MeetingAttendeeCard';
 
 /**
  * Local SQLite is the primary read path (ADR-001/T-004) — a meeting only
@@ -42,6 +44,7 @@ export default function MeetingDetailScreen() {
   const db = useAppDb();
   const { id } = useLocalSearchParams<{ id: string }>();
   const routes = useClientFlowRoutes();
+  const { teamId } = useSession();
   const [meeting, setMeeting] = useState<Meeting | null>(null);
   const [companionRequests, setCompanionRequests] = useState<ClientCompanionRequest[]>([]);
   const [poConfirmation, setPoConfirmation] = useState<PoConfirmationRecord | null>(null);
@@ -123,7 +126,18 @@ export default function MeetingDetailScreen() {
   const selfieEvidence = mapMeetingPhotoEvidence(meeting, 'selfie');
   const startEvidence = mapMeetingPhotoEvidence(meeting, 'start');
   const endEvidence = mapMeetingPhotoEvidence(meeting, 'end');
+  const previewEvidence = previewImageUrl === meeting.start_photo_url ? startEvidence
+    : previewImageUrl === meeting.end_photo_url ? endEvidence
+      : selfieEvidence;
+  const auditDetails: MeetingEvidenceAuditDetails | undefined = previewImageUrl ? {
+    title: previewImageUrl === meeting.start_photo_url ? 'Start photo' : previewImageUrl === meeting.end_photo_url ? 'End photo' : 'Meeting selfie',
+    capturedAt: previewEvidence.capturedAt,
+    clientStatus: previewEvidence.clientStatusLabel,
+    location: previewEvidence.gpsLat !== null ? `${previewEvidence.gpsLat.toFixed(4)}° N, ${previewEvidence.gpsLng?.toFixed(4)}° E` : humanLocation || 'Not recorded',
+    duration: formatEvidenceDuration(meeting.start_captured_at, meeting.end_captured_at),
+  } : undefined;
   const progress = client ? getClientJourneyProgress(client, clientMeetings) : null;
+  const managerAttendees = classifyMeetingManagerAttendees(companionRequests, teamId);
   // Only present when the row has a real client_id (legacy rows missing one
   // must never navigate into a broken journey route) AND this screen is
   // mounted under (tabs) — `routes.clientJourney` has no (manager) route yet
@@ -173,9 +187,14 @@ export default function MeetingDetailScreen() {
 
         {poConfirmation ? (
           <YStack backgroundColor={BIZLINK_COLORS[PO_CONFIRMATION_BADGE_TONES[poConfirmation.displayStatus].background]} borderRadius={20} padding={14} marginTop="$3">
-            <Text fontSize={12.5} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS[PO_CONFIRMATION_BADGE_TONES[poConfirmation.displayStatus].color]} lineHeight={17}>
+            <XStack alignItems="center" gap="$3">
+            <Pressable onPress={() => setPreviewImageUrl(poConfirmation.poPhotoPath)}>
+              <Image source={{ uri: poConfirmation.poPhotoPath }} style={{ width: 56, height: 56, borderRadius: 14 }} />
+            </Pressable>
+            <Text flex={1} fontSize={12.5} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS[PO_CONFIRMATION_BADGE_TONES[poConfirmation.displayStatus].color]} lineHeight={17}>
               PO evidence — {PO_CONFIRMATION_STATUS_LABELS[poConfirmation.displayStatus]}
             </Text>
+            </XStack>
             {poConfirmation.decisionNote ? (
               <Text fontSize={12} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} marginTop={4} lineHeight={16}>
                 {poConfirmation.decisionNote}
@@ -184,19 +203,7 @@ export default function MeetingDetailScreen() {
           </YStack>
         ) : null}
 
-        {companionRequests.length > 0 ? (
-          <YStack backgroundColor={BIZLINK_COLORS.tintA} borderRadius={20} padding={14} marginTop="$3">
-            {companionRequests.map((request) => {
-              const status = companionRequestDisplayStatus(request);
-              const name = request.inviteeName ?? 'Companion';
-              return (
-                <Text key={request.id} fontSize={12.5} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.ink} lineHeight={17}>
-                  {name} — {COMPANION_REQUEST_STATUS_LABELS[status]}
-                </Text>
-              );
-            })}
-          </YStack>
-        ) : null}
+        {managerAttendees.length > 0 ? <MeetingAttendeeCard attendees={managerAttendees} /> : null}
 
         {isFastPath ? (
           <>
@@ -387,8 +394,15 @@ export default function MeetingDetailScreen() {
       <ImagePreviewModal
         visible={Boolean(previewImageUrl)}
         imageUrl={previewImageUrl}
+        auditDetails={auditDetails}
         onClose={() => setPreviewImageUrl(null)}
       />
     </YStack>
   );
+}
+
+function formatEvidenceDuration(start: string | null | undefined, end: string | null | undefined): string {
+  if (!start || !end) return 'Not completed';
+  const minutes = Math.max(0, Math.round((new Date(end).getTime() - new Date(start).getTime()) / 60000));
+  return `${Math.floor(minutes / 60)}h ${minutes % 60}m`;
 }

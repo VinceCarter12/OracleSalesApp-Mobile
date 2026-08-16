@@ -94,17 +94,17 @@ describe('classifyClientMeetings', () => {
     expect(result.get('m1')).toBe('excluded_uncapped');
   });
 
-  it('marks a pending manager tag-along as pending_validity, consuming no slot', () => {
+  it('counts a completed meeting while its manager tag-along is pending', () => {
     const meetings = [
-      meeting({ id: 'm1', validityStatus: 'pending_confirmation' }),
+      meeting({ id: 'm1', validityStatus: 'pending_confirmation', startCapturedAtIso: '2026-09-01T00:00:00.000Z' }),
       meeting({ id: 'm2', startCapturedAtIso: '2026-09-02T00:00:00.000Z' }),
       meeting({ id: 'm3', startCapturedAtIso: '2026-09-03T00:00:00.000Z' }),
     ];
     const result = classifyClientMeetings(meetings, [PERIOD], 'sales_specialist', caps);
-    expect(result.get('m1')).toBe('pending_validity');
-    // Two remaining meetings both fit the cap of 2 since the pending one never consumed a slot.
+    expect(result.get('m1')).toBe('counted');
+    // The pending meeting consumes its normal slot; the third is over cap.
     expect(result.get('m2')).toBe('counted');
-    expect(result.get('m3')).toBe('counted');
+    expect(result.get('m3')).toBe('over_cap');
   });
 
   it('marks a declined tag-along as excluded_invalid, never over_cap', () => {
@@ -112,14 +112,14 @@ describe('classifyClientMeetings', () => {
     expect(result.get('m1')).toBe('excluded_invalid');
   });
 
-  it('marks No Decision / missing evidence as excluded_invalid', () => {
+  it('counts No Decision with evidence but excludes missing evidence', () => {
     const result = classifyClientMeetings(
       [meeting({ id: 'm1', outcome: 'No Decision' }), meeting({ id: 'm2', outcome: 'Successful', hasRequiredEvidence: false })],
       [PERIOD],
       'sales_specialist',
       caps
     );
-    expect(result.get('m1')).toBe('excluded_invalid');
+    expect(result.get('m1')).toBe('counted');
     expect(result.get('m2')).toBe('excluded_invalid');
   });
 
@@ -171,8 +171,8 @@ describe('summarizeCutoffQuota', () => {
       meeting({ id: 'm5', clientId: 'c2', validityStatus: 'pending_confirmation' }),
     ];
     const result = summarizeCutoffQuota(meetings, [PERIOD], 'sales_specialist', targets, caps, '2026-09-05T00:00:00.000Z');
-    expect(result?.confirmedCount).toBe(3); // m1, m2, m4
-    expect(result?.pendingCount).toBe(1); // m5
+    expect(result?.confirmedCount).toBe(4); // m1, m2, m4, m5
+    expect(result?.pendingCount).toBe(0);
     expect(result?.target).toBe(24);
   });
 });
