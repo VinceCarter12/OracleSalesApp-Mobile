@@ -4,32 +4,33 @@ import { subscribeSyncComplete } from './sync/sync-events';
 import type { RemitDestination } from './remittance-write';
 
 // F-007 remittances READ side (2026-07-29): computes "on hand" from the synced
-// local mirror, not mock arrays. Collection on-hand = this collector's collected
-// AND partial visits not yet covered by any remittance (visit_ids); COD on-hand
-// = this driver's delivered COD POs with cod_remitted still 0. Both re-fetch on
-// sync-complete, mirroring use-collection-delivery.ts.
+// local mirror, not mock arrays. Both re-fetch on sync-complete, mirroring
+// use-collection-delivery.ts.
 //
-// 2026-08-10 (Bug 2a): `partial` visits are now included. A partial visit's cash
-// is already physically in the collector's bag (web 070 rolls its payments into
-// `amount_collected`), so it must be remittable — previously the `status =
-// 'collected'`-only filter dropped it, and the web recorded only the fully-paid
-// visits' cash. See getCollectionSummary's own "cash on hand INCLUDES partial"
-// note in lib/collection-delivery-data.ts.
+// 2026-08-18 — PER-PAYMENT coverage (web 086/087, REMITTANCE_CONTRACT.md). On
+// hand is now the sum of the collector's/driver's own PAYMENTS not yet covered
+// by a remittance, read from the synced-down payment ledger
+// (lib/sync/payment-ledger-sync-down.ts): a payment is on hand ⇔ its link is
+// NULL. This replaces the old per-VISIT/per-PO scan, which stranded a later
+// installment on an already-remitted partial visit/PO (the id was frozen in a
+// past remittance's visit_ids/po_ids). Coverage is per handover now, so a
+// top-up on a previously-remitted visit is a fresh, still-on-hand payment.
 //
-// ⚠️ KNOWN INTERIM LIMITATION (tracked in REMITTANCE_CONTRACT.md): remittance
-// coverage is per-VISIT (visit_ids), so once a partial visit is remitted, a
-// LATER installment on that same visit is stranded (its id is already in a past
-// remittance). The correct fix is per-PAYMENT remittance coverage, which needs
-// the web schema change described in that contract.
+// Only `status = 'synced'` payments count: a payment can't be remitted until it
+// exists server-side (the link is pushed via an UPDATE — lib/sync/
+// remittance-link.ts), and a not-yet-pushed row is also not yet rolled up onto
+// its visit/PO, so this matches the cash the collector can actually hand over.
+// A payment with a locally-staged link (`pending_*_remittance_id`) is excluded
+// the moment it's staked to a remittance, so it can't be double-remitted.
 
 export interface OnHandSummary {
   /** Total peso amount on hand (sum across all methods). */
   total: number;
   /** Per-method breakdown for the badges. `counter` (collection) is folded into `total` but not shown as its own badge. */
   byMethod: { cash: number; check: number; gcash: number };
-  /** Number of stops/POs making up the total. */
+  /** Number of payments making up the total. */
   count: number;
-  /** The visit/PO ids this remittance would cover — passed straight to the write. */
+  /** The PAYMENT ids this remittance would cover — passed straight to the write, which links each to the new remittance. */
   ids: string[];
 }
 
@@ -37,13 +38,13 @@ function emptySummary(): OnHandSummary {
   return { total: 0, byMethod: { cash: 0, check: 0, gcash: 0 }, count: 0, ids: [] };
 }
 
-interface CollectedRow {
+interface PaymentRow {
   id: string;
-  amount_collected: number | null;
+  amount: number | null;
   payment_method: string | null;
 }
 
-/** Collection "collections on hand" — collected + partial visits by this collector not yet in a remittance. */
+/** Collection "collections on hand" — this collector's own synced payments not yet linked to (or staged for) a remittance. */
 export function useCollectionOnHand(collectorId: string | null | undefined) {
   const db = useAppDb();
   const [summary, setSummary] = useState<OnHandSummary>(emptySummary);
@@ -55,28 +56,16 @@ export function useCollectionOnHand(collectorId: string | null | undefined) {
       setLoading(false);
       return;
     }
-    const collected = await db.getAllAsync<CollectedRow>(
-      `SELECT id, amount_collected, payment_method FROM collection_visits
-       WHERE status IN ('collected', 'partial') AND collector_id = ?`,
+    const payments = await db.getAllAsync<PaymentRow>(
+      `SELECT id, amount, payment_method FROM collection_payments
+       WHERE collector_id = ? AND status = 'synced'
+         AND remittance_id IS NULL AND pending_remittance_id IS NULL`,
       [collectorId],
     );
-    const remittances = await db.getAllAsync<{ visit_ids: string }>(
-      'SELECT visit_ids FROM remittances WHERE collector_id = ?',
-      [collectorId],
-    );
-    const remitted = new Set<string>();
-    for (const r of remittances) {
-      try {
-        for (const id of JSON.parse(r.visit_ids) as string[]) remitted.add(id);
-      } catch {
-        // Malformed JSON in a mirror row — skip it rather than break the tally.
-      }
-    }
 
     const next = emptySummary();
-    for (const row of collected) {
-      if (remitted.has(row.id)) continue;
-      const amount = row.amount_collected ?? 0;
+    for (const row of payments) {
+      const amount = row.amount ?? 0;
       next.total += amount;
       next.count += 1;
       next.ids.push(row.id);
@@ -250,13 +239,7 @@ export function useCodRemittanceHistory(driverId: string | null | undefined) {
   return { entries, loading, refresh: fetch };
 }
 
-interface CodRow {
-  id: string;
-  cod_amount: number | null;
-  cod_method: string | null;
-}
-
-/** COD "on hand" — delivered COD POs by this driver not yet remitted (cod_remitted = 0). */
+/** COD "on hand" — this driver's own synced COD payments not yet linked to (or staged for) a COD remittance. */
 export function useCodOnHand(driverId: string | null | undefined) {
   const db = useAppDb();
   const [summary, setSummary] = useState<OnHandSummary>(emptySummary);
@@ -268,20 +251,21 @@ export function useCodOnHand(driverId: string | null | undefined) {
       setLoading(false);
       return;
     }
-    const rows = await db.getAllAsync<CodRow>(
-      `SELECT id, cod_amount, cod_method FROM purchase_orders
-       WHERE status = 'delivered' AND cod = 1 AND cod_remitted = 0 AND driver_id = ?`,
+    const payments = await db.getAllAsync<PaymentRow>(
+      `SELECT id, amount, payment_method FROM cod_payments
+       WHERE driver_id = ? AND status = 'synced'
+         AND cod_remittance_id IS NULL AND pending_cod_remittance_id IS NULL`,
       [driverId],
     );
     const next = emptySummary();
-    for (const row of rows) {
-      const amount = row.cod_amount ?? 0;
+    for (const row of payments) {
+      const amount = row.amount ?? 0;
       next.total += amount;
       next.count += 1;
       next.ids.push(row.id);
-      if (row.cod_method === 'cash') next.byMethod.cash += amount;
-      else if (row.cod_method === 'check') next.byMethod.check += amount;
-      else if (row.cod_method === 'gcash') next.byMethod.gcash += amount;
+      if (row.payment_method === 'cash') next.byMethod.cash += amount;
+      else if (row.payment_method === 'check') next.byMethod.check += amount;
+      else if (row.payment_method === 'gcash') next.byMethod.gcash += amount;
     }
     setSummary(next);
     setLoading(false);

@@ -5,6 +5,7 @@ import { getDb } from './db';
 import { ENTITY_REGISTRY, type EntityTableName } from './sync/entity-registry';
 import { syncAgendaPolicyAndCycles } from './sync/policy-sync-down';
 import { syncCutoffQuotaSnapshots } from './sync/cutoff-sync-down';
+import { syncPaymentLedgerDown } from './sync/payment-ledger-sync-down';
 import type { SQLiteDatabase } from 'expo-sqlite';
 import type { UserRole } from '../types';
 
@@ -155,6 +156,17 @@ export async function syncDown(agentId: string, teamId?: string | null, role?: U
     await pullEntity(db, agentId, 'cod_remittances');
   } catch (err) {
     console.error('[sync-down] cod_remittances pull failed:', err);
+  }
+
+  // F-007 per-payment remittance coverage (web 086/087): pull the collector's/
+  // driver's own payment ledger so "on hand" is computed per-payment (link IS
+  // NULL) instead of per-visit/PO — the fix for partial-payment top-up
+  // stranding (REMITTANCE_CONTRACT.md). Best-effort + role-gated by RLS; its
+  // own internal per-table guards keep one side's failure from blocking the other.
+  try {
+    await syncPaymentLedgerDown(db, agentId);
+  } catch (err) {
+    console.error('[sync-down] payment ledger pull failed:', err);
   }
 
   // The directory RPC is intentionally restricted to Sales/RSR. Managers use

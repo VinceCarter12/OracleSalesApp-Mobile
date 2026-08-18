@@ -25,7 +25,14 @@ export interface SubmitCollectionRemittanceInput {
   destination: RemitDestination;
   amountCollected: number;
   amountRemitted: number;
-  visitIds: string[];
+  /**
+   * F-007 per-payment coverage (web 086): the `collection_payments` ids this
+   * remittance covers — the same rows summed into `amountRemitted`. Each is
+   * linked to the new remittance (`remittance_id`) as the source of truth;
+   * their distinct `visit_id`s are still written to `remittances.visit_ids` for
+   * back-compat.
+   */
+  paymentIds: string[];
   /** Required for office (schema CHECK); null for bayad_center/bank_deposit. */
   receiverName?: string | null;
   /** Photo of the signed acknowledgment receipt (office) or the receipt (711/bank). */
@@ -37,10 +44,16 @@ export interface SubmitCollectionRemittanceInput {
 export interface SubmitCodRemittanceInput {
   amountCollected: number;
   amountRemitted: number;
-  poIds: string[];
+  /** The `cod_payments` ids this remittance covers (web 087); linked via `cod_remittance_id`, with their distinct `po_id`s kept in `cod_remittances.po_ids` for back-compat. */
+  paymentIds: string[];
   /** NOT NULL remotely — the assigned office receiver. */
   receiverName: string;
   signatureUri?: string;
+}
+
+/** Placeholder list (`?, ?, …`) for an `IN (…)` clause. */
+function inClause(count: number): string {
+  return Array(count).fill('?').join(', ');
 }
 
 /** Collection remittance (wireframe c-remit). Uploads proof+signature, then inserts. */
@@ -63,7 +76,17 @@ export async function submitCollectionRemittance(
       ? await uploadPhotoToBucket(input.signatureUri, `collection/${collectorId}/remit-${id}-signature.jpg`, COLLECTION_BUCKET)
       : null;
 
-    const visitIdsJson = JSON.stringify(input.visitIds);
+    // Back-compat: derive the distinct visit_ids of the covered payments so
+    // `remittances.visit_ids` keeps its old shape for anything still reading it.
+    // The per-payment link (staged below) is the source of truth for coverage.
+    const visitRows = input.paymentIds.length
+      ? await db.getAllAsync<{ visit_id: string }>(
+          `SELECT DISTINCT visit_id FROM collection_payments WHERE id IN (${inClause(input.paymentIds.length)})`,
+          input.paymentIds,
+        )
+      : [];
+    const visitIds = visitRows.map((r) => r.visit_id);
+    const visitIdsJson = JSON.stringify(visitIds);
     await db.runAsync(
       `INSERT INTO remittances
          (id, collector_id, destination, amount_remitted, amount_collected, status,
@@ -100,12 +123,29 @@ export async function submitCollectionRemittance(
         receiver_name: receiverName,
         signed_proof_url: signedProofUrl,
         receiver_signature_url: signatureUrl,
-        visit_ids: input.visitIds,
+        visit_ids: visitIds,
         submitted_at: now,
       }),
       createdAt: now,
       createdOnline: true,
     });
+
+    // F-007 per-payment coverage (web 086): STAGE the link on the covered
+    // payments. The actual remote UPDATE (collection_payments.remittance_id) is
+    // pushed by lib/sync/remittance-link.ts once the remittance row itself has
+    // landed server-side (FK ordering) — it can't ride the generic outbox
+    // because collection_payments isn't an entity-registry table. Guarded to
+    // this collector's own, currently-unlinked, un-staged rows (idempotent on a
+    // retried submit). The row's INSERT-lane `status` is untouched.
+    if (input.paymentIds.length) {
+      await db.runAsync(
+        `UPDATE collection_payments
+            SET pending_remittance_id = ?, link_retry_count = 0, link_next_attempt_at = NULL, link_error = NULL
+          WHERE id IN (${inClause(input.paymentIds.length)})
+            AND collector_id = ? AND remittance_id IS NULL AND pending_remittance_id IS NULL`,
+        [id, ...input.paymentIds, collectorId],
+      );
+    }
 
     runSync(collectorId).catch((err) => console.error('[remittance-write] collection remit sync failed:', err));
     return 'submitted';
@@ -132,7 +172,17 @@ export async function submitCodRemittance(
       ? await uploadPhotoToBucket(input.signatureUri, `delivery/${driverId}/codremit-${id}-signature.jpg`, DELIVERY_BUCKET)
       : null;
 
-    const poIdsJson = JSON.stringify(input.poIds);
+    // Back-compat: derive the distinct po_ids of the covered COD payments for
+    // `cod_remittances.po_ids`. The per-payment link (staged below) is now the
+    // source of truth for coverage.
+    const poRows = input.paymentIds.length
+      ? await db.getAllAsync<{ po_id: string }>(
+          `SELECT DISTINCT po_id FROM cod_payments WHERE id IN (${inClause(input.paymentIds.length)})`,
+          input.paymentIds,
+        )
+      : [];
+    const poIds = poRows.map((r) => r.po_id);
+    const poIdsJson = JSON.stringify(poIds);
     await db.runAsync(
       `INSERT INTO cod_remittances
          (id, driver_id, amount_remitted, amount_collected, status, receiver_name,
@@ -153,17 +203,33 @@ export async function submitCodRemittance(
         status: 'submitted',
         receiver_name: receiverName,
         receiver_signature_url: signatureUrl,
-        po_ids: input.poIds,
+        po_ids: poIds,
         submitted_at: now,
       }),
       createdAt: now,
       createdOnline: true,
     });
 
-    // Mark the covered POs remitted so they drop off "COD on hand". There's no
-    // trigger for this (web note) — the driver owns cod_remitted, and they have
-    // an UPDATE policy on purchase_orders, so each flag rides the normal outbox.
-    for (const poId of input.poIds) {
+    // F-007 per-payment coverage (web 087): STAGE the link on the covered COD
+    // payments — pushed by lib/sync/remittance-link.ts after the cod_remittances
+    // row lands (FK ordering). Own, unlinked, un-staged rows only.
+    if (input.paymentIds.length) {
+      await db.runAsync(
+        `UPDATE cod_payments
+            SET pending_cod_remittance_id = ?, link_retry_count = 0, link_next_attempt_at = NULL, link_error = NULL
+          WHERE id IN (${inClause(input.paymentIds.length)})
+            AND driver_id = ? AND cod_remittance_id IS NULL AND pending_cod_remittance_id IS NULL`,
+        [id, ...input.paymentIds, driverId],
+      );
+    }
+
+    // Back-compat: keep flagging the covered POs `cod_remitted` (per-PO boolean,
+    // web note: no trigger, driver owns it via their purchase_orders UPDATE
+    // policy). Mobile on-hand no longer reads this — the per-payment link above
+    // is authoritative — but anything on the web still keying off cod_remitted
+    // keeps working. A later top-up on a flagged PO is a fresh cod_payment with
+    // a NULL link, so it correctly reappears as on hand regardless of this flag.
+    for (const poId of poIds) {
       await db.runAsync(
         `UPDATE purchase_orders SET cod_remitted = 1, sync_status = 'pending', local_updated_at = ? WHERE id = ?`,
         [now, poId],

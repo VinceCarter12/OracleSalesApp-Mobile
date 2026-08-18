@@ -89,7 +89,7 @@ export default function CollectionRemitScreen() {
         destination: DESTINATION_REMOTE[destination],
         amountCollected: summary.total,
         amountRemitted: summary.total,
-        visitIds: summary.ids,
+        paymentIds: summary.ids,
         receiverName: isOffice ? receiver?.name ?? null : null,
         signedProofUri: (isOffice ? officeProofUri : outsideProofUri) ?? undefined,
         signatureUri,
