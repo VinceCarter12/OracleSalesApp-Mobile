@@ -2,7 +2,7 @@ import { useCallback, useState } from 'react';
 import { Pressable, RefreshControl, ScrollView, useWindowDimensions } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router, useFocusEffect } from 'expo-router';
-import { Bell, ClipboardList, Footprints, History, Hourglass, User, Vault } from 'lucide-react-native';
+import { Bell, ClipboardList, Footprints, History, Hourglass, Map, User, Vault } from 'lucide-react-native';
 import { Text, View, XStack, YStack } from 'tamagui';
 import { useBizlinkColors, BIZLINK_FONTS, BIZLINK_ON_INK, COLORS } from '../../lib/theme';
 import { useSession } from '../../lib/session-store';
@@ -170,6 +170,7 @@ export default function CollectionDashboardScreen() {
   const quickActionColumns = computeQuickActionColumns(windowWidth, 16);
   const quickActions = [
     <BizQuickAction key="today" icon={<ClipboardList size={20} color={BIZLINK_COLORS.ink} strokeWidth={1.75} />} label="Today's List" badgeCount={summary.pendingCount} onPress={() => router.push('/(collection)/today')} />,
+    <BizQuickAction key="map" icon={<Map size={20} color={BIZLINK_COLORS.ink} strokeWidth={1.75} />} label="Store Map" onPress={() => router.push('/(collection)/map')} />,
     <BizQuickAction key="remit" icon={<Vault size={20} color={BIZLINK_COLORS.ink} strokeWidth={1.75} />} label="Remit" onPress={() => router.push('/(collection)/remit')} />,
     <BizQuickAction key="history" icon={<History size={20} color={BIZLINK_COLORS.ink} strokeWidth={1.75} />} label="History" onPress={() => router.push('/(collection)/history')} />,
     <BizQuickAction key="account" icon={<User size={20} color={BIZLINK_COLORS.ink} strokeWidth={1.75} />} label="Account" onPress={() => router.push('/(collection)/account')} />,

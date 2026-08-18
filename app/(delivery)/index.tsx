@@ -2,7 +2,7 @@ import { useCallback, useState } from 'react';
 import { Pressable, RefreshControl, ScrollView, useWindowDimensions } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router, useFocusEffect } from 'expo-router';
-import { Bell, History, Package, PackageX, Truck, User, Vault } from 'lucide-react-native';
+import { Bell, History, Map, Package, PackageX, Truck, User, Vault } from 'lucide-react-native';
 import { Text, XStack, YStack } from 'tamagui';
 import { useBizlinkColors, BIZLINK_FONTS, COLORS } from '../../lib/theme';
 import { useSession } from '../../lib/session-store';
@@ -124,6 +124,7 @@ export default function DeliveryDashboardScreen() {
   const quickActionColumns = computeQuickActionColumns(windowWidth, 16);
   const quickActions = [
     <BizQuickAction key="po-list" icon={<Package size={20} color={BIZLINK_COLORS.ink} strokeWidth={1.75} />} label="PO List" badgeCount={summary.pendingCount} onPress={() => router.push('/(delivery)/pos')} />,
+    <BizQuickAction key="map" icon={<Map size={20} color={BIZLINK_COLORS.ink} strokeWidth={1.75} />} label="Store Map" onPress={() => router.push('/(delivery)/map')} />,
     <BizQuickAction key="remit" icon={<Vault size={20} color={BIZLINK_COLORS.ink} strokeWidth={1.75} />} label="Remit" onPress={() => router.push('/(delivery)/remit')} />,
     <BizQuickAction key="history" icon={<History size={20} color={BIZLINK_COLORS.ink} strokeWidth={1.75} />} label="History" onPress={() => router.push('/(delivery)/history')} />,
     <BizQuickAction key="account" icon={<User size={20} color={BIZLINK_COLORS.ink} strokeWidth={1.75} />} label="Account" onPress={() => router.push('/(delivery)/account')} />,
