@@ -527,6 +527,9 @@ export type Database = {
           remarks: string | null;
           paid_at: string;
           created_at: string;
+          // web 086: which remittance covers this payment (source of truth for
+          // per-payment remittance coverage). NULL = still on hand.
+          remittance_id: string | null;
         };
         Insert: Partial<Database['public']['Tables']['collection_payments']['Row']>;
         Update: Partial<Database['public']['Tables']['collection_payments']['Row']>;
@@ -549,6 +552,9 @@ export type Database = {
           remarks: string | null;
           paid_at: string;
           created_at: string;
+          // web 087: which COD remittance covers this payment (source of truth
+          // for per-payment coverage). NULL = still on hand.
+          cod_remittance_id: string | null;
         };
         Insert: Partial<Database['public']['Tables']['cod_payments']['Row']>;
         Update: Partial<Database['public']['Tables']['cod_payments']['Row']>;

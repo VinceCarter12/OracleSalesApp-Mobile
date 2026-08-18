@@ -104,29 +104,46 @@ compute per-payment on-hand, the phone needs to read every payment's
 
 ---
 
-## ✅ What MOBILE will build once web ships the above
+## ✅ What MOBILE built once web shipped the above — SHIPPED 2026-08-18
 
-1. **On-hand from the payment ledger.** Replace `useCollectionOnHand` /
-   `useCodOnHand`'s visit/PO scan with a sum over synced-down payments where
-   `remittance_id IS NULL`. Drops the `status IN ('collected','partial')` interim
-   filter entirely — a payment's remitted-ness no longer depends on its parent's
-   status, which removes the top-up stranding edge.
-2. **Remittance write links payments.** `submitCollectionRemittance` /
-   `submitCodRemittance` set `remittance_id` on the covered payment rows (their
-   ids replace / augment the `visit_ids` / `po_ids` payload) via the collector's
-   new narrow UPDATE policy, riding the outbox like any other edit.
-3. **Remove the interim `partial` inclusion + its warning comment** in
-   `lib/use-remittance.ts`, and this contract section.
+Web confirmed the per-payment schema is live: 070/073 grant "read own payments"
+SELECT RLS, 086/087 added `remittance_id`/`cod_remittance_id` + the narrow
+"link own payments to remittance" UPDATE RLS. Mobile then wired the full flow:
 
-## Local schema note (mobile)
-Adding the payment ledger to sync-down implies new local mirror tables
-(`collection_payments` already exists as an **outgoing queue**, schema v27 — the
-synced-down ledger is a different concern and may need its own table/columns +
-a schema bump). Flagged for whoever wires the pull.
+1. **Ledger sync-down.** `lib/sync/payment-ledger-sync-down.ts` pulls the
+   collector's/driver's OWN `collection_payments`/`cod_payments`
+   (`{id, visit_id/po_id, amount, payment_method, paid_at, created_at, link}`),
+   upserting server rows while preserving the local outbox/link columns. Called
+   best-effort from `syncDown()` after the remittances pulls.
+2. **On-hand from the ledger.** `useCollectionOnHand`/`useCodOnHand`
+   (`lib/use-remittance.ts`) now sum this agent's `status='synced'` payments
+   where the link (and the staged `pending_*_remittance_id`) IS NULL, and return
+   PAYMENT ids. The interim `status IN ('collected','partial')` visit scan and
+   the per-PO `cod_remitted=0` scan are gone — top-up stranding is fixed.
+3. **Submit links payments.** `submitCollectionRemittance`/`submitCodRemittance`
+   (`lib/remittance-write.ts`) take `paymentIds`, still derive+write
+   `visit_ids`/`po_ids` for back-compat, and STAGE `pending_*_remittance_id` on
+   the covered rows.
+4. **Link push lane.** `lib/sync/remittance-link.ts` pushes the staged link
+   (`UPDATE …_payments SET …remittance_id`) once the parent remittance row is
+   locally `sync_status='synced'` (FK ordering), with retry/backoff. Wired into
+   the sync pass after `processOutbox` + the payment insert lanes, before
+   `syncDown` — so a submit + its links + the web-side ack SMS settle in one pass.
 
-## Interim state currently shipped (mobile, 2026-08-10)
-- `lib/use-remittance.ts` — `useCollectionOnHand` includes `partial` visits
-  (Bug 2a), with a `⚠️ KNOWN INTERIM LIMITATION` comment pointing here.
-- `app/(collection)/index.tsx` — hero reads `useCollectionOnHand().total` (Bug 1).
-- `lib/collection-delivery-data.ts` — `getCollectionSummary().forRemittance`
-  deprecated in a comment (kept for back-compat, no longer drives the hero).
+### Local schema (mobile) — shipped
+`ensureRemittanceLinkColumns()` in `lib/db.ts` adds, idempotently (like
+`ensureSelfieProofColumns`, no `LATEST_SCHEMA_VERSION` bump), to
+`collection_payments`: `remittance_id`, `pending_remittance_id`,
+`link_retry_count`, `link_next_attempt_at`, `link_error`; and the
+`cod_remittance_id`/`pending_cod_remittance_id`/`link_*` twins on `cod_payments`.
+The existing insert-queue columns (`status`, photo uris) are untouched — the same
+table now doubles as the synced-down ledger.
+
+### Back-compat retained
+`remittances.visit_ids` / `cod_remittances.po_ids` are still written (derived from
+the covered payments), and `submitCodRemittance` still flags `purchase_orders.
+cod_remitted` — mobile no longer reads it, but web paths keying off it keep working.
+
+### Still WEB-owned
+The customer-acknowledgement SMS fires server-side when the link column is set
+(mobile just performs the UPDATE) — nothing further owed by mobile.

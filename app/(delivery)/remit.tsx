@@ -50,7 +50,7 @@ export default function DeliveryRemitScreen() {
       const result = await submitCodRemittance(db, profileId, {
         amountCollected: summary.total,
         amountRemitted: summary.total,
-        poIds: summary.ids,
+        paymentIds: summary.ids,
         receiverName: receiver.name,
         signatureUri,
       });

@@ -18,6 +18,7 @@ import { beginSyncProgress, endSyncProgress } from './sync/sync-progress';
 import { reconcileAdditionalAcks } from './sync/additional-acks';
 import { processCollectionPayments } from './sync/collection-payments';
 import { processCodPayments } from './sync/cod-payments';
+import { processRemittanceLinks } from './sync/remittance-link';
 import { uploadPendingAvatar } from './profile-avatar';
 import { retryFailedPendingUpload, type PendingUploadStatus } from './sync/pending-upload-status';
 import { createCoalescingRunner } from './sync/coalescing-runner';
@@ -261,6 +262,16 @@ async function runSyncOnce(agentId: string, teamId?: string | null, role?: UserR
     console.error('processCodPayments failed', err);
     return { synced: 0, failed: 0 };
   });
+  // F-007 per-payment remittance coverage (web 086/087): push any remittance
+  // links staged at submit onto their covered payments. Runs AFTER processOutbox
+  // (which pushed the remittance row this link references — FK ordering, enforced
+  // again by the lane's own parent-'synced' gate) and BEFORE syncDown (so the
+  // server can fire the customer-acknowledgement SMS and the pulled-back ledger
+  // reflects the new links this same pass). Best-effort, like the payment lanes.
+  const remittanceLinkResult = await processRemittanceLinks(db, agentId).catch((err: unknown) => {
+    console.error('processRemittanceLinks failed', err);
+    return { synced: 0, failed: 0 };
+  });
   await syncDown(agentId, teamId, role);
   // F-007 Additional Collection (web 068/069): acknowledge additional stores
   // back to the server via the collector-only RPCs — received (just pulled) and
@@ -281,7 +292,12 @@ async function runSyncOnce(agentId: string, teamId?: string | null, role?: UserR
   // sync-down mirror has the server-confirmed data.
   notifySyncComplete();
   return {
-    synced: outboxResult.synced + photoPatchResult.synced + paymentResult.synced + codPaymentResult.synced,
+    synced:
+      outboxResult.synced +
+      photoPatchResult.synced +
+      paymentResult.synced +
+      codPaymentResult.synced +
+      remittanceLinkResult.synced,
     failed:
       outboxResult.failed +
       outboxResult.conflicted +
@@ -289,7 +305,8 @@ async function runSyncOnce(agentId: string, teamId?: string | null, role?: UserR
       photoPatchResult.failed +
       photoPatchResult.conflicted +
       paymentResult.failed +
-      codPaymentResult.failed,
+      codPaymentResult.failed +
+      remittanceLinkResult.failed,
     connectivity,
   };
 }

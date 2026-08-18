@@ -53,6 +53,41 @@ async function ensureSelfieProofColumns(db: SQLiteDatabase): Promise<void> {
 }
 
 /**
+ * F-007 per-payment remittance coverage (web 086/087, REMITTANCE_CONTRACT.md,
+ * 2026-08-18). The remittance link moves from per-visit/per-PO to per-PAYMENT:
+ *
+ *  - `remittance_id` / `cod_remittance_id` — the SERVER-authoritative link,
+ *    pulled down by the payment-ledger sync (lib/sync/payment-ledger-sync-down.ts).
+ *    NULL ⇔ the payment is still "on hand".
+ *  - `pending_*_remittance_id` — a link STAGED locally at remittance submit,
+ *    awaiting its own push (lib/sync/remittance-link.ts). Kept distinct from the
+ *    authoritative column so a sync-down of a not-yet-pushed link can't clobber
+ *    the staged intent, and so on-hand excludes a payment the moment it's staked
+ *    to a remittance.
+ *  - `link_retry_count` / `link_next_attempt_at` / `link_error` — the link
+ *    push's own retry/backoff bookkeeping, independent of the INSERT lane's
+ *    `status`/`retry_count` (a payment row is already `status='synced'` by the
+ *    time its link is pushed).
+ *
+ * Additive + idempotent (addColumnIfMissing), so — like ensureSelfieProofColumns
+ * above — this runs unconditionally on every launch rather than behind a version
+ * gate, since a device already at LATEST_SCHEMA_VERSION would otherwise never
+ * receive them.
+ */
+async function ensureRemittanceLinkColumns(db: SQLiteDatabase): Promise<void> {
+  await addColumnIfMissing(db, 'collection_payments', 'remittance_id', 'TEXT');
+  await addColumnIfMissing(db, 'collection_payments', 'pending_remittance_id', 'TEXT');
+  await addColumnIfMissing(db, 'collection_payments', 'link_retry_count', 'INTEGER NOT NULL DEFAULT 0');
+  await addColumnIfMissing(db, 'collection_payments', 'link_next_attempt_at', 'TEXT');
+  await addColumnIfMissing(db, 'collection_payments', 'link_error', 'TEXT');
+  await addColumnIfMissing(db, 'cod_payments', 'cod_remittance_id', 'TEXT');
+  await addColumnIfMissing(db, 'cod_payments', 'pending_cod_remittance_id', 'TEXT');
+  await addColumnIfMissing(db, 'cod_payments', 'link_retry_count', 'INTEGER NOT NULL DEFAULT 0');
+  await addColumnIfMissing(db, 'cod_payments', 'link_next_attempt_at', 'TEXT');
+  await addColumnIfMissing(db, 'cod_payments', 'link_error', 'TEXT');
+}
+
+/**
  * B-111 (2026-08-10): `collection_payments` (v28) and `cod_payments` (v30)
  * are additive tables gated behind their own `currentVersion === N` block, so
  * (same class of gap as `ensureSelfieProofColumns` above) a device whose
@@ -199,6 +234,7 @@ export async function migrateDbIfNeeded(db: SQLiteDatabase): Promise<void> {
   if (currentVersion >= LATEST_SCHEMA_VERSION) {
     await ensureSelfieProofColumns(db);
     await ensureCriticalTablesExist(db);
+    await ensureRemittanceLinkColumns(db);
     await ensureJointManagerTablesExist(db);
     await retireLegacyJointManagerData(db);
     return;
@@ -1536,6 +1572,7 @@ export async function migrateDbIfNeeded(db: SQLiteDatabase): Promise<void> {
   // traversed an older path with a partially-applied v30 block.
   await ensureSelfieProofColumns(db);
   await ensureCriticalTablesExist(db);
+  await ensureRemittanceLinkColumns(db);
   await ensureJointManagerTablesExist(db);
   await retireLegacyJointManagerData(db);
 
