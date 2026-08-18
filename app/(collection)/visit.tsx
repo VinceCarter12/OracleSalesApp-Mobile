@@ -36,11 +36,11 @@ import { useCollectionStore } from '../../lib/use-collection-delivery';
 /**
  * F-007 Collect Payment — wireframe `c-visit`. Opened from a pending row in
  * Today's List. Auto-captures GPS + timestamp, takes a payment-method +
- * payment photo + amount + delivery-receipt photo, then marks the store
- * collected. The "✓ Collected" button unlocks only when amount > 0 AND both
- * photos are captured (wireframe cCheckCollectForm). The collect WRITE goes
- * through collection-delivery-write.ts (local update + outbox push); both
- * captured photos ride the shared pending_uploads lane (Phase 2b).
+ * payment photo + amount, then marks the store collected. The "✓ Collected"
+ * button unlocks only when amount > 0 AND the payment photo is captured
+ * (wireframe cCheckCollectForm). The collect WRITE goes through
+ * collection-delivery-write.ts (local update + outbox push); the captured photo
+ * rides the shared pending_uploads lane (Phase 2b).
  *
  * Amount entry deliberately shows NO target/expected amount (2026-07-25
  * anchoring-bias decision) — the collector types the actual amount received.
@@ -135,7 +135,6 @@ export default function CollectPaymentScreen() {
 
   const [payMode, setPayMode] = useState<PayMode>('cash');
   const [payPhotoUri, setPayPhotoUri] = useState<string | null>(null);
-  const [receiptPhotoUri, setReceiptPhotoUri] = useState<string | null>(null);
   const [amount, setAmount] = useState('');
   // Flips true once the collector leaves the amount field — an early trigger
   // for the red "required" styling before they even tap Collected.
@@ -157,12 +156,6 @@ export default function CollectPaymentScreen() {
   const nowIso = useNow();
 
   const showAmount = METHODS_WITH_AMOUNT.includes(payMode);
-  // Delivery-receipt payments are the delivery receipt itself — just the one
-  // photo + remarks, no separate receipt slot.
-  const isDeliveryReceipt = payMode === 'delivery_receipt';
-  // The separate delivery-receipt photo is only for cash/check/gcash. Counter
-  // takes no receipt slot, and delivery-receipt is its own receipt already.
-  const showReceiptPhoto = payMode !== 'counter' && !isDeliveryReceipt;
   const amountValue = parseFloat((amount || '').replace(/[^\d.]/g, ''));
   const amountValid = amountValue > 0;
   const claimedByMe = !!store?.claimedById && store.claimedById === profileId;
@@ -171,7 +164,6 @@ export default function CollectPaymentScreen() {
     !!payPhotoUri &&
     signed &&
     (showAmount ? amountValid : true) &&
-    (showReceiptPhoto ? !!receiptPhotoUri : true) &&
     !claimedByOther;
 
   // Red "required" flags. Amount lights up on blur (early) or on a submit
@@ -179,7 +171,6 @@ export default function CollectPaymentScreen() {
   // have no blur event). A captured/valid field never shows red.
   const showAmountError = showAmount && !amountValid && (amountTouched || attempted);
   const showPayPhotoError = attempted && !payPhotoUri;
-  const showReceiptError = attempted && showReceiptPhoto && !receiptPhotoUri;
   const showSignError = attempted && !signed;
   // Remaining balance still owed on this store (web 070): original due minus
   // what's already been paid across prior partial payments. This is what a new
@@ -270,7 +261,6 @@ export default function CollectPaymentScreen() {
       gps: fix ?? undefined,
       remarks,
       paymentPhotoUri: payPhotoUri ?? undefined,
-      receiptPhotoUri: showReceiptPhoto ? receiptPhotoUri ?? undefined : undefined,
       signatureUri,
     });
     if (settlesFull) {
@@ -466,26 +456,6 @@ export default function CollectPaymentScreen() {
                 amount is shown ahead of time, so you enter what was actually received.
               </Text>
             </XStack>
-          </>
-        ) : null}
-
-        {/* Delivery receipt photo — only for cash/check/gcash. Counter takes no
-            receipt, and the delivery-receipt method's own photo IS the receipt. */}
-        {showReceiptPhoto ? (
-          <>
-            <BizSectionHeader title="Delivery Receipt" helper="· camera only" />
-            <PhotoSlot
-              title="Take a photo of the delivery receipt"
-              subtitle="Compressed ≤3MB · saved on your phone"
-              uri={receiptPhotoUri}
-              onCaptured={setReceiptPhotoUri}
-              error={showReceiptError}
-            />
-            {showReceiptError ? (
-              <Text fontSize={11.5} fontFamily={BIZLINK_FONTS.medium} color={COLORS.ledgeRed} marginTop={6}>
-                A delivery-receipt photo is required.
-              </Text>
-            ) : null}
           </>
         ) : null}
 
