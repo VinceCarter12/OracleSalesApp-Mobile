@@ -109,6 +109,36 @@ async function ensureCriticalTablesExist(db: SQLiteDatabase): Promise<void> {
     );
     CREATE INDEX IF NOT EXISTS idx_cod_payments_status ON cod_payments (status);
     CREATE INDEX IF NOT EXISTS idx_cod_payments_po ON cod_payments (po_id);
+
+    -- Store Locations (C&D maps, 2026-08-17): a store can RELOCATE, so a client
+    -- keeps a NUMBERED list of candidate locations (Location 1, 2, 3…), one
+    -- flagged is_current, set directly by the field officer on the ground. This
+    -- is the LOCAL-FIRST mirror; the web-owned table + sync are specified in
+    -- STORE_LOCATIONS_CONTRACT.md and stay web-blocked until that ships (the
+    -- generated types/database.ts has no client_locations yet, so the remote
+    -- push/apply wiring is deferred, exactly like partial COD before web 073).
+    -- Lives here (not a versioned block) because LATEST_SCHEMA_VERSION early-
+    -- returns devices at >=34 before later blocks run — same additive-table
+    -- reasoning as collection_payments/cod_payments above (B-111).
+    CREATE TABLE IF NOT EXISTS client_locations (
+      id TEXT PRIMARY KEY NOT NULL,
+      client_id TEXT NOT NULL,
+      seq INTEGER NOT NULL,
+      label TEXT,
+      lat REAL NOT NULL,
+      lng REAL NOT NULL,
+      is_current INTEGER NOT NULL DEFAULT 0,
+      source TEXT NOT NULL DEFAULT 'field_set',
+      set_by TEXT,
+      set_by_name TEXT,
+      captured_at TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      local_updated_at TEXT,
+      sync_status TEXT NOT NULL DEFAULT 'pending',
+      sync_error TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_client_locations_client ON client_locations (client_id);
+    CREATE INDEX IF NOT EXISTS idx_client_locations_current ON client_locations (client_id, is_current);
   `);
 }
 

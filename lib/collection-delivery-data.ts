@@ -121,6 +121,8 @@ export function sortAdditionalFirst(stores: CollectionStore[]): CollectionStore[
 export interface CollectionStore {
   /** UUID string (web `collection_visits.id`) — ints don't survive offline creation across devices. */
   id: string;
+  /** web `collection_visits.client_id` — the store's client row; needed to resolve/set its real map location (client_locations + office pin are keyed by client). */
+  clientId?: string;
   name: string;
   area: string;
   initials: string;
@@ -203,6 +205,8 @@ export function remainingCod(po: Pick<DeliveryPo, 'codDue' | 'codAmount'>): numb
 export interface DeliveryPo {
   /** UUID string (web `purchase_orders.id`). */
   id: string;
+  /** web `purchase_orders.client_id` — the store's client row; needed to resolve/set its real map location (client_locations + office pin are keyed by client). */
+  clientId?: string;
   /** `po_number` — external, printed on the paper PO, deliberately NOT unique. */
   po: string;
   client: string;

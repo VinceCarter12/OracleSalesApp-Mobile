@@ -101,6 +101,7 @@ export function rowToStore(row: LocalCollectionVisitRow): CollectionStore {
   const pending = row.status === 'pending';
   return {
     id: row.id,
+    clientId: row.client_id ?? undefined,
     name: row.client_name ?? '(walang pangalan)',
     area: row.area ?? '',
     initials: initialsFromCompany(row.client_name),
@@ -135,6 +136,7 @@ export function rowToPo(row: LocalPurchaseOrderRow): DeliveryPo {
   const pending = row.status === 'pending';
   return {
     id: row.id,
+    clientId: row.client_id ?? undefined,
     po: row.po_number ?? '',
     client: row.client_name ?? '(walang pangalan)',
     area: row.area ?? '',
