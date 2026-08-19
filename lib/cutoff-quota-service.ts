@@ -21,6 +21,41 @@ export interface CutoffQuotaCardData {
   confirmedCount: number;
   /** Locally-computed count of not-yet-synced qualifying meetings — kept as a SEPARATE number from confirmedCount, never merged (O-8). */
   pendingCount: number;
+  /**
+   * The RSR's day (web migration 109). Non-null ONLY for an RSR, and it is what
+   * the card keys its layout off: a number here means this role is measured by
+   * the day and the day leads, with the month kept underneath as the
+   * reconciling figure. Null for Sales and Manager, who are genuinely monthly,
+   * and null on a device that has not synced since 109 shipped — both of which
+   * the card renders identically as month-only.
+   */
+  dailyTarget: number | null;
+  /** Server-confirmed visits dated today (Manila). Returned for every role; only shown where dailyTarget is non-null. */
+  todayConfirmed: number;
+  /**
+   * Weekday and not a holiday, per the server. Null means "not synced since 109
+   * shipped" and is deliberately NOT the same as false — the card treats only an
+   * explicit false as a rest day, so a stale device never wrongly tells an RSR
+   * they are off today.
+   */
+  todayIsWorkingDay: boolean | null;
+  /** The pending (unsynced) half of today alone, the daily counterpart of pendingCount. */
+  pendingTodayCount: number;
+  /**
+   * Whether `todayConfirmed` / `todayIsWorkingDay` actually describe TODAY.
+   *
+   * Those two are server values captured at sync time, and unlike the monthly
+   * figures they expire at midnight: a phone that synced at 17:00 Wednesday and
+   * is opened offline on Thursday still holds Wednesday's count. The month
+   * degrades gracefully in that situation — one day of drift out of ~21 — but a
+   * DAILY number from yesterday is not stale, it is simply wrong, and the card
+   * would otherwise print it beside the device's current date.
+   *
+   * False means "we have no figure for today", which the card renders as such
+   * rather than showing a number it cannot stand behind. The locally-counted
+   * pending chip is unaffected and keeps working fully offline.
+   */
+  dailyIsCurrent: boolean;
 }
 
 export interface CutoffClientAllowanceData {
@@ -36,6 +71,11 @@ interface RoleUsageRow {
   ends_on: string | null;
   target: number | null;
   confirmed_count: number | null;
+  daily_target: number | null;
+  today_confirmed: number | null;
+  /** INTEGER 0/1 in SQLite (lib/db.ts has no boolean type), or null when never synced. */
+  today_is_working_day: number | null;
+  synced_at: string | null;
 }
 
 
@@ -57,7 +97,7 @@ async function countPendingQualifyingMeetings(
   const db = await getDb();
   const rows = await db.getAllAsync<MeetingCandidateRow>(
     `SELECT m.id, m.outcome, m.agendas, m.client_status_at_meeting,
-            m.start_photo_url, m.end_photo_url, m.start_captured_at,
+            m.start_photo_url, m.end_photo_url, m.selfie_url, m.start_captured_at,
             (SELECT p.status
                FROM po_confirmation_requests p
               WHERE p.meeting_id = m.id
@@ -96,18 +136,34 @@ function formatPeriodLabel(label: string | null, startsOn: string | null, endsOn
 export async function getCutoffQuotaCard(agentId: string, _role: CutoffQuotaRole): Promise<CutoffQuotaCardData | null> {
   const db = await getDb();
   const row = await db.getFirstAsync<RoleUsageRow>(
-    'SELECT period_id, period_label, starts_on, ends_on, target, confirmed_count FROM cutoff_role_usage_snapshot WHERE agent_id = ?',
+    `SELECT period_id, period_label, starts_on, ends_on, target, confirmed_count,
+            daily_target, today_confirmed, today_is_working_day, synced_at
+       FROM cutoff_role_usage_snapshot WHERE agent_id = ?`,
     [agentId]
   );
   if (!row || !row.period_id || !row.starts_on || !row.ends_on) return null;
 
   const pendingCount = await countPendingQualifyingMeetings(agentId, row.starts_on, row.ends_on);
+  // Today's pending is counted over the single-day range [today, today] by the
+  // same qualification rules as the month — an RSR reading a daily card needs
+  // the pending chip beside it to mean today too, not the month it sits in.
+  // Manila, matching the server's own notion of "today" in migration 109.
+  const today = manilaCalendarDate(new Date().toISOString());
+  const pendingTodayCount = await countPendingQualifyingMeetings(agentId, today, today);
+  // Both sides in Manila, matching the server's own notion of the day: the
+  // snapshot's daily figures belong to the calendar date the sync happened on.
+  const dailyIsCurrent = row.synced_at != null && manilaCalendarDate(row.synced_at) === today;
 
   return {
     periodLabel: formatPeriodLabel(row.period_label, row.starts_on, row.ends_on),
     target: row.target,
     confirmedCount: row.confirmed_count ?? 0,
     pendingCount,
+    dailyTarget: row.daily_target,
+    todayConfirmed: row.today_confirmed ?? 0,
+    todayIsWorkingDay: row.today_is_working_day == null ? null : row.today_is_working_day === 1,
+    pendingTodayCount,
+    dailyIsCurrent,
   };
 }
 

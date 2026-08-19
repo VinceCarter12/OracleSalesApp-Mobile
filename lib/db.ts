@@ -88,6 +88,120 @@ async function ensureRemittanceLinkColumns(db: SQLiteDatabase): Promise<void> {
 }
 
 /**
+ * Quota targets went MONTHLY and managers gained one of their own (web
+ * migration 105, 2026-08-16): Sales 35/month, Manager 20/month, RSR 16 per
+ * working day. `get_my_cutoff_usage_summary()` now returns a real target for a
+ * `sales_manager` caller, but `cutoff_role_usage_snapshot`'s CHECK (v23) allows
+ * only sales_specialist/rsr, so the insert in lib/sync/cutoff-sync-down.ts
+ * would fail on every sync and a manager would sit on "No quota configured"
+ * forever.
+ *
+ * Deliberately NOT a versioned block: LATEST_SCHEMA_VERSION is 34 and every
+ * production device is parked there, so `migrateDbIfNeeded` early-returns
+ * before any later block runs — the same reasoning the remittance columns and
+ * `client_locations` above are written under. Bumping the constant to reach a
+ * v36 block would ALSO run the never-executed v34->35 and v35->36 blocks on
+ * the whole fleet, and v35->36 rebuilds `po_confirmation_requests` with a CHECK
+ * that omits 'superseded' — a device holding such a row (writable 2026-08-08 to
+ * 2026-08-10, before B-098 replaced it with 'duplicate_blocked') would throw
+ * mid-migration, and since `getDb()` caches the rejected promise and
+ * `PRAGMA user_version` is never written, the app would fail to open its
+ * database on every launch. Not worth it for one CHECK constraint.
+ *
+ * SQLite cannot ALTER a CHECK, so this is the usual create-new -> copy -> drop
+ * -> rename rebuild, guarded on the stored DDL so it runs at most once per
+ * device and is a no-op on every launch thereafter.
+ */
+async function ensureCutoffRoleUsageRoles(db: SQLiteDatabase): Promise<void> {
+  const existing = await db.getFirstAsync<{ sql: string | null }>(
+    "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'cutoff_role_usage_snapshot'"
+  );
+  if (existing?.sql?.includes('sales_manager')) return;
+
+  // Absent entirely — either a device that never reached v23, or one whose
+  // previous run through this function died between the DROP and the RENAME
+  // below (execAsync runs its statements in sequence, not atomically). Create
+  // it outright at the new shape: this table is a pure server-derived mirror,
+  // so there is nothing to preserve and the next sync-down refills it. Without
+  // this branch, an interrupted rebuild would leave the table missing forever
+  // and every later run would return early.
+  if (!existing?.sql) {
+    await db.execAsync(`
+      DROP TABLE IF EXISTS cutoff_role_usage_snapshot_new;
+      CREATE TABLE IF NOT EXISTS cutoff_role_usage_snapshot (
+        agent_id TEXT PRIMARY KEY NOT NULL,
+        period_id TEXT,
+        period_label TEXT,
+        starts_on TEXT,
+        ends_on TEXT,
+        role TEXT NOT NULL CHECK (role IN ('sales_specialist', 'rsr', 'sales_manager')),
+        target INTEGER,
+        confirmed_count INTEGER,
+        remaining INTEGER,
+        synced_at TEXT NOT NULL
+      );
+    `);
+    return;
+  }
+
+  await db.execAsync(`
+    DROP TABLE IF EXISTS cutoff_role_usage_snapshot_new;
+
+    CREATE TABLE cutoff_role_usage_snapshot_new (
+      agent_id TEXT PRIMARY KEY NOT NULL,
+      period_id TEXT,
+      period_label TEXT,
+      starts_on TEXT,
+      ends_on TEXT,
+      role TEXT NOT NULL CHECK (role IN ('sales_specialist', 'rsr', 'sales_manager')),
+      target INTEGER,
+      confirmed_count INTEGER,
+      remaining INTEGER,
+      synced_at TEXT NOT NULL
+    );
+
+    INSERT INTO cutoff_role_usage_snapshot_new
+      (agent_id, period_id, period_label, starts_on, ends_on, role,
+       target, confirmed_count, remaining, synced_at)
+    SELECT
+      agent_id, period_id, period_label, starts_on, ends_on, role,
+      target, confirmed_count, remaining, synced_at
+    FROM cutoff_role_usage_snapshot;
+
+    DROP TABLE cutoff_role_usage_snapshot;
+    ALTER TABLE cutoff_role_usage_snapshot_new RENAME TO cutoff_role_usage_snapshot;
+  `);
+}
+
+/**
+ * The RSR's DAY, which web migration 109 (2026-08-19) put back on the read
+ * surface. 105 had expressed an RSR's 16-per-working-day as a monthly number
+ * (16 x working days = 336), which is right for the admin report and useless on
+ * a phone — "41 / 336" on the 4th cannot say whether the day is on track.
+ * `get_my_cutoff_usage_summary()` now also returns `daily_target`,
+ * `today_confirmed` and `today_is_working_day`, and these are where they land.
+ *
+ * Purely additive, so unlike `ensureCutoffRoleUsageRoles` above there is no
+ * table rebuild here — `addColumnIfMissing` checks `PRAGMA table_info` first
+ * and is a no-op on every launch after the first.
+ *
+ * MUST run after `ensureCutoffRoleUsageRoles`, and the call sites below keep
+ * that order. That function rebuilds the table by copying an explicit column
+ * list into a freshly created one; if it ran second it would build a table
+ * without these three and silently drop them again.
+ *
+ * `today_is_working_day` is INTEGER because SQLite has no boolean — the server
+ * sends a real boolean and lib/sync/cutoff-sync-down.ts narrows it to 0/1.
+ * Nullable with no default: a device that has not synced since 109 shipped has
+ * no answer for it yet, and null must read as "unknown", not as "rest day".
+ */
+async function ensureCutoffDailyQuotaColumns(db: SQLiteDatabase): Promise<void> {
+  await addColumnIfMissing(db, 'cutoff_role_usage_snapshot', 'daily_target', 'INTEGER');
+  await addColumnIfMissing(db, 'cutoff_role_usage_snapshot', 'today_confirmed', 'INTEGER');
+  await addColumnIfMissing(db, 'cutoff_role_usage_snapshot', 'today_is_working_day', 'INTEGER');
+}
+
+/**
  * B-111 (2026-08-10): `collection_payments` (v28) and `cod_payments` (v30)
  * are additive tables gated behind their own `currentVersion === N` block, so
  * (same class of gap as `ensureSelfieProofColumns` above) a device whose
@@ -235,6 +349,8 @@ export async function migrateDbIfNeeded(db: SQLiteDatabase): Promise<void> {
     await ensureSelfieProofColumns(db);
     await ensureCriticalTablesExist(db);
     await ensureRemittanceLinkColumns(db);
+    await ensureCutoffRoleUsageRoles(db);
+    await ensureCutoffDailyQuotaColumns(db);
     await ensureJointManagerTablesExist(db);
     await retireLegacyJointManagerData(db);
     return;
@@ -1573,6 +1689,8 @@ export async function migrateDbIfNeeded(db: SQLiteDatabase): Promise<void> {
   await ensureSelfieProofColumns(db);
   await ensureCriticalTablesExist(db);
   await ensureRemittanceLinkColumns(db);
+  await ensureCutoffRoleUsageRoles(db);
+  await ensureCutoffDailyQuotaColumns(db);
   await ensureJointManagerTablesExist(db);
   await retireLegacyJointManagerData(db);
 
