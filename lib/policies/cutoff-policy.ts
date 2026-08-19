@@ -22,8 +22,15 @@ import type { Client, MeetingMode, MeetingOutcome, MeetingValidityStatus, UserRo
 // exact 'Rescheduled'/'No Show' semantics cannot be implemented until
 // Batch 7B either adds those outcome values or clarifies the mapping.
 
-/** Roles that receive an independently configured quota target (ADR-053 O-6). Manager has no personal quota in this batch. */
-export type CutoffQuotaRole = Extract<UserRole, 'sales_specialist' | 'rsr'>;
+/**
+ * Roles that receive an independently configured quota target (ADR-053 O-6).
+ *
+ * `sales_manager` joined them in web migration 105 (2026-08-16). Before that a
+ * manager was measured against whatever their team was (web migration 076), so
+ * they had no number of their own and were deliberately excluded here; they now
+ * carry a flat monthly target that does not vary by the kind of team they run.
+ */
+export type CutoffQuotaRole = Extract<UserRole, 'sales_specialist' | 'rsr' | 'sales_manager'>;
 
 export interface CutoffPeriod {
   id: string;

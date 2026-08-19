@@ -14,6 +14,7 @@ import { WeeklyMeetingsChart, WEEKDAY_LABELS, meetingsForWeekday } from '../../.
 import { ResultMeetingRow, ResultClientRow } from '../../../components/reports/PerformanceResultRows';
 import { FadeInPanel } from '../../../components/reports/FadeInPanel';
 import type { Meeting } from '../../../types';
+import type { CutoffQuotaRole } from '../../../lib/policies/cutoff-policy';
 
 /** Drill-down selection driving the results panel below the stats/chart — only one active at a time. */
 type PerformanceFilter =
@@ -38,7 +39,11 @@ export default function MyPerformanceScreen() {
   const { meetings } = useMeetings();
   const { clients } = useClients();
   const { role, profileId } = useSession();
-  const isCutoffQuotaRole = role === 'sales_specialist' || role === 'rsr';
+  // Managers carry a flat monthly target of their own as of 2026-08-16 (web
+  // migration 105), so they see this card too. Narrowed rather than coerced —
+  // the old ternary would have handed the card 'sales_specialist' for them.
+  const quotaRole: CutoffQuotaRole | null =
+    role === 'sales_specialist' || role === 'rsr' || role === 'sales_manager' ? role : null;
   const [filter, setFilter] = useState<PerformanceFilter | null>(null);
 
   const now = new Date();
@@ -141,9 +146,7 @@ export default function MyPerformanceScreen() {
           </YStack>
         </XStack>
 
-        {isCutoffQuotaRole ? (
-          <CutoffQuotaCard agentId={profileId} role={role === 'rsr' ? 'rsr' : 'sales_specialist'} />
-        ) : null}
+        {quotaRole ? <CutoffQuotaCard agentId={profileId} role={quotaRole} /> : null}
 
         <WeeklyMeetingsChart
           meetings={meetings}

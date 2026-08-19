@@ -12,10 +12,10 @@ import { manilaCalendarDate } from '../manila-calendar';
 // empty — response wholesale-rebuilds the snapshot table (a period closing,
 // a target being unset, etc. must disappear locally, not linger).
 //
-// Called ONLY from lib/sync-down.ts's syncDown(), and ONLY when
-// isFeatureEnabled('cutoff_quota_v1') is true — see that file's guard. When
-// the flag is OFF this module is never imported into an executing code path
-// at runtime beyond the guarded call site, so no network call happens.
+// Called ONLY from lib/sync-down.ts's syncDown(), for EVERY signed-in role.
+// The `cutoff_quota_v1` gate this comment used to describe was removed on
+// 2026-08-04 (see the call site at lib/sync-down.ts) and these pulls now always
+// run; roles that carry no quota are handled by QUOTA_ROLES below instead.
 
 const SYNC_TIMEOUT_MS = 15000;
 
@@ -93,18 +93,33 @@ interface CutoffUsageSummaryRow {
   target: number | null;
   confirmed_count: number | null;
   remaining: number | null;
+  // Web migration 109 (2026-08-19). Appended after the original eight, which
+  // kept their name, type and position — so a build older than this one reads
+  // the same JSON and simply never sees these. Optional here for the reverse
+  // case: this build talking to a database where 109 has not been applied yet,
+  // where they are absent rather than null.
+  daily_target?: number | null;
+  today_confirmed?: number | null;
+  today_is_working_day?: boolean | null;
 }
 
-// The quota is a Sales-Specialist/RSR concept only (ADR-053) — those are the
-// sole roles with a target, and `cutoff_role_usage_snapshot` enforces it with
-// a CHECK (role IN ('sales_specialist', 'rsr')). But this pull now runs for
-// EVERY signed-in role (the `cutoff_quota_v1` gate was removed), so a manager
-// (or any non-quota role) reaches here too. Their session has no personal
-// quota, so we treat them exactly like "no usage row": clear any stale
+// Roles that carry a personal quota, and therefore a row worth storing.
+//
+// `sales_manager` was added 2026-08-16 (web migration 105): a manager used to
+// be measured against whatever their team was, so the RPC returned no target
+// for them and this guard correctly dropped the row. They now have a flat
+// monthly target of their own, and dropping it here would leave every manager
+// on "No quota configured" while the server had a real number for them.
+//
+// This pull runs for EVERY signed-in role (the `cutoff_quota_v1` gate was
+// removed), so Collection, Delivery and executive sessions still reach here
+// with no quota. They are treated exactly like "no usage row": clear any stale
 // snapshot and skip the insert, rather than attempting a write the CHECK
-// constraint would reject. Without this guard, non-quota roles hit
-// "CHECK constraint failed: role IN ('sales_specialist', 'rsr')" every sync.
-const QUOTA_ROLES = new Set(['sales_specialist', 'rsr']);
+// constraint would reject. The set must stay in step with that constraint —
+// `cutoff_role_usage_snapshot` (widened by `ensureCutoffRoleUsageRoles` in
+// lib/db.ts) allows precisely these three, and an insert of anything else
+// fails the whole sync with "CHECK constraint failed".
+const QUOTA_ROLES = new Set(['sales_specialist', 'rsr', 'sales_manager']);
 
 /** `public.get_my_cutoff_usage_summary()` — caller's own role-scoped usage; at most one row. */
 export async function pullCutoffRoleUsage(db: SQLiteDatabase, agentId: string, now: string): Promise<void> {
@@ -121,14 +136,16 @@ export async function pullCutoffRoleUsage(db: SQLiteDatabase, agentId: string, n
 
     await db.withTransactionAsync(async () => {
       await db.runAsync('DELETE FROM cutoff_role_usage_snapshot WHERE agent_id = ?', [agentId]);
-      // No row (no active period / no target), or a role that carries no quota
-      // (e.g. sales_manager) — either way there's nothing valid to store, and
-      // the cleared snapshot correctly yields the "No quota configured" state.
+      // No row (no active month / no target), or a role that carries no quota
+      // (Collection, Delivery, executive — NOT sales_manager, which has had one
+      // since web migration 105) — either way there's nothing valid to store,
+      // and the cleared snapshot correctly yields "No quota configured".
       if (!row || !QUOTA_ROLES.has(row.role)) return;
       await db.runAsync(
         `INSERT INTO cutoff_role_usage_snapshot
-          (agent_id, period_id, period_label, starts_on, ends_on, role, target, confirmed_count, remaining, synced_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          (agent_id, period_id, period_label, starts_on, ends_on, role, target, confirmed_count, remaining,
+           daily_target, today_confirmed, today_is_working_day, synced_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           agentId,
           row.period_id ?? null,
@@ -139,6 +156,15 @@ export async function pullCutoffRoleUsage(db: SQLiteDatabase, agentId: string, n
           row.target ?? null,
           row.confirmed_count ?? null,
           row.remaining ?? null,
+          // Null for every role but RSR, and null too against a pre-109
+          // database. Both mean the same thing to the card: this role is not
+          // measured by the day, so show the month alone.
+          row.daily_target ?? null,
+          row.today_confirmed ?? null,
+          // SQLite has no boolean. The null check comes FIRST so an absent or
+          // null value stays null ("not known yet") rather than collapsing to
+          // 0, which the card would read as a rest day.
+          row.today_is_working_day == null ? null : row.today_is_working_day ? 1 : 0,
           now,
         ]
       );
@@ -227,9 +253,9 @@ export async function pullCutoffClientAllowance(db: SQLiteDatabase, agentId: str
 }
 
 /**
- * Runs all three Batch 7B pulls. Called from lib/sync-down.ts's syncDown()
- * ONLY when `isFeatureEnabled('cutoff_quota_v1')` is true — never invoked
- * (and therefore no network call ever made) while the flag is OFF.
+ * Runs all three Batch 7B pulls. Called from lib/sync-down.ts's syncDown() on
+ * every sync, for every role — the `cutoff_quota_v1` flag stopped gating this
+ * on 2026-08-04 and no longer decides whether these network calls happen.
  */
 export async function syncCutoffQuotaSnapshots(db: SQLiteDatabase, agentId: string): Promise<void> {
   const now = new Date().toISOString();

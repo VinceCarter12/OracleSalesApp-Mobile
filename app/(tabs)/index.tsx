@@ -41,6 +41,7 @@ import { SyncCenterSheet } from '../../components/sync/SyncCenterSheet';
 import { useSession } from '../../lib/session-store';
 import { firstName, initialsFromName } from '../../lib/display-name';
 import { CutoffQuotaCard } from '../../components/cutoff/CutoffQuotaCard';
+import type { CutoffQuotaRole } from '../../lib/policies/cutoff-policy';
 import { getDashboardActionHref } from '../../lib/dashboard-action-registry';
 
 function AgentHomeHeader({ greetingName, isRsr, fullName, notificationCount }: { greetingName: string; isRsr: boolean; fullName: string | null; notificationCount: number }) {
@@ -99,13 +100,20 @@ export default function AgentHomeScreen() {
   const { activeMeetingDrafts } = useActiveMeetingDrafts(profileId);
   const isRsr = role === 'rsr';
   // 2026-08-03 (Vince direction): the CutoffQuotaCard section always renders
-  // for Sales/RSR now, regardless of the `cutoff_quota_v1` flag — the flag
-  // still gates the separate background sync-down (lib/sync/cutoff-sync-down.ts),
-  // not this local-read display. CutoffQuotaCard itself queries the local
-  // SQLite snapshot directly and renders the honest "No quota configured"
-  // state when nothing has synced yet — never a hardcoded fallback. Manager,
-  // Collection, and Delivery never see this card.
-  const isCutoffQuotaRole = role === 'sales_specialist' || role === 'rsr';
+  // for a quota-carrying role now, regardless of the `cutoff_quota_v1` flag —
+  // the flag still gates the separate background sync-down
+  // (lib/sync/cutoff-sync-down.ts), not this local-read display.
+  // CutoffQuotaCard itself queries the local SQLite snapshot directly and
+  // renders the honest "No quota configured" state when nothing has synced yet
+  // — never a hardcoded fallback. Collection and Delivery never see this card.
+  //
+  // Managers DO see it as of 2026-08-16 (web migration 105): they carry a flat
+  // monthly target of their own now, where before they were measured against
+  // their team's number and had nothing personal to show. Narrowed to a real
+  // CutoffQuotaRole rather than coerced — the old `role === 'rsr' ? 'rsr' :
+  // 'sales_specialist'` would have labelled a manager a sales specialist.
+  const quotaRole: CutoffQuotaRole | null =
+    role === 'sales_specialist' || role === 'rsr' || role === 'sales_manager' ? role : null;
   const greetingName = firstName(fullName);
   const [syncSheetOpen, setSyncSheetOpen] = useState(false);
   // B-023: remounts the chip on sheet-close so a "Retry All" inside the
@@ -207,9 +215,7 @@ export default function AgentHomeScreen() {
 
         {/* 2026-08-09 (Vince direction): the cutoff quota card sits directly
             under the This-month meeting card, above the action sections. */}
-        {isCutoffQuotaRole ? (
-          <CutoffQuotaCard agentId={profileId} role={role === 'rsr' ? 'rsr' : 'sales_specialist'} />
-        ) : null}
+        {quotaRole ? <CutoffQuotaCard agentId={profileId} role={quotaRole} /> : null}
 
         {/* Wireframe-Sales-BizLink.html#a-home "Mga Gawain" — two dominant
             wide action cards (2026-08-03 visual-parity redesign, replaces

@@ -26,6 +26,7 @@ import { SyncCenterSheet } from '../../components/sync/SyncCenterSheet';
 import { ManagerHomeActionsSection } from '../../components/manager/ManagerHomeActionsSection';
 import { ManagerHomeTeamSection } from '../../components/manager/ManagerHomeTeamSection';
 import { ActiveMeetingDashboardAlert } from '../../components/meetings/ActiveMeetingDashboardAlert';
+import { CutoffQuotaCard } from '../../components/cutoff/CutoffQuotaCard';
 import type { ManagerScope } from '../../lib/manager-scope';
 
 // Wireframe-Manager-BizLink.html renderManagerScope() (~line 1123/1127-1132):
@@ -218,6 +219,20 @@ export default function ManagerDashboardScreen() {
           caption={`${summary.teamMeetingsSuccessful} successful`}
           onPress={() => router.push('/(manager)/more/meetings')}
         />
+
+        {/* A manager's OWN monthly quota, new in web migration 105 (2026-08-16):
+            before it, they were measured against whatever their team's target
+            was and so had no personal number to show. Placed directly under the
+            hero card, matching where the Sales/RSR home puts it — and note the
+            two answer different questions: the hero above is the TEAM's meetings
+            this month, this is the manager's own 20, which their tag-alongs
+            count toward. Rendered only for `sales_manager`; this route group is
+            manager-only, but `role` is nullable while the session loads and the
+            card's prop is a CutoffQuotaRole, so the check is real, not
+            decorative. */}
+        {role === 'sales_manager' ? (
+          <CutoffQuotaCard agentId={profileId} role="sales_manager" />
+        ) : null}
 
         {/* Wireframe-Manager-BizLink.html s-home "Mga Gawain" + "Manager
             Actions" (line 477-498) — extracted, see
