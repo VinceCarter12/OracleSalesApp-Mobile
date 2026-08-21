@@ -5,11 +5,12 @@ import { SetStoreLocationScreen } from '../../components/maps/SetStoreLocationSc
 // wrapper around the shared screen; params come from the map's "Set location"
 // button (clientId + store name + where back returns to).
 export default function DeliverySetLocationScreen() {
-  const { clientId, name, back } = useLocalSearchParams<{ clientId?: string; name?: string; back?: string }>();
+  const { clientId, name, registeredArea, back } = useLocalSearchParams<{ clientId?: string; name?: string; registeredArea?: string; back?: string }>();
   return (
     <SetStoreLocationScreen
       clientId={clientId ?? ''}
       clientName={name ?? 'Store'}
+      registeredArea={registeredArea || undefined}
       backHref={back ?? '/(delivery)/map'}
     />
   );

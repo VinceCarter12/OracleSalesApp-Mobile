@@ -143,6 +143,8 @@ export interface CollectionStore {
   area: string;
   /** Province shown after the area in the header — the field-set pin's real province, else undefined (header falls back to the app-wide "Bataan"). */
   province?: string;
+  /** The ORIGINAL sales/RSR-set municipality, kept even when a field relocation overrides `area` — so both can be shown together (never replaced). Undefined when unset or identical is unknown. */
+  registeredArea?: string;
   initials: string;
   /** `amount_due` — admin-entered, NEVER shown on the Collect Payment screen (anchoring bias). */
   due: number;
@@ -241,6 +243,8 @@ export interface DeliveryPo {
   area: string;
   /** Province shown after the area in the header — the field-set pin's real province, else undefined (header falls back to the app-wide "Bataan"). */
   province?: string;
+  /** The ORIGINAL sales/RSR-set municipality, kept even when a field relocation overrides `area` — so both can be shown together (never replaced). */
+  registeredArea?: string;
   status: DeliveryPoStatus;
   /** `truck_plate` — per-trip reference. */
   plate?: string;

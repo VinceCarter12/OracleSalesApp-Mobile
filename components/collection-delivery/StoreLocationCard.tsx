@@ -34,11 +34,13 @@ interface StoreLocationCardProps {
   /** Store DEFAULT coordinate denormalized onto the visit/PO row (web 114). */
   clientLat?: number;
   clientLng?: number;
+  /** The ORIGINAL sales/RSR-set municipality — shown alongside a field relocation so both are visible and the original is clearly never erased. */
+  registeredArea?: string;
   /** Provided only when the store has a client to attach a pin to — shows the set/update affordance. */
   onSetLocation?: () => void;
 }
 
-export function StoreLocationCard({ clientId, initials, gpsLat, gpsLng, clientLat, clientLng, onSetLocation }: StoreLocationCardProps) {
+export function StoreLocationCard({ clientId, initials, gpsLat, gpsLng, clientLat, clientLng, registeredArea, onSetLocation }: StoreLocationCardProps) {
   const BIZLINK_COLORS = useBizlinkColors();
   const insets = useSafeAreaInsets();
   const [mapType, setMapType] = useState<MapTileType>('light');
@@ -164,6 +166,20 @@ export function StoreLocationCard({ clientId, initials, gpsLat, gpsLng, clientLa
                 {current.capturedAt ? ` · ${formatShortDateTime(current.capturedAt)}` : ''}
               </Text>
             </XStack>
+          ) : null}
+          {/* Both municipalities, side by side — the field-observed area is added,
+              never replacing the registered one (owner decision 2026-08-22). Only
+              shown when a field relocation actually moved the area to a different
+              municipality, so it doesn't clutter the common (unmoved) case. */}
+          {registeredArea && current?.area && current.area.trim() && current.area.trim() !== registeredArea.trim() ? (
+            <YStack gap="$0.5" marginTop="$0.5">
+              <Text fontSize={11} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted}>
+                Registered: <Text fontFamily={BIZLINK_FONTS.semibold} color={BIZLINK_COLORS.text}>{registeredArea}</Text>
+              </Text>
+              <Text fontSize={11} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted}>
+                Now at: <Text fontFamily={BIZLINK_FONTS.semibold} color={COLORS.ledgeGreen}>{current.area.trim()}</Text>
+              </Text>
+            </YStack>
           ) : null}
         </YStack>
       ) : (

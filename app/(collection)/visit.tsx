@@ -332,12 +332,13 @@ export default function CollectPaymentScreen() {
           gpsLng={store.gpsLng}
           clientLat={store.clientLat}
           clientLng={store.clientLng}
+          registeredArea={store.registeredArea}
           onSetLocation={
             store.clientId
               ? () =>
                   router.push({
                     pathname: '/(collection)/set-location',
-                    params: { clientId: store.clientId ?? '', name: store.name, back: '/(collection)/today' },
+                    params: { clientId: store.clientId ?? '', name: store.name, registeredArea: store.registeredArea ?? '', back: '/(collection)/today' },
                   })
               : undefined
           }

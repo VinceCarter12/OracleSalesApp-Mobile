@@ -121,6 +121,10 @@ export function rowToStore(row: LocalCollectionVisitRow): CollectionStore {
     // Real province of the picked municipality — the header falls back to the
     // app-wide "Bataan" only when no field pin has set one.
     province: row.current_location_province?.trim() || undefined,
+    // The ORIGINAL sales/RSR-set municipality, preserved unconditionally so it
+    // can be shown ALONGSIDE a field relocation (never replaced — owner
+    // decision 2026-08-22). Undefined when the store has no registered city.
+    registeredArea: row.area?.trim() || undefined,
     initials: initialsFromCompany(row.client_name),
     due: row.amount_due ?? 0,
     status: (row.status as CollectionStoreStatus) ?? 'pending',
@@ -161,6 +165,9 @@ export function rowToPo(row: LocalPurchaseOrderRow): DeliveryPo {
     // Field-officer-picked relocation area/province override the registered city (see rowToStore).
     area: row.current_location_area?.trim() || row.area || '',
     province: row.current_location_province?.trim() || undefined,
+    // Original sales/RSR-set municipality, preserved so it can be shown alongside
+    // a field relocation (never replaced — owner decision 2026-08-22).
+    registeredArea: row.area?.trim() || undefined,
     status: (row.status as DeliveryPoStatus) ?? 'pending',
     plate: row.truck_plate ?? undefined,
     seq: row.sequence_no ?? undefined,

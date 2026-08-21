@@ -24,6 +24,13 @@ export interface StoreLocation {
   lat: number;
   lng: number;
   isCurrent: boolean;
+  /**
+   * What the officer meant this pin to be (owner decision 2026-08-22):
+   * - 'relocation' — the SAME store moved here; becomes current + overrides area.
+   * - 'additional_branch' — a SEPARATE second store; non-current flagged entry,
+   *   never becomes the current pin, never overrides the registered area.
+   */
+  kind: 'relocation' | 'additional_branch';
   /** field_set (officer on the ground) | office_pin | admin | migrated. */
   source: string;
   setBy: string | null;
@@ -43,6 +50,7 @@ interface StoreLocationRow {
   lat: number;
   lng: number;
   is_current: number;
+  kind: string;
   source: string;
   set_by: string | null;
   set_by_name: string | null;
@@ -60,6 +68,7 @@ function rowToStoreLocation(row: StoreLocationRow): StoreLocation {
     lat: row.lat,
     lng: row.lng,
     isCurrent: row.is_current === 1,
+    kind: row.kind === 'additional_branch' ? 'additional_branch' : 'relocation',
     source: row.source,
     setBy: row.set_by,
     setByName: row.set_by_name,
@@ -93,6 +102,13 @@ export interface AddStoreLocationInput {
   clientId: string;
   lat: number;
   lng: number;
+  /**
+   * 'relocation' (default) — the store moved here: this pin becomes current and
+   * its area overrides the store header. 'additional_branch' — a separate second
+   * store at this client: saved as a NON-current, flagged entry that does not
+   * move the store's current pin or its registered area.
+   */
+  kind?: 'relocation' | 'additional_branch';
   label?: string | null;
   setBy?: string | null;
   setByName?: string | null;
@@ -105,13 +121,24 @@ export interface AddStoreLocationInput {
 }
 
 /**
- * Appends a new relocation as the next "Location N" and makes it the current
- * pin (demoting whatever was current). Single transaction so the demote + insert
- * can't leave two currents. Returns the created record for optimistic UI.
+ * Appends a new location as the next "Location N".
+ *
+ * - kind='relocation' (default): the store moved here — this pin becomes the
+ *   current one (demoting whatever was current), and its area (if picked)
+ *   overrides the store header.
+ * - kind='additional_branch': a SEPARATE second store at this client — saved as
+ *   a NON-current, flagged entry. It does NOT demote the current pin and never
+ *   overrides the registered area (a branch is not the account; web decides if
+ *   it becomes a real account — see STORE_LOCATIONS_CONTRACT.md §area+branch).
+ *
+ * Single transaction so a relocation's demote + insert can't leave two currents.
+ * Returns the created record for optimistic UI.
  */
 export async function addStoreLocation(input: AddStoreLocationInput): Promise<StoreLocation> {
   assertOfficePinCoordinateWithinPhilippines(input.lat, input.lng);
 
+  const kind = input.kind === 'additional_branch' ? 'additional_branch' : 'relocation';
+  const isCurrent = kind === 'relocation';
   const db = await getDb();
   const now = new Date().toISOString();
   const capturedAt = input.capturedAt ?? now;
@@ -125,15 +152,18 @@ export async function addStoreLocation(input: AddStoreLocationInput): Promise<St
     );
     const seq = (maxRow?.maxSeq ?? 0) + 1;
 
-    await db.runAsync(
-      "UPDATE client_locations SET is_current = 0, local_updated_at = ? WHERE client_id = ? AND is_current = 1",
-      [now, input.clientId]
-    );
+    // A branch is never current, so it must not demote the store's real pin.
+    if (isCurrent) {
+      await db.runAsync(
+        "UPDATE client_locations SET is_current = 0, local_updated_at = ? WHERE client_id = ? AND is_current = 1",
+        [now, input.clientId]
+      );
+    }
     await db.runAsync(
       `INSERT INTO client_locations
-        (id, client_id, seq, label, lat, lng, is_current, source, set_by, set_by_name, captured_at, created_at, local_updated_at, sync_status, area, province)
-       VALUES (?, ?, ?, ?, ?, ?, 1, 'field_set', ?, ?, ?, ?, ?, 'pending', ?, ?)`,
-      [id, input.clientId, seq, input.label ?? null, input.lat, input.lng, input.setBy ?? null, input.setByName ?? null, capturedAt, now, now, input.area ?? null, input.province ?? null]
+        (id, client_id, seq, label, lat, lng, is_current, kind, source, set_by, set_by_name, captured_at, created_at, local_updated_at, sync_status, area, province)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'field_set', ?, ?, ?, ?, ?, 'pending', ?, ?)`,
+      [id, input.clientId, seq, input.label ?? null, input.lat, input.lng, isCurrent ? 1 : 0, kind, input.setBy ?? null, input.setByName ?? null, capturedAt, now, now, input.area ?? null, input.province ?? null]
     );
 
     created = {
@@ -143,7 +173,8 @@ export async function addStoreLocation(input: AddStoreLocationInput): Promise<St
       label: input.label ?? null,
       lat: input.lat,
       lng: input.lng,
-      isCurrent: true,
+      isCurrent,
+      kind,
       source: 'field_set',
       setBy: input.setBy ?? null,
       setByName: input.setByName ?? null,
