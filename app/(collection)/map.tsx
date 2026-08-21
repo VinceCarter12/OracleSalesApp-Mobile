@@ -14,7 +14,7 @@ export default function CollectionMapScreen() {
 
   const today: MapStoreInput[] = stores
     .filter((s) => isScheduledForToday(s.scheduledFor))
-    .map((s) => ({ id: s.id, clientId: s.clientId, name: s.name, area: s.area, initials: s.initials, gpsLat: s.gpsLat, gpsLng: s.gpsLng }));
+    .map((s) => ({ id: s.id, clientId: s.clientId, name: s.name, area: s.area, initials: s.initials, gpsLat: s.gpsLat, gpsLng: s.gpsLng, clientLat: s.clientLat, clientLng: s.clientLng }));
 
   return (
     <StoreLocationsMapScreen

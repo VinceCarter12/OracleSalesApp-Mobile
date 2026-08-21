@@ -9,6 +9,17 @@ import {
 } from './local-collection-delivery-mapper';
 import type { CollectionStore, DeliveryPo } from './collection-delivery-data';
 
+// Store Locations (2026-08-20): joins the municipality + province a field officer
+// PICKED on the store's CURRENT relocation pin (client_locations) onto each visit/PO
+// row, as `current_location_area` / `current_location_province`. Correlated
+// subqueries (not a JOIN) keep `<t>.*` clean of the client_locations columns and
+// their id collision. rowToStore/rowToPo prefer these over the sales-agent-set
+// `area` (+ the hardcoded ", Bataan") so a relocated store's header reads its real
+// area and province. `t` is the visit/PO table alias in the enclosing query.
+const CURRENT_LOCATION_COLUMNS = (t: string): string =>
+  `(SELECT cl.area FROM client_locations cl WHERE cl.client_id = ${t}.client_id AND cl.is_current = 1 LIMIT 1) AS current_location_area, ` +
+  `(SELECT cl.province FROM client_locations cl WHERE cl.client_id = ${t}.client_id AND cl.is_current = 1 LIMIT 1) AS current_location_province`;
+
 // F-007 Phase 1 (2026-07-28): read the day's Collection/Delivery lists from the
 // local SQLite mirror (populated by syncDown, web 043-046). Mirrors
 // lib/useClients.ts exactly — fetch on mount + re-fetch on sync-complete so a
@@ -23,7 +34,9 @@ export function useCollectionStores() {
 
   const fetch = useCallback(async () => {
     const rows = await db.getAllAsync<LocalCollectionVisitRow>(
-      'SELECT * FROM collection_visits ORDER BY scheduled_for DESC, created_at DESC'
+      `SELECT cv.*, ${CURRENT_LOCATION_COLUMNS('cv')}
+         FROM collection_visits cv
+        ORDER BY cv.scheduled_for DESC, cv.created_at DESC`
     );
     setStores(rows.map(rowToStore));
     setLoading(false);
@@ -44,7 +57,9 @@ export function useDeliveryPos() {
 
   const fetch = useCallback(async () => {
     const rows = await db.getAllAsync<LocalPurchaseOrderRow>(
-      'SELECT * FROM purchase_orders ORDER BY scheduled_for DESC, created_at DESC'
+      `SELECT po.*, ${CURRENT_LOCATION_COLUMNS('po')}
+         FROM purchase_orders po
+        ORDER BY po.scheduled_for DESC, po.created_at DESC`
     );
     setPos(rows.map(rowToPo));
     setLoading(false);
@@ -71,7 +86,7 @@ export function useCollectionStore(id: string | undefined) {
       return;
     }
     const row = await db.getFirstAsync<LocalCollectionVisitRow>(
-      'SELECT * FROM collection_visits WHERE id = ?',
+      `SELECT cv.*, ${CURRENT_LOCATION_COLUMNS('cv')} FROM collection_visits cv WHERE cv.id = ?`,
       [id]
     );
     setStore(row ? rowToStore(row) : null);
@@ -99,7 +114,7 @@ export function useDeliveryPo(id: string | undefined) {
       return;
     }
     const row = await db.getFirstAsync<LocalPurchaseOrderRow>(
-      'SELECT * FROM purchase_orders WHERE id = ?',
+      `SELECT po.*, ${CURRENT_LOCATION_COLUMNS('po')} FROM purchase_orders po WHERE po.id = ?`,
       [id]
     );
     setPo(row ? rowToPo(row) : null);

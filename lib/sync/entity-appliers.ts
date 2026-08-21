@@ -407,17 +407,18 @@ export async function upsertSyncedCollectionVisit(
     `INSERT INTO collection_visits
       (id, client_id, client_name, area, status, scheduled_for, amount_due, collector_id,
        amount_collected, payment_method, payment_photo_url, delivery_receipt_photo_url,
-       gps_lat, gps_lng, remarks, rescheduled_to, visited_at, claimed_by, claimed_at,
+       gps_lat, gps_lng, client_lat, client_lng, remarks, rescheduled_to, visited_at, claimed_by, claimed_at,
        claimed_by_name, is_additional, additional_received_at, additional_seen_at,
        created_at, updated_at, sync_status, local_updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'synced', ?)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'synced', ?)
      ON CONFLICT(id) DO UPDATE SET
        client_id = excluded.client_id, client_name = excluded.client_name, area = excluded.area,
        status = excluded.status, scheduled_for = excluded.scheduled_for, amount_due = excluded.amount_due,
        collector_id = excluded.collector_id, amount_collected = excluded.amount_collected,
        payment_method = excluded.payment_method, payment_photo_url = excluded.payment_photo_url,
        delivery_receipt_photo_url = excluded.delivery_receipt_photo_url, gps_lat = excluded.gps_lat,
-       gps_lng = excluded.gps_lng, remarks = excluded.remarks, rescheduled_to = excluded.rescheduled_to,
+       gps_lng = excluded.gps_lng, client_lat = excluded.client_lat, client_lng = excluded.client_lng,
+       remarks = excluded.remarks, rescheduled_to = excluded.rescheduled_to,
        visited_at = excluded.visited_at, claimed_by = excluded.claimed_by, claimed_at = excluded.claimed_at,
        claimed_by_name = excluded.claimed_by_name, is_additional = excluded.is_additional,
        additional_received_at = excluded.additional_received_at, additional_seen_at = excluded.additional_seen_at,
@@ -440,6 +441,11 @@ export async function upsertSyncedCollectionVisit(
       (row.delivery_receipt_photo_url as string) ?? null,
       (row.gps_lat as number) ?? null,
       (row.gps_lng as number) ?? null,
+      // web 114: the store's DEFAULT map coordinate, denormalized server-side.
+      // Null for a store with neither a relocation pin nor an office pin — the
+      // resolver then falls through to visit GPS / "location not set".
+      (row.client_lat as number) ?? null,
+      (row.client_lng as number) ?? null,
       (row.remarks as string) ?? null,
       (row.rescheduled_to as string) ?? null,
       (row.visited_at as string) ?? null,
@@ -474,10 +480,10 @@ export async function upsertSyncedPurchaseOrder(
     `INSERT INTO purchase_orders
       (id, po_number, client_id, client_name, area, status, scheduled_for, cod, cod_due,
        driver_id, truck_plate, sequence_no, receiver_name, receiver_signature_url, time_in,
-       time_out, proof_url, backload_photo_url, gps_lat, gps_lng, remarks, cod_amount,
+       time_out, proof_url, backload_photo_url, gps_lat, gps_lng, client_lat, client_lng, remarks, cod_amount,
        cod_method, cod_photo_url, cod_remitted, claimed_by, claimed_at, claimed_by_name,
        created_at, updated_at, sync_status, local_updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'synced', ?)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'synced', ?)
      ON CONFLICT(id) DO UPDATE SET
        po_number = excluded.po_number, client_id = excluded.client_id, client_name = excluded.client_name,
        area = excluded.area, status = excluded.status, scheduled_for = excluded.scheduled_for,
@@ -486,6 +492,7 @@ export async function upsertSyncedPurchaseOrder(
        receiver_name = excluded.receiver_name, receiver_signature_url = excluded.receiver_signature_url,
        time_in = excluded.time_in, time_out = excluded.time_out, proof_url = excluded.proof_url,
        backload_photo_url = excluded.backload_photo_url, gps_lat = excluded.gps_lat, gps_lng = excluded.gps_lng,
+       client_lat = excluded.client_lat, client_lng = excluded.client_lng,
        remarks = excluded.remarks, cod_amount = excluded.cod_amount, cod_method = excluded.cod_method,
        cod_photo_url = excluded.cod_photo_url, cod_remitted = excluded.cod_remitted,
        claimed_by = excluded.claimed_by, claimed_at = excluded.claimed_at, claimed_by_name = excluded.claimed_by_name,
@@ -513,6 +520,10 @@ export async function upsertSyncedPurchaseOrder(
       (row.backload_photo_url as string) ?? null,
       (row.gps_lat as number) ?? null,
       (row.gps_lng as number) ?? null,
+      // web 114: store DEFAULT map coordinate, denormalized server-side (see
+      // upsertSyncedCollectionVisit). Null when the store has no pin at all.
+      (row.client_lat as number) ?? null,
+      (row.client_lng as number) ?? null,
       (row.remarks as string) ?? null,
       (row.cod_amount as number) ?? null,
       (row.cod_method as string) ?? null,

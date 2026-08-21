@@ -191,6 +191,17 @@ already role-gated by RLS). Mobile just maps the two new columns.
 resolver's `officePin` input in `lib/use-store-location-map.ts`. Then a store's
 default pin shows the moment its row syncs — verified end-to-end against real data.
 
+> ✅ **WEB SHIPPED (staging, migrations 113 + 114) and MOBILE WIRED (2026-08-20).**
+> Web 113 = `client_locations` table + `set_client_location()` /
+> `set_current_client_location()` RPCs + RLS. Web 114 = `client_lat`/`client_lng`
+> on `collection_visits`/`purchase_orders` + backfill + populate-on-insert trigger
+> + keep-fresh in `set_client_location()`. Mobile default-location wiring (this
+> paragraph) done: `ensureClientCoordinateColumns` (db.ts), the two appliers
+> (entity-appliers.ts), `rowToStore`/`rowToPo`, `CollectionStore`/`DeliveryPo`,
+> both `map.tsx` route wrappers, and `use-store-location-map.ts` (denormalized pin
+> preferred over the local `clients` office pin). Needs an on-device pass against
+> real synced data to confirm.
+
 ---
 
 ## ✅ What MOBILE has built (2026-08-17, Phase 0 + 1 — web-blocked for sync)
@@ -232,11 +243,67 @@ regenerated types land):
   `collection_visits.client_id` / `purchase_orders.client_id`) so a store can be
   tied to its `client_locations` + office pin.
 
-### Still to come (mobile)
+### Phase 4 push shipped (2026-08-20, web 113/114 landed)
 
-- **Phase 4 (web-gated):** wire `client_locations` into the sync lanes + a push
-  processor once the web table ships and `types/database.ts` is regenerated. Until
-  then a set location lives only on the device that set it.
+- **Push reconciler** `lib/sync/store-location-push.ts` (modeled on
+  `additional-acks.ts`) runs in `sync-engine.ts` BEFORE `syncDown` while online:
+  a pending `client_locations` row with `remote_id IS NULL` is a NEW pin →
+  `set_client_location(client_id, lat, lng, label)`, and the returned server id is
+  stored in the new local `remote_id` column; a pending row that already has
+  `remote_id` is a re-select → `set_current_client_location(remote_id)`. Rows push
+  oldest-first (seq ASC) so the newest ends up current server-side. RPC types
+  added to `types/database.ts`; `remote_id` added to the local table (db.ts).
+- **Cross-device correctness comes from 114's keep-fresh + the default-location
+  wiring above**, NOT a `client_locations` down-sync: when a pin is pushed, 114
+  re-stamps `client_lat`/`client_lng` on the client's still-open visits/POs, which
+  ride the existing visit/PO pull back onto every officer's map the same pass.
+
+### Officer-typed relocation AREA (2026-08-20, mobile Option 2)
+
+Problem: the store header shows the customer's **registered city** (`collection_visits/
+purchase_orders.area`, denormalized from `clients.city` at customer creation). Setting
+a relocation **pin** changes the coordinate, not that text, so a relocated store's
+header stayed stale. Fix (owner chose Option 2 — pick it, no geocoder): the set-location screen has an
+optional **"Area / municipality"** field using the **same canonical PSGC picker
+(`CityMunicipalitySelector`) as the sales Create Client flow** — no free text, so a
+collector/driver's area is a real locality (not an arbitrary string that only reads
+right because the header hardcodes ", Bataan"). Only the municipality NAME is stored
+(matching `clients.city = selectedLocality.name`), on the local `client_locations`
+`area` column, and via a correlated subquery in `use-collection-delivery.ts` it
+**overrides `area`** in `rowToStore`/`rowToPo` — so every page reading the store (day
+list, Collect Payment, Deliver PO, map) shows the new area. `StoreLocationCard` shows
+the pin on those detail screens. Note: the ", Bataan" province suffix is hardcoded in
+the screens for EVERY store (sales-created too) — an app-wide operating-province
+assumption, not per-record data; unchanged here to stay consistent with sales/RSR.
+
+🔴 **WEB owes, for the typed area to reach web/admin + other devices** (today it's
+local to the setting device, like the pin's field_set tier): add an **`area`** column
+to `client_locations` + an `p_area` param on `set_client_location()`, and either
+denormalize it onto the visits/POs (like `client_lat/lng`, so it rides the existing
+pull) **or** ship the deferred `client_locations` down-sync. Mobile's push
+(`store-location-push.ts`) will pass it once the RPC accepts it.
+
+### `client_locations` down-sync SHIPPED (2026-08-21) — verified push works first
+
+On-DB verification (staging `xhxjbzesuzprwdelrdwh`, 2026-08-21): 113 + 114 deployed
+(both RPCs + all four `client_lat`/`client_lng` columns present), and the mobile PUSH
+works — real `field_set` rows from multiple officers (`set_by_name` populated) are on
+the server. So the down-sync has real data.
+
+- **`lib/sync/store-location-sync-down.ts`** runs in `sync-engine.ts` AFTER `syncDown`
+  (gated to collector/delivery). A plain `select` on `client_locations` is auto-scoped
+  by 113's RLS (a field role reads pins for any client on their board), so it pulls
+  OTHER officers' pins too. Applies them to the local mirror **as real `field_set`
+  rows** — restoring the "Field pin · set by X · when" trust signal that the
+  denormalized coordinate (114) loses. Dedup: match the device's own pushed row by
+  `remote_id`, else insert under the server id; never overwrites a still-`pending`
+  local edit. `client_locations` table type added to `types/database.ts`.
+- **`StoreLocationCard`** now shows **"Relocated · set by {name} · {when}"** whenever
+  the resolved origin is `field_set` — so a co-worker opening the stop sees a colleague
+  moved it and who/when, not just a silently-relocated dot.
+- **Still local-only:** `area`/`province` (web's `client_locations` has no such
+  columns; the down-sync intentionally doesn't touch them). Co-workers get the correct
+  pin + who/when; the municipality/province TEXT still needs the web add below.
 
 ## Open questions for the owner / web
 

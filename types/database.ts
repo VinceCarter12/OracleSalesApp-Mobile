@@ -485,6 +485,11 @@ export type Database = {
           delivery_receipt_photo_url: string | null;
           gps_lat: number | null;
           gps_lng: number | null;
+          // 114 — store DEFAULT map coordinate, denormalized as COALESCE(current
+          // client_locations pin, office pin). Distinct from gps_lat/gps_lng
+          // (visit-time GPS). Kept fresh by set_client_location().
+          client_lat: number | null;
+          client_lng: number | null;
           remarks: string | null;
           rescheduled_to: string | null;
           visited_at: string | null;
@@ -592,6 +597,9 @@ export type Database = {
           backload_photo_url: string | null;
           gps_lat: number | null;
           gps_lng: number | null;
+          // 114 — store DEFAULT map coordinate, denormalized (see collection_visits).
+          client_lat: number | null;
+          client_lng: number | null;
           remarks: string | null;
           cod_amount: number | null;
           cod_method: RemoteCodMethod | null;
@@ -650,6 +658,31 @@ export type Database = {
         Update: Partial<Database['public']['Tables']['cod_remittances']['Row']>;
         Relationships: [];
       };
+      // Store Locations (migration 113): numbered relocation pins a C&D field
+      // officer sets on the ground. Field roles read (RLS) the pins for any
+      // client on their board; writes go through the set_client_location /
+      // set_current_client_location RPCs, not a direct upsert. area/province are
+      // mobile-local only for now (not on the web table) — see STORE_LOCATIONS_CONTRACT.md.
+      client_locations: {
+        Row: {
+          id: string;
+          client_id: string;
+          seq: number;
+          label: string | null;
+          lat: number;
+          lng: number;
+          is_current: boolean;
+          source: string;
+          set_by: string | null;
+          set_by_name: string | null;
+          captured_at: string;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: Partial<Database['public']['Tables']['client_locations']['Row']>;
+        Update: Partial<Database['public']['Tables']['client_locations']['Row']>;
+        Relationships: [];
+      };
     };
     Views: Record<string, never>;
     // Batch 2 (2026-07-26): both RPCs are SECURITY DEFINER, live on Supabase.
@@ -673,6 +706,23 @@ export type Database = {
       mark_additional_seen: {
         Args: { p_visit_id: string };
         Returns: string | null;
+      };
+      // Store Locations (Migration 113/114): the ONLY sanctioned write path for
+      // a store's numbered relocation pins — a field role can't UPDATE
+      // is_current directly (RLS), and these SECURITY DEFINER RPCs demote the
+      // old current + server-assign seq atomically. Authorized for a C&D admin,
+      // or a collector/delivery officer with the client on their day list
+      // (42501/'not authorized' otherwise). set_client_location appends a NEW
+      // pin and returns its id; set_current re-selects an existing saved pin.
+      // set_client_location also re-copies the new pin onto the client's
+      // still-open visits/POs (client_lat/client_lng keep-fresh, 114).
+      set_client_location: {
+        Args: { p_client_id: string; p_lat: number; p_lng: number; p_label?: string | null };
+        Returns: string;
+      };
+      set_current_client_location: {
+        Args: { p_location_id: string };
+        Returns: undefined;
       };
       get_company_directory: {
         Args: Record<string, never>;

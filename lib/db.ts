@@ -74,6 +74,29 @@ async function ensureSelfieProofColumns(db: SQLiteDatabase): Promise<void> {
  * gate, since a device already at LATEST_SCHEMA_VERSION would otherwise never
  * receive them.
  */
+/**
+ * Store Locations default-pin denormalization (web migration 114, 2026-08-18):
+ * the store's DEFAULT map coordinate — COALESCE(current client_locations pin,
+ * clients.office_lat/lng) — is now copied onto every collection_visit /
+ * purchase_order server-side (like client_name/area/claimed_by_name already
+ * are). This lets a field device show where a store IS before it's visited,
+ * without needing the `clients` row (which a collector/driver never syncs — see
+ * STORE_LOCATIONS_CONTRACT.md §4). These are the LOCAL mirror columns those
+ * denormalized values land in; the map resolver reads them as its office-pin
+ * tier (lib/use-store-location-map.ts). Distinct from `gps_lat/gps_lng`, which
+ * is visit-time GPS captured with the proof photo.
+ *
+ * Additive + idempotent, so — like ensureRemittanceLinkColumns above — this runs
+ * unconditionally every launch rather than behind a version gate, since a device
+ * already at LATEST_SCHEMA_VERSION would otherwise never receive them.
+ */
+async function ensureClientCoordinateColumns(db: SQLiteDatabase): Promise<void> {
+  await addColumnIfMissing(db, 'collection_visits', 'client_lat', 'REAL');
+  await addColumnIfMissing(db, 'collection_visits', 'client_lng', 'REAL');
+  await addColumnIfMissing(db, 'purchase_orders', 'client_lat', 'REAL');
+  await addColumnIfMissing(db, 'purchase_orders', 'client_lng', 'REAL');
+}
+
 async function ensureRemittanceLinkColumns(db: SQLiteDatabase): Promise<void> {
   await addColumnIfMissing(db, 'collection_payments', 'remittance_id', 'TEXT');
   await addColumnIfMissing(db, 'collection_payments', 'pending_remittance_id', 'TEXT');
@@ -284,11 +307,32 @@ async function ensureCriticalTablesExist(db: SQLiteDatabase): Promise<void> {
       created_at TEXT NOT NULL,
       local_updated_at TEXT,
       sync_status TEXT NOT NULL DEFAULT 'pending',
-      sync_error TEXT
+      sync_error TEXT,
+      -- Optional area/municipality + province the field officer PICKS (canonical
+      -- PSGC, same picker as sales Create Client) when setting a relocation pin.
+      -- Overrides the sales-agent-set city (collection_visits/purchase_orders.area)
+      -- in the store header on every page, and province replaces the header's
+      -- hardcoded province with the real province of the picked municipality, so
+      -- a relocated store reads its NEW area, not the stale registered one.
+      -- Local-first: not yet carried by set_client_location() (web owes area/
+      -- province params), so it shows on the setting device until down-sync lands.
+      area TEXT,
+      province TEXT,
+      -- The SERVER's client_locations.id once the push RPC (set_client_location,
+      -- web 113) has minted it. The server assigns its own id + seq, so a local
+      -- optimistic row keeps its own local PK and links back through this column
+      -- (needed to re-select a saved pin via set_current_client_location). NULL
+      -- until the row's first successful push. See lib/sync/store-location-push.ts.
+      remote_id TEXT
     );
     CREATE INDEX IF NOT EXISTS idx_client_locations_client ON client_locations (client_id);
     CREATE INDEX IF NOT EXISTS idx_client_locations_current ON client_locations (client_id, is_current);
   `);
+  // Additive for devices that created client_locations in an earlier build
+  // (before these columns existed) — CREATE TABLE IF NOT EXISTS above won't add them.
+  await addColumnIfMissing(db, 'client_locations', 'remote_id', 'TEXT');
+  await addColumnIfMissing(db, 'client_locations', 'area', 'TEXT');
+  await addColumnIfMissing(db, 'client_locations', 'province', 'TEXT');
 }
 
 async function ensureJointManagerTablesExist(db: SQLiteDatabase): Promise<void> {
@@ -349,6 +393,7 @@ export async function migrateDbIfNeeded(db: SQLiteDatabase): Promise<void> {
     await ensureSelfieProofColumns(db);
     await ensureCriticalTablesExist(db);
     await ensureRemittanceLinkColumns(db);
+    await ensureClientCoordinateColumns(db);
     await ensureCutoffRoleUsageRoles(db);
     await ensureCutoffDailyQuotaColumns(db);
     await ensureJointManagerTablesExist(db);
@@ -1689,6 +1734,7 @@ export async function migrateDbIfNeeded(db: SQLiteDatabase): Promise<void> {
   await ensureSelfieProofColumns(db);
   await ensureCriticalTablesExist(db);
   await ensureRemittanceLinkColumns(db);
+  await ensureClientCoordinateColumns(db);
   await ensureCutoffRoleUsageRoles(db);
   await ensureCutoffDailyQuotaColumns(db);
   await ensureJointManagerTablesExist(db);

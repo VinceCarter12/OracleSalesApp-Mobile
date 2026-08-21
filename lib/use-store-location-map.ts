@@ -10,10 +10,12 @@ import { resolveStoreLocation, type StoreLocationOrigin } from './store-location
 // on this device. Stores with no coordinate at all fall into `unlocated` so the
 // screen can show a "location not set" bucket instead of silently dropping them.
 //
-// ⚠️ The office-pin fallback reads `clients.office_lat/office_lng` from the local
-// mirror. If field-role devices don't sync those `clients` rows (the open
-// dependency in STORE_LOCATIONS_CONTRACT.md), that fallback is simply empty and
-// the store lands in `unlocated` until someone sets a field pin — no crash.
+// The office-pin tier now reads the store's DEFAULT coordinate DENORMALIZED onto
+// the visit/PO row (`clientLat`/`clientLng`, web migration 114) — present on a
+// field device without needing the `clients` row (which a collector/driver never
+// syncs). We fall back to the local `clients.office_lat/office_lng` for any
+// device that does have those rows (e.g. the sales agent's own). If neither
+// resolves, the store lands in `unlocated` until someone sets a field pin.
 
 export interface MapStoreInput {
   id: string;
@@ -23,6 +25,9 @@ export interface MapStoreInput {
   initials: string;
   gpsLat?: number;
   gpsLng?: number;
+  /** Store DEFAULT coordinate denormalized onto the visit/PO row (web 114) — the office-pin tier, resolved server-side as COALESCE(current relocation pin, office pin). */
+  clientLat?: number;
+  clientLng?: number;
 }
 
 export interface LocatedStore extends MapStoreInput {
@@ -45,7 +50,9 @@ interface CurrentLocationRow {
 
 /** A change to any of these per-store fields must re-run the resolve. */
 function storesKey(stores: MapStoreInput[]): string {
-  return stores.map((s) => `${s.id}:${s.clientId ?? ''}:${s.gpsLat ?? ''}:${s.gpsLng ?? ''}`).join('|');
+  return stores
+    .map((s) => `${s.id}:${s.clientId ?? ''}:${s.gpsLat ?? ''}:${s.gpsLng ?? ''}:${s.clientLat ?? ''}:${s.clientLng ?? ''}`)
+    .join('|');
 }
 
 async function resolveStores(stores: MapStoreInput[]): Promise<{ located: LocatedStore[]; unlocated: MapStoreInput[] }> {
@@ -76,9 +83,15 @@ async function resolveStores(stores: MapStoreInput[]): Promise<{ located: Locate
   const located: LocatedStore[] = [];
   const unlocated: MapStoreInput[] = [];
   for (const s of stores) {
+    // Office-pin tier: prefer the coordinate denormalized onto the visit/PO row
+    // (web 114 — present on a field device), else the local `clients` office pin
+    // (only populated on a device that syncs those client rows).
+    const denormalizedPin =
+      s.clientLat != null && s.clientLng != null ? { lat: s.clientLat, lng: s.clientLng } : undefined;
+    const officePin = denormalizedPin ?? (s.clientId ? officePins.get(s.clientId) : undefined);
     const resolved = resolveStoreLocation({
       currentLocation: s.clientId ? currentLocations.get(s.clientId) : undefined,
-      officePin: s.clientId ? officePins.get(s.clientId) : undefined,
+      officePin,
       visitGps: s.gpsLat != null && s.gpsLng != null ? { lat: s.gpsLat, lng: s.gpsLng } : undefined,
     });
     if (resolved) located.push({ ...s, ...resolved });

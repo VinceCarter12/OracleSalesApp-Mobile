@@ -15,7 +15,7 @@ export default function DeliveryMapScreen() {
 
   const today: MapStoreInput[] = pos
     .filter((p) => isScheduledForToday(p.scheduledFor))
-    .map((p) => ({ id: p.id, clientId: p.clientId, name: p.client, area: p.area, initials: initialsFromCompany(p.client), gpsLat: p.gpsLat, gpsLng: p.gpsLng }));
+    .map((p) => ({ id: p.id, clientId: p.clientId, name: p.client, area: p.area, initials: initialsFromCompany(p.client), gpsLat: p.gpsLat, gpsLng: p.gpsLng, clientLat: p.clientLat, clientLng: p.clientLng }));
 
   return (
     <StoreLocationsMapScreen
