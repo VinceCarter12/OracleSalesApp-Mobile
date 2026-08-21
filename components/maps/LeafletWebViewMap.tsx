@@ -126,6 +126,14 @@ function buildMapHtml(markers: LeafletMapMarker[], tileType: MapTileType, focuse
     .user-marker{width:40px;height:40px;border-radius:50%;background:#0B2545;border:3px solid #FFFFFF;box-shadow:0 2px 6px rgba(0,0,0,0.35);overflow:hidden;display:flex;align-items:center;justify-content:center;color:#FFFFFF;font-family:Arial,Helvetica,sans-serif;font-weight:700;font-size:16px;}
     .user-avatar{width:100%;height:100%;object-fit:cover;display:block;}
     .pin-marker{width:34px;height:34px;border-radius:50%;border:2.5px solid #FFFFFF;box-shadow:0 2px 5px rgba(0,0,0,0.3);display:flex;align-items:center;justify-content:center;color:#FFFFFF;font-family:Arial,Helvetica,sans-serif;font-weight:700;font-size:15px;}
+    /* The single draggable "set location" pin — deliberately large so it's an
+       easy touch target to drag, with a pulsing ring as a "grab me" affordance
+       and a white center dot marking the exact point. Tap-to-place (map click)
+       makes dragging optional. */
+    .editor-pin{position:relative;width:46px;height:46px;border-radius:50%;background:#005B36;border:3px solid #FFFFFF;box-shadow:0 3px 9px rgba(0,0,0,0.45);display:flex;align-items:center;justify-content:center;cursor:grab;}
+    .editor-pin::after{content:'';width:11px;height:11px;border-radius:50%;background:#FFFFFF;}
+    .editor-pin::before{content:'';position:absolute;left:50%;top:50%;margin:-23px 0 0 -23px;width:46px;height:46px;border-radius:50%;border:3px solid rgba(0,91,54,0.4);animation:epulse 1.7s ease-out infinite;}
+    @keyframes epulse{0%{transform:scale(1);opacity:0.85;}100%{transform:scale(1.9);opacity:0;}}
     ${CLUSTER_BADGE_STYLE}</style>
 </head>
 <body>
@@ -237,15 +245,34 @@ function buildMapHtml(markers: LeafletMapMarker[], tileType: MapTileType, focuse
       });
     });
     if (editablePin) {
-      var editorMarker = L.marker([editablePin.lat, editablePin.lng], { draggable: true }).addTo(map);
-      var editorPopup = document.createElement('div');
-      editorPopup.textContent = editablePin.label;
-      editorMarker.bindPopup(editorPopup).openPopup();
-      editorMarker.on('dragend', function () {
-        var point = editorMarker.getLatLng();
+      // Large custom drag handle (divIcon) instead of Leaflet's tiny default
+      // marker image — a 46px target is easy to grab on a phone. autoPan lets a
+      // drag near the edge scroll the map. iconAnchor is the center so the white
+      // dot sits exactly on the coordinate.
+      var editIconEl = document.createElement('div');
+      editIconEl.className = 'editor-pin';
+      var editorMarker = L.marker([editablePin.lat, editablePin.lng], {
+        draggable: true,
+        autoPan: true,
+        autoPanSpeed: 12,
+        icon: L.divIcon({ className: '', html: editIconEl, iconSize: [46, 46], iconAnchor: [23, 23] }),
+      }).addTo(map);
+
+      function reportPin(point) {
         if (window.ReactNativeWebView) {
           window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'pin-drag-end', lat: point.lat, lng: point.lng }));
         }
+      }
+      editorMarker.on('dragend', function () { reportPin(editorMarker.getLatLng()); });
+
+      // TAP-TO-PLACE: tapping anywhere on the map drops the pin there. This is
+      // the primary interaction on touch (dragging a marker fights the map pan
+      // and the enclosing ScrollView); a real drag is a "move" gesture, not a
+      // "click", so panning the map never accidentally moves the pin. setLatLng
+      // gives instant feedback before the native round-trip re-centers.
+      map.on('click', function (e) {
+        editorMarker.setLatLng(e.latlng);
+        reportPin(e.latlng);
       });
     }
     function handleNativeMapMessage(event) {
@@ -329,7 +356,7 @@ export function LeafletWebViewMap({ markers, onMarkerPress, height = 300, tileTy
       />
       {loadFailed ? (
         <View style={styles.overlay}>
-          <Text style={styles.overlayText}>The map couldn't be loaded. Check your internet connection.</Text>
+          <Text style={styles.overlayText}>The map could not be loaded. Check your internet connection.</Text>
           <TouchableOpacity onPress={handleRetry} style={styles.retryButton}>
             <Text style={styles.retryText}>Try again</Text>
           </TouchableOpacity>
@@ -544,7 +571,7 @@ export function LeafletWebViewMapWithControls({
 
       {loadFailed ? (
         <View style={styles.overlay}>
-          <Text style={styles.overlayText}>The map couldn't be loaded. Check your internet connection.</Text>
+          <Text style={styles.overlayText}>The map could not be loaded. Check your internet connection.</Text>
           <TouchableOpacity onPress={handleRetry} style={styles.retryButton}>
             <Text style={styles.retryText}>Try again</Text>
           </TouchableOpacity>

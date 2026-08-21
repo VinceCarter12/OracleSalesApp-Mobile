@@ -18,9 +18,12 @@ import type { SQLiteDatabase } from 'expo-sqlite';
 // Dedup: a row THIS device pushed keeps its own local PK and links to the server
 // id via `remote_id`; a co-worker's row is inserted under the server id. Never
 // clobbers a still-`pending` local edit (same overwrite-if-synced guard as the
-// entity appliers). NOTE: web's client_locations has no area/province yet, so
-// those stay local to the setting device (STORE_LOCATIONS_CONTRACT.md) — this
-// intentionally does not touch the local area/province columns.
+// entity appliers). NOTE: web's client_locations has no area/province/kind yet,
+// so those stay local to the setting device (STORE_LOCATIONS_CONTRACT.md) — this
+// intentionally does not touch the local area/province columns, and inserted
+// remote rows fall back to the table default kind='relocation'. When web adds a
+// `kind` column + returns it here, select it and map it on insert/update so a
+// co-worker sees an 'additional_branch' as a branch (not a silent relocation).
 
 interface RemoteClientLocation {
   id: string;

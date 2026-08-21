@@ -24,6 +24,14 @@ import type { SQLiteDatabase } from 'expo-sqlite';
 //     store the returned server id, mark synced.
 //   * remote_id present  → an existing saved pin re-selected as current
 //     (setCurrentStoreLocation). Call set_current_client_location(remote_id).
+//
+// LOCAL-ONLY today (web owes RPC params — STORE_LOCATIONS_CONTRACT.md §area+branch):
+// `area`, `province`, and `kind` ('relocation' | 'additional_branch') are NOT sent
+// — set_client_location currently accepts only (client_id, lat, lng, label), and
+// passing extra params would fail PostgREST (PGRST202). Once web adds p_area /
+// p_province / p_kind, thread them here so the municipality + branch flag reach
+// the admin board and other devices. An 'additional_branch' is pending like any
+// pin; when web accepts p_kind it should be inserted server-side as NON-current.
 // Rows are pushed oldest-first (by seq) so that, when several were added offline,
 // the newest ends up current server-side — matching the local state.
 

@@ -305,6 +305,78 @@ the server. So the down-sync has real data.
   columns; the down-sync intentionally doesn't touch them). Co-workers get the correct
   pin + who/when; the municipality/province TEXT still needs the web add below.
 
+## §area+branch — Relocation vs. additional branch + additive municipality (2026-08-22)
+
+Owner decision (2026-08-22), refining the officer-typed AREA feature above. Two
+things changed, both **additive and non-destructive**:
+
+### The model
+
+1. **Field officers now declare intent when setting a location.** The
+   set-location screen asks: **"Store moved here"** vs **"Additional branch."**
+   These are deliberately *different weights*:
+   - **Relocation** — the SAME store moved. Becomes the store's **current** pin;
+     its picked municipality overrides the store header (as before). This is the
+     existing field-direct behavior (no approval).
+   - **Additional branch** — a **SEPARATE second store** at the same client.
+     Saved as a **NON-current, flagged** entry. It must **never** become the
+     store's current pin and **never** override the account's registered area.
+     A field tap must not silently fork a billable account — admin/sales decides
+     if a branch becomes a real account. Mobile only *raises the flag*.
+
+2. **The registered (sales/RSR-set) municipality is never replaced — only added
+   to.** If Sales set the client's city to *Quezon City* and a collector sets a
+   relocation area of *Bulacan*, **both** are kept and shown together
+   (*"Registered: Quezon City · Now at: Bulacan · set by {name}"*). The
+   field-observed value is ground-truth-for-humans; the **registered value stays
+   authoritative for territory, reporting, and RSR assignment** unless admin
+   explicitly promotes the field value. Do NOT let a field area silently drive
+   assignment/reporting logic.
+
+### What MOBILE built (local-first, this repo, 2026-08-22)
+
+- `client_locations.kind` column (`'relocation'` | `'additional_branch'`, default
+  `'relocation'`) — db.ts + `addStoreLocation` (a branch inserts `is_current=0`
+  and does not demote the current pin). `StoreLocation.kind` on the model.
+- Set-location screen: segmented **"Store moved here / Additional branch"**
+  selector, a **"Registered area: …"** context line, kind-aware save copy, and a
+  **"Branch"** badge (branches aren't re-selectable as current) in the saved list.
+- `CollectionStore` / `DeliveryPo` now carry **`registeredArea`** (the original
+  `visits/POs.area`, preserved unconditionally alongside the possibly-overridden
+  `area`). `StoreLocationCard` shows both when they differ.
+- Push/down-sync unchanged on the wire (see below) — `kind`/`area`/`province`
+  remain **local-only** until web adds the params.
+
+### 👉 What WEB must add (so both values + the branch flag reach all roles)
+
+Until this ships, a branch flag and the field municipality live **only on the
+setting device** — the RSR/admin/other officers will NOT see them.
+
+1. **Columns on `client_locations`:**
+   ```sql
+   ALTER TABLE client_locations ADD COLUMN IF NOT EXISTS area     text;
+   ALTER TABLE client_locations ADD COLUMN IF NOT EXISTS province text;
+   ALTER TABLE client_locations ADD COLUMN IF NOT EXISTS kind     text NOT NULL DEFAULT 'relocation';
+   -- kind ∈ ('relocation','additional_branch')
+   ```
+2. **RPC params on `set_client_location()`** — add `p_area text`, `p_province
+   text`, `p_kind text default 'relocation'`. Persist them on the inserted row.
+   **Crucially:** when `p_kind = 'additional_branch'`, insert the row with
+   `is_current = false` and **do NOT** flip the client's current pin, and **do
+   NOT** re-stamp `client_lat/lng` on the visits/POs (114 keep-fresh) — a branch
+   is not the store's location. Only a relocation touches current/keep-fresh.
+3. **Down-sync** — include `area`, `province`, `kind` in whatever field roles read
+   (the denormalized visit/PO area column, or the `client_locations` pull). Mobile
+   already reads `area`/`province` locally and will map `kind` from the pull the
+   moment it's returned.
+4. **Sales/RSR + admin UI (the "visible in all records" part):** on the client /
+   store record, show the **field-observed municipality alongside** the registered
+   one (do not overwrite the registered field). Show **who/when** (`set_by_name`,
+   `captured_at`). Surface **additional-branch** rows as a distinct, triageable
+   list — this is where admin decides whether a branch becomes a real account. The
+   registered municipality remains the value that feeds territory/assignment until
+   admin promotes a field value.
+
 ## Open questions for the owner / web
 
 - **Which client rows sync to field devices?** (the ⚠️ dependency above) — decides

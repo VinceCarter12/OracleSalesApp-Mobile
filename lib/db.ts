@@ -300,6 +300,16 @@ async function ensureCriticalTablesExist(db: SQLiteDatabase): Promise<void> {
       lat REAL NOT NULL,
       lng REAL NOT NULL,
       is_current INTEGER NOT NULL DEFAULT 0,
+      -- What the officer meant this pin to be (owner decision 2026-08-22):
+      --   'relocation'        — the SAME store moved here; becomes the current
+      --                         pin and its area overrides the store header.
+      --   'additional_branch' — a SEPARATE second store at this client; recorded
+      --                         as a NON-current, flagged entry only. It never
+      --                         becomes the store's current pin and never
+      --                         overrides the registered area (a branch is not
+      --                         the account). Surfaced to admin for triage; web
+      --                         owns whether it becomes a real account.
+      kind TEXT NOT NULL DEFAULT 'relocation',
       source TEXT NOT NULL DEFAULT 'field_set',
       set_by TEXT,
       set_by_name TEXT,
@@ -333,6 +343,7 @@ async function ensureCriticalTablesExist(db: SQLiteDatabase): Promise<void> {
   await addColumnIfMissing(db, 'client_locations', 'remote_id', 'TEXT');
   await addColumnIfMissing(db, 'client_locations', 'area', 'TEXT');
   await addColumnIfMissing(db, 'client_locations', 'province', 'TEXT');
+  await addColumnIfMissing(db, 'client_locations', 'kind', "TEXT NOT NULL DEFAULT 'relocation'");
 }
 
 async function ensureJointManagerTablesExist(db: SQLiteDatabase): Promise<void> {

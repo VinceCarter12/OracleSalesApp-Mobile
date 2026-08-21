@@ -434,12 +434,13 @@ export default function DeliverPoScreen() {
           gpsLng={po.gpsLng}
           clientLat={po.clientLat}
           clientLng={po.clientLng}
+          registeredArea={po.registeredArea}
           onSetLocation={
             po.clientId
               ? () =>
                   router.push({
                     pathname: '/(delivery)/set-location',
-                    params: { clientId: po.clientId ?? '', name: po.client, back: '/(delivery)/pos' },
+                    params: { clientId: po.clientId ?? '', name: po.client, registeredArea: po.registeredArea ?? '', back: '/(delivery)/pos' },
                   })
               : undefined
           }
