@@ -14,6 +14,7 @@ import { PhotoSlot } from '../../components/collection-delivery/PhotoSlot';
 import { SignaturePad, type SignaturePadHandle } from '../../components/collection-delivery/SignaturePad';
 import { ReceiverPicker } from '../../components/collection-delivery/ReceiverPicker';
 import { formatPeso, type RemitReceiver } from '../../lib/collection-delivery-data';
+import { useRemitReceivers } from '../../lib/use-remit-receivers';
 import { useCollectionOnHand } from '../../lib/use-remittance';
 import { submitCollectionRemittance, type RemitDestination as RemoteDestination } from '../../lib/remittance-write';
 
@@ -61,6 +62,8 @@ export default function CollectionRemitScreen() {
   const db = useAppDb();
   const { profileId } = useSession();
   const { summary, refresh } = useCollectionOnHand(profileId);
+  // Assigned receiver = the real Collection admin account(s), not a hardcoded name.
+  const { receivers, loading: receiversLoading, error: receiversError, refresh: refreshReceivers } = useRemitReceivers('collection');
 
   const [destination, setDestination] = useState<RemitDestination>('office');
   const [receiver, setReceiver] = useState<RemitReceiver | null>(null);
@@ -161,7 +164,14 @@ export default function CollectionRemitScreen() {
         {isOffice ? (
           <>
             <BizSectionHeader title="Assigned receiver" />
-            <ReceiverPicker selectedId={receiver?.id ?? null} onSelect={setReceiver} />
+            <ReceiverPicker
+              receivers={receivers}
+              selectedId={receiver?.id ?? null}
+              onSelect={setReceiver}
+              loading={receiversLoading}
+              error={receiversError}
+              onRetry={refreshReceivers}
+            />
 
             <BizSectionHeader title="Signed proof" helper="· photo of the signed receipt" />
             <PhotoSlot

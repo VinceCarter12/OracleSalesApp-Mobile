@@ -297,6 +297,11 @@ export type Database = {
           // Storage bucket + column, RLS-restricted UPDATE to this column
           // (+ full_name) only. See ADR-029 (2026-07-20) for the mobile sync.
           avatar_url: string | null;
+          // Web migration 024 — which module an 'admin' manages: 'all' | 'sales'
+          // | 'collection' | 'delivery' (NOT NULL DEFAULT 'all'; non-admins are
+          // always 'all'). Read-only on mobile; used to resolve a module's admin
+          // as the remittance receiver (use-remit-receivers.ts).
+          admin_scope: string | null;
         };
         Insert: Omit<Database['public']['Tables']['profiles']['Row'], 'id' | 'created_at'>;
         Update: Partial<Database['public']['Tables']['profiles']['Insert']>;
@@ -692,6 +697,16 @@ export type Database = {
       is_company_name_available: {
         Args: { p_name: string; p_city: string | null };
         Returns: boolean;
+      };
+      // Remit receivers (2026-08-21): field roles CANNOT read admin profiles
+      // after migrations 030/031 (own-row + same-team only), so this SECURITY
+      // DEFINER function is the ONLY read path for a module's admin account(s) —
+      // the office remittance receiver on the Collection/Delivery Remit screens.
+      // Returns active superadmins + admins whose admin_scope covers p_module
+      // ('collection' | 'delivery'), most-relevant first. See REMIT_RECEIVER_CONTRACT.md.
+      list_module_receivers: {
+        Args: { p_module: string };
+        Returns: { id: string; full_name: string; role: string; admin_scope: string }[];
       };
       // Migration 069 — Additional Collection acknowledgment write-path.
       // Collector-only (42501 for any other role); write-once via COALESCE, so

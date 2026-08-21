@@ -67,6 +67,15 @@ export function SetStoreLocationScreen({ clientId, clientName, backHref }: SetSt
     [locations]
   );
 
+  // Which saved location the working pin currently sits on (if any). After a
+  // tap it matches that location exactly (we copy its coordinates); after a
+  // free drag/GPS it matches nothing, so the pin reads as a brand-new spot.
+  const activeLocation = useMemo(
+    () => (pin ? locations.find((l) => l.lat === pin.lat && l.lng === pin.lng) ?? null : null),
+    [pin, locations]
+  );
+  const pinLabel = activeLocation ? `Location ${activeLocation.seq}` : 'New location — drag me';
+
   async function handleUseGps(): Promise<void> {
     setCapturing(true);
     try {
@@ -119,6 +128,15 @@ export function SetStoreLocationScreen({ clientId, clientName, backHref }: SetSt
     }
   }
 
+  // Tapping a saved "Location N" moves the working pin (and therefore the map
+  // center + popup, both driven by `pin`) onto it, and promotes it to the
+  // store's current pin if it isn't already. Without moving `pin`, reselecting
+  // only recolored the list row while the map stayed on the previous pin.
+  async function handleSelectLocation(location: { id: string; lat: number; lng: number; isCurrent: boolean }): Promise<void> {
+    setPin({ lat: location.lat, lng: location.lng });
+    if (!location.isCurrent) await handleReselect(location.id);
+  }
+
   return (
     <YStack flex={1} backgroundColor={BIZLINK_COLORS.canvas} paddingTop={insets.top}>
       <BizTopBar title="Set location" fallbackHref={backHref as Href} />
@@ -134,7 +152,7 @@ export function SetStoreLocationScreen({ clientId, clientName, backHref }: SetSt
           markers={markers}
           onMarkerPress={() => {}}
           height={300}
-          editablePin={pin ? { lat: pin.lat, lng: pin.lng, label: 'New location — drag me' } : null}
+          editablePin={pin ? { lat: pin.lat, lng: pin.lng, label: pinLabel } : null}
           onPinDragEnd={(p) => setPin(p)}
         />
 
@@ -171,7 +189,7 @@ export function SetStoreLocationScreen({ clientId, clientName, backHref }: SetSt
           </Text>
         ) : (
           locations.map((l) => (
-            <Pressable key={l.id} onPress={() => (l.isCurrent ? undefined : handleReselect(l.id))}>
+            <Pressable key={l.id} onPress={() => handleSelectLocation(l)}>
               <XStack alignItems="center" gap="$3" backgroundColor={BIZLINK_COLORS.card} borderRadius={20} padding={14} marginBottom={10}>
                 <View width={34} height={34} borderRadius={13} backgroundColor={l.isCurrent ? COLORS.greenSoft : BIZLINK_COLORS.tintA} alignItems="center" justifyContent="center">
                   <Text fontFamily={BIZLINK_FONTS.semibold} fontSize={14} color={l.isCurrent ? COLORS.ledgeGreen : BIZLINK_COLORS.ink}>{l.seq}</Text>

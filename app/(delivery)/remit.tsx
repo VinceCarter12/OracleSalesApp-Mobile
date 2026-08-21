@@ -14,6 +14,7 @@ import { PhotoSlot } from '../../components/collection-delivery/PhotoSlot';
 import { SignaturePad, type SignaturePadHandle } from '../../components/collection-delivery/SignaturePad';
 import { ReceiverPicker } from '../../components/collection-delivery/ReceiverPicker';
 import { formatPeso, type RemitReceiver } from '../../lib/collection-delivery-data';
+import { useRemitReceivers } from '../../lib/use-remit-receivers';
 import { useCodOnHand } from '../../lib/use-remittance';
 import { submitCodRemittance } from '../../lib/remittance-write';
 
@@ -30,6 +31,8 @@ export default function DeliveryRemitScreen() {
   const db = useAppDb();
   const { profileId } = useSession();
   const { summary, refresh } = useCodOnHand(profileId);
+  // Assigned receiver = the real Delivery admin account(s), not a hardcoded name.
+  const { receivers, loading: receiversLoading, error: receiversError, refresh: refreshReceivers } = useRemitReceivers('delivery');
 
   const [receiver, setReceiver] = useState<RemitReceiver | null>(null);
   const [proofUri, setProofUri] = useState<string | null>(null);
@@ -108,7 +111,14 @@ export default function DeliveryRemitScreen() {
         </XStack>
 
         <BizSectionHeader title="Assigned receiver" />
-        <ReceiverPicker selectedId={receiver?.id ?? null} onSelect={setReceiver} />
+        <ReceiverPicker
+          receivers={receivers}
+          selectedId={receiver?.id ?? null}
+          onSelect={setReceiver}
+          loading={receiversLoading}
+          error={receiversError}
+          onRetry={refreshReceivers}
+        />
 
         <BizSectionHeader title="Signed proof" helper="· photo of the signed receipt" />
         <PhotoSlot
