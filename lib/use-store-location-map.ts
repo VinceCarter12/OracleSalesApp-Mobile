@@ -74,7 +74,7 @@ async function resolveStores(stores: MapStoreInput[]): Promise<{ located: Locate
       }
     }
     const locRows = await db.getAllAsync<CurrentLocationRow>(
-      `SELECT client_id, lat, lng FROM client_locations WHERE is_current = 1 AND client_id IN (${placeholders})`,
+      `SELECT client_id, lat, lng FROM client_locations WHERE is_current = 1 AND local_deleted = 0 AND client_id IN (${placeholders})`,
       clientIds
     );
     for (const r of locRows) currentLocations.set(r.client_id, { lat: r.lat, lng: r.lng });

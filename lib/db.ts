@@ -333,7 +333,17 @@ async function ensureCriticalTablesExist(db: SQLiteDatabase): Promise<void> {
       -- optimistic row keeps its own local PK and links back through this column
       -- (needed to re-select a saved pin via set_current_client_location). NULL
       -- until the row's first successful push. See lib/sync/store-location-push.ts.
-      remote_id TEXT
+      remote_id TEXT,
+      -- Local tombstone (2026-08-22). A pin the officer DELETED that had already
+      -- been pushed to the server (remote_id set). We can't hard-delete it — web
+      -- has no delete RPC yet, so the down-sync (store-location-sync-down) would
+      -- re-pull the still-present server row and resurrect it. Instead we flag it
+      -- deleted, filter it out of every read, and the down-sync skips re-applying
+      -- it. A never-synced pin is hard-deleted outright (no tombstone needed).
+      -- ⚠️ Local to THIS device: teammates still see the server row until web
+      -- ships a real delete that this can convert into a server-side removal
+      -- (STORE_LOCATIONS_CONTRACT.md §delete).
+      local_deleted INTEGER NOT NULL DEFAULT 0
     );
     CREATE INDEX IF NOT EXISTS idx_client_locations_client ON client_locations (client_id);
     CREATE INDEX IF NOT EXISTS idx_client_locations_current ON client_locations (client_id, is_current);
@@ -344,6 +354,7 @@ async function ensureCriticalTablesExist(db: SQLiteDatabase): Promise<void> {
   await addColumnIfMissing(db, 'client_locations', 'area', 'TEXT');
   await addColumnIfMissing(db, 'client_locations', 'province', 'TEXT');
   await addColumnIfMissing(db, 'client_locations', 'kind', "TEXT NOT NULL DEFAULT 'relocation'");
+  await addColumnIfMissing(db, 'client_locations', 'local_deleted', 'INTEGER NOT NULL DEFAULT 0');
 }
 
 async function ensureJointManagerTablesExist(db: SQLiteDatabase): Promise<void> {

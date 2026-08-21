@@ -70,11 +70,16 @@ export async function syncStoreLocationsDown(db: SQLiteDatabase): Promise<void> 
     try {
       // Match this device's own pushed row (by remote_id) or a previously
       // synced-down row (its PK IS the server id).
-      const existing = await db.getFirstAsync<{ id: string; sync_status: string }>(
-        'SELECT id, sync_status FROM client_locations WHERE remote_id = ? OR id = ? LIMIT 1',
+      const existing = await db.getFirstAsync<{ id: string; sync_status: string; local_deleted: number }>(
+        'SELECT id, sync_status, local_deleted FROM client_locations WHERE remote_id = ? OR id = ? LIMIT 1',
         [r.id, r.id]
       );
       if (existing) {
+        // The officer deleted this pin locally (soft tombstone — web has no delete
+        // RPC yet, so the server row still returns here). Respect the local delete:
+        // don't re-apply or resurrect it, or it would reappear a few seconds after
+        // every delete (STORE_LOCATIONS_CONTRACT §delete).
+        if (existing.local_deleted === 1) continue;
         // Don't overwrite a pin the officer just set but hasn't pushed yet.
         if (existing.sync_status !== 'synced') continue;
         await db.runAsync(

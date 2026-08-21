@@ -2,12 +2,12 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, Pressable, ScrollView } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { Href } from 'expo-router';
-import { Crosshair, Hand, MapPin, Store } from 'lucide-react-native';
+import { Crosshair, Hand, MapPin, Store, Trash2 } from 'lucide-react-native';
 import { Text, View, XStack, YStack } from 'tamagui';
 import { useBizlinkColors, BIZLINK_FONTS, COLORS } from '../../lib/theme';
 import { useSession } from '../../lib/session-store';
 import { useStoreLocations } from '../../lib/use-store-locations';
-import { addStoreLocation, setCurrentStoreLocation } from '../../lib/store-location-service';
+import { addStoreLocation, deleteStoreLocation, setCurrentStoreLocation } from '../../lib/store-location-service';
 import { captureGps } from '../../lib/gps';
 import { formatShortDateTime } from '../../lib/collection-delivery-data';
 import { CityMunicipalitySelector } from '../bizlink/CityMunicipalitySelector';
@@ -64,15 +64,23 @@ export function SetStoreLocationScreen({ clientId, clientName, registeredArea, b
     }
   }, [current]);
 
+  // Pin color tells the three cases apart on the map itself (owner ask
+  // 2026-08-22): an orange pin = additional branch (a separate store, never the
+  // current pin), green = the store's current relocated pin, gray = an older
+  // relocation the store has since moved away from. Mirrors the row chips below.
   const markers = useMemo<LeafletMapMarker[]>(
     () =>
       locations.map((l) => ({
         id: `loc:${l.id}`,
         lat: l.lat,
         lng: l.lng,
-        colorHex: l.isCurrent ? COLORS.ledgeGreen : '#8A968F',
+        colorHex:
+          l.kind === 'additional_branch' ? COLORS.orange : l.isCurrent ? COLORS.ledgeGreen : '#8A968F',
         radius: 8,
-        label: `Location ${l.seq}${l.isCurrent ? ' · current' : ''}`,
+        label:
+          l.kind === 'additional_branch'
+            ? `Location ${l.seq} · branch`
+            : `Location ${l.seq}${l.isCurrent ? ' · current' : ''}`,
         icon: { kind: 'pin' as const, text: String(l.seq) },
       })),
     [locations]
@@ -134,6 +142,34 @@ export function SetStoreLocationScreen({ clientId, clientName, registeredArea, b
     } finally {
       setSaving(false);
     }
+  }
+
+  // Delete a saved pin. Confirm first, and if it's the store's current pin warn
+  // that another (or the office pin) will take over — so the officer knows the
+  // map will move, not just that a row disappears.
+  function handleDelete(location: { id: string; seq: number; isCurrent: boolean; kind: LocationKind; area: string | null }): void {
+    const name = location.area ? location.area : `Location ${location.seq}`;
+    const message =
+      location.kind === 'additional_branch'
+        ? `Remove the branch “${name}”? This only drops the flagged branch entry.`
+        : location.isCurrent
+          ? `“${name}” is the store’s current pin. Deleting it makes the most recent remaining location current (or the registered office pin if none is left).`
+          : `Remove “${name}” from this store’s saved locations?`;
+    Alert.alert('Delete location', message, [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Delete',
+        style: 'destructive',
+        onPress: async () => {
+          try {
+            await deleteStoreLocation(clientId, location.id);
+            await refresh();
+          } catch (err) {
+            Alert.alert('Could not delete', err instanceof Error ? err.message : 'Please try again.');
+          }
+        },
+      },
+    ]);
   }
 
   async function handleReselect(locationId: string): Promise<void> {
@@ -209,6 +245,23 @@ export function SetStoreLocationScreen({ clientId, clientName, registeredArea, b
           </Text>
         </XStack>
 
+        {/* Pin legend — matches the marker colors so a branch pin isn't mistaken
+            for the store's real current location. */}
+        <XStack gap="$3" marginTop="$2" flexWrap="wrap">
+          {([
+            { color: COLORS.ledgeGreen, label: 'Current pin' },
+            { color: '#8A968F', label: 'Past location' },
+            { color: COLORS.orange, label: 'Branch' },
+          ]).map((item) => (
+            <XStack key={item.label} alignItems="center" gap="$1.5">
+              <View width={10} height={10} borderRadius={5} backgroundColor={item.color} />
+              <Text fontSize={11} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted}>
+                {item.label}
+              </Text>
+            </XStack>
+          ))}
+        </XStack>
+
         {/* Optional area/municipality — the SAME canonical PSGC picker the sales
             Create Client flow uses (free text can't be saved). If the store moved
             to a new municipality, choose it so the store header reads the real
@@ -250,8 +303,8 @@ export function SetStoreLocationScreen({ clientId, clientName, registeredArea, b
             // for a separate store. A branch is not a candidate for the store's
             // current pin — so it isn't tappable to re-select and shows no "Use
             // this". Only relocation history can be re-selected as current.
-            const accent = isBranch ? BIZLINK_COLORS.ink : COLORS.ledgeGreen;
-            const chipBg = isBranch ? BIZLINK_COLORS.tintA : COLORS.greenSoft;
+            const accent = isBranch ? COLORS.orange : COLORS.ledgeGreen;
+            const chipBg = isBranch ? COLORS.amberSoft : COLORS.greenSoft;
             const row = (
               <XStack alignItems="center" gap="$3" backgroundColor={BIZLINK_COLORS.card} borderRadius={20} padding={14} marginBottom={10}>
                 <View width={38} height={38} borderRadius={14} backgroundColor={chipBg} alignItems="center" justifyContent="center">
@@ -283,11 +336,22 @@ export function SetStoreLocationScreen({ clientId, clientName, registeredArea, b
                     </Text>
                   ) : null}
                 </YStack>
-                {isBranch ? null : l.isCurrent ? (
-                  <StatusBadge label="Current" background={COLORS.greenSoft} color={COLORS.ledgeGreen} />
-                ) : (
-                  <Text fontSize={11.5} fontFamily={BIZLINK_FONTS.semibold} color={BIZLINK_COLORS.brand}>Use this</Text>
-                )}
+                <XStack alignItems="center" gap="$2.5">
+                  {isBranch ? null : l.isCurrent ? (
+                    <StatusBadge label="Current" background={COLORS.greenSoft} color={COLORS.ledgeGreen} />
+                  ) : (
+                    <Text fontSize={11.5} fontFamily={BIZLINK_FONTS.semibold} color={BIZLINK_COLORS.brand}>Use this</Text>
+                  )}
+                  {/* Delete — clears a wrong/stale pin so it's obvious which spot
+                      is the true current location. Own hitSlop so it doesn't also
+                      trigger the row's re-select tap. */}
+                  <Pressable
+                    hitSlop={8}
+                    onPress={() => handleDelete({ id: l.id, seq: l.seq, isCurrent: l.isCurrent, kind: l.kind, area: l.area })}
+                  >
+                    <Trash2 size={16} color={COLORS.red} strokeWidth={2} />
+                  </Pressable>
+                </XStack>
               </XStack>
             );
             return isBranch ? (

@@ -260,6 +260,12 @@ regenerated types land):
 
 ### Officer-typed relocation AREA (2026-08-20, mobile Option 2)
 
+> ⚠️ **REVISITED 2026-08-22 — see [§area-autoderive](#areaautoderive--municipality-should-follow-the-pin-2026-08-22) below.** The manual PSGC pick
+> here can *contradict* the pin (officer drops the pin in Bulacan but picks Quezon
+> City), which is exactly the confusion this feature was meant to remove. Owner now
+> wants the municipality to **auto-derive from the pin**. The manual picker stays as
+> an interim/override only until the auto-derive (web-owned) ships.
+
 Problem: the store header shows the customer's **registered city** (`collection_visits/
 purchase_orders.area`, denormalized from `clients.city` at customer creation). Setting
 a relocation **pin** changes the coordinate, not that text, so a relocated store's
@@ -386,4 +392,82 @@ setting device** — the RSR/admin/other officers will NOT see them.
   the same store. Server-assigned `seq` (per §2) resolves display order, but do we
   keep both pins, or dedupe by proximity? Mobile currently keeps both.
 - **Can a field officer edit/delete a wrong pin**, or only append a new current one?
-  Mobile currently only appends + re-selects (never deletes).
+  Mobile supports **delete** (2026-08-22): `deleteStoreLocation` removes a saved pin
+  so a wrong/stale one can't be confused with the true current location. Deleting the
+  current pin promotes the newest remaining relocation (or falls back to the office
+  pin if none remains). Branches just drop their flagged entry.
+
+  **Delete is split by sync state** (because the down-sync would otherwise resurrect
+  it — a synced pin still exists on the server, and `store-location-sync-down` re-pulls
+  it seconds later):
+  - **Never-pushed** pin (`remote_id IS NULL`) → **hard** local delete. Clean.
+  - **Already-pushed** pin → **soft** local tombstone (`client_locations.local_deleted = 1`).
+    Every read filters `local_deleted = 0` and the down-sync skips re-applying it, so the
+    delete sticks on THIS device.
+  ⚠️ **Web owes a real delete (contract §delete):** the soft tombstone is LOCAL — the
+  server row is untouched, so **teammates still see the pin** and it returns on a fresh
+  reinstall. Web needs a `delete_client_location(p_id)` RPC (RLS: field role may delete
+  a pin for a client on their board) so a tombstone can be pushed as a real server
+  delete, plus the down-sync must stop returning deleted rows. Until then delete is a
+  per-device cleanup, not a team-wide removal.
+
+  **Numbering compacts after delete (2026-08-22):** the "Location N" shown is a
+  contiguous DISPLAY index recomputed over surviving rows in `listStoreLocations`, not
+  the raw stored `seq`. Delete Location 1 → Location 2 becomes "Location 1", etc. Stored
+  `seq` keeps its gaps (drives `MAX(seq)+1` insert ordering, and the down-sync re-stamps
+  the server `seq` on synced rows — a renumbered stored value would just revert).
+
+## §area-autoderive — Municipality should FOLLOW the pin (2026-08-22)
+
+Owner ask (2026-08-22), **supersedes the "Option 2 — pick it, no geocoder" decision**
+in *Officer-typed relocation AREA* above. The manual PSGC picker lets the typed area
+**contradict** the pin: the officer drops the pin in **Bulacan** but picks **Quezon
+City** from the list. Two conflicting "areas" for one physical spot is exactly the
+confusion the feature was meant to kill.
+
+**Decision: the pin is ground truth; the municipality/province must be DERIVED from
+the pin's coordinate (reverse-geocoded to a canonical PSGC locality), not typed
+independently.** A collector standing at the store has the authoritative location; the
+area label should just follow it.
+
+### Why this is largely WEB-owned
+
+Reverse-geocoding a lat/lng → a *canonical PSGC* municipality needs authoritative PH
+administrative-boundary polygons + a point-in-polygon lookup. That belongs server-side
+(PostGIS with a PSGC boundaries table), because:
+- it must return the **same canonical names** already used by `clients.city` / the PSGC
+  picker (so field + registered values are comparable, not "Q.C." vs "Quezon City");
+- boundary data is large and licensing-sensitive — bundling detailed polygons for every
+  PH municipality into the mobile app is heavy and goes stale;
+- the server already owns the keep-fresh / denormalization path (114), so a
+  server-derived area can ride the same lane back to every device.
+
+### 👉 What WEB must add
+
+1. **PSGC boundary table + a resolver** (e.g. `psgc_boundaries(psgc_code, name,
+   province, geom geometry(MultiPolygon,4326))`) and a function
+   `resolve_locality(p_lat, p_lng) → (name, province, psgc_code)` doing a
+   `ST_Contains` point-in-polygon (nearest-boundary fallback for coastal/edge pins).
+2. **Wire it into `set_client_location()`** (the RPC from §area+branch item 2): when a
+   pin is set, **server-derive** `area`/`province` from `p_lat`/`p_lng` and persist the
+   canonical result on the `client_locations` row — instead of trusting a client-sent
+   `p_area`. The officer's pin, not their typed pick, drives the area.
+3. **Return the derived locality** on the down-sync / denormalized lane so the setting
+   device (offline when it set the pin) and all other roles see the **same** canonical
+   municipality once synced.
+4. Keep the **registered vs field** split from §area+branch: the derived field
+   municipality is shown *alongside* the registered one and never silently overwrites
+   territory/assignment — it just makes the field value trustworthy instead of typed.
+
+### Interim MOBILE behavior (until web ships the resolver)
+
+- Mobile **cannot** reverse-geocode offline (no boundary dataset on-device), so it keeps
+  the PSGC picker **as an optional override only**, reframed so the officer understands
+  the pin is what matters and the area will be **confirmed/auto-set on sync**. The typed
+  value remains local-only (as today) and is superseded by the server-derived locality
+  once the resolver lands.
+- **Open decision for the owner:** accept "area confirmed after sync" (web-only,
+  recommended), OR invest in an **on-device PSGC boundary dataset** (point-in-polygon in
+  the app) for instant offline area feedback — larger bundle, sourcing/licensing work,
+  edge-accuracy caveats. Recommendation: **web-only resolver**; revisit on-device only
+  if offline instant-area proves necessary in the field.

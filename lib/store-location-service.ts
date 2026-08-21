@@ -78,21 +78,31 @@ function rowToStoreLocation(row: StoreLocationRow): StoreLocation {
   };
 }
 
-/** All saved locations for a store, oldest (Location 1) first. */
+/**
+ * All saved locations for a store, oldest (Location 1) first.
+ *
+ * `seq` is re-derived as a **contiguous 1-based display position** over the
+ * surviving rows, NOT the raw stored `seq`. So when Location 1 is deleted,
+ * Location 2 → "Location 1" and Location 3 → "Location 2" (owner ask 2026-08-22).
+ * Doing it here (rather than renumbering the stored column) keeps it robust: the
+ * stored `seq`/server `seq` can carry gaps from soft-deletes, and the down-sync
+ * re-stamps the server `seq` on synced rows — a renumbered stored value would
+ * just revert. The stored `seq` still drives insert ordering (`MAX(seq)+1`).
+ */
 export async function listStoreLocations(clientId: string): Promise<StoreLocation[]> {
   const db = await getDb();
   const rows = await db.getAllAsync<StoreLocationRow>(
-    'SELECT * FROM client_locations WHERE client_id = ? ORDER BY seq ASC',
+    'SELECT * FROM client_locations WHERE client_id = ? AND local_deleted = 0 ORDER BY seq ASC',
     [clientId]
   );
-  return rows.map(rowToStoreLocation);
+  return rows.map(rowToStoreLocation).map((loc, i) => ({ ...loc, seq: i + 1 }));
 }
 
 /** The store's current pin, or null if none has been set on this device yet. */
 export async function getCurrentStoreLocation(clientId: string): Promise<StoreLocation | null> {
   const db = await getDb();
   const row = await db.getFirstAsync<StoreLocationRow>(
-    'SELECT * FROM client_locations WHERE client_id = ? AND is_current = 1 LIMIT 1',
+    'SELECT * FROM client_locations WHERE client_id = ? AND is_current = 1 AND local_deleted = 0 LIMIT 1',
     [clientId]
   );
   return row ? rowToStoreLocation(row) : null;
@@ -166,10 +176,20 @@ export async function addStoreLocation(input: AddStoreLocationInput): Promise<St
       [id, input.clientId, seq, input.label ?? null, input.lat, input.lng, isCurrent ? 1 : 0, kind, input.setBy ?? null, input.setByName ?? null, capturedAt, now, now, input.area ?? null, input.province ?? null]
     );
 
+    // The DISPLAY number the row will show in the list (contiguous over surviving
+    // rows — see listStoreLocations). The new row sorts last, so it's the count of
+    // non-deleted rows. Stored `seq` (MAX+1) can be higher after soft-deletes, so
+    // return the display number here to keep the "saved as Location N" copy honest.
+    const countRow = await db.getFirstAsync<{ n: number }>(
+      'SELECT COUNT(*) AS n FROM client_locations WHERE client_id = ? AND local_deleted = 0',
+      [input.clientId]
+    );
+    const displaySeq = countRow?.n ?? seq;
+
     created = {
       id,
       clientId: input.clientId,
-      seq,
+      seq: displaySeq,
       label: input.label ?? null,
       lat: input.lat,
       lng: input.lng,
@@ -188,6 +208,67 @@ export async function addStoreLocation(input: AddStoreLocationInput): Promise<St
   // awaits its callback), but the compiler can't prove that across the closure.
   if (!created) throw new Error('addStoreLocation: insert did not complete');
   return created;
+}
+
+/**
+ * Removes a saved location (owner ask 2026-08-22): a field officer can pile up
+ * many pins as a store is re-visited, and a wrong/stale one muddies which spot
+ * is the "true" current location. Deleting cleans that up.
+ *
+ * Guardrails:
+ * - If the deleted pin was the store's CURRENT one, the most recent remaining
+ *   relocation (highest seq, kind='relocation') is promoted to current in the
+ *   same transaction, so the store never silently loses its pin without a
+ *   replacement. If no relocation remains, the store falls back to its office
+ *   pin on the map (resolver precedence) — the expected result of removing the
+ *   last field pin.
+ * - Branches are never current, so deleting one only drops that flagged entry.
+ *
+ * Delete semantics depend on whether the pin ever reached the server:
+ * - NEVER pushed (`remote_id IS NULL`) → HARD delete. It only ever lived on this
+ *   device, so removing the row is clean (like cancelling an un-pushed create).
+ * - ALREADY pushed (`remote_id` set) → SOFT delete (`local_deleted = 1`). Web has
+ *   no delete RPC yet, so the row still exists on the server; a hard delete would
+ *   just be re-pulled by the down-sync and reappear. The tombstone hides it from
+ *   every read here and the down-sync skips re-applying it, so the delete sticks
+ *   on THIS device. ⚠️ Teammates still see the server row until web ships a real
+ *   delete this can convert into a server-side removal (STORE_LOCATIONS_CONTRACT).
+ */
+export async function deleteStoreLocation(clientId: string, locationId: string): Promise<void> {
+  const db = await getDb();
+  const now = new Date().toISOString();
+  await db.withTransactionAsync(async () => {
+    const target = await db.getFirstAsync<{ is_current: number; remote_id: string | null }>(
+      'SELECT is_current, remote_id FROM client_locations WHERE id = ? AND client_id = ?',
+      [locationId, clientId]
+    );
+    if (!target) return;
+
+    if (target.remote_id == null) {
+      await db.runAsync('DELETE FROM client_locations WHERE id = ? AND client_id = ?', [locationId, clientId]);
+    } else {
+      await db.runAsync(
+        'UPDATE client_locations SET local_deleted = 1, is_current = 0, local_updated_at = ? WHERE id = ? AND client_id = ?',
+        [now, locationId, clientId]
+      );
+    }
+
+    // Deleting the current pin leaves the store with no current location —
+    // promote the newest remaining (non-deleted) relocation so a valid pin is
+    // always chosen when one exists.
+    if (target.is_current === 1) {
+      const next = await db.getFirstAsync<{ id: string }>(
+        "SELECT id FROM client_locations WHERE client_id = ? AND kind = 'relocation' AND local_deleted = 0 ORDER BY seq DESC LIMIT 1",
+        [clientId]
+      );
+      if (next) {
+        await db.runAsync(
+          "UPDATE client_locations SET is_current = 1, local_updated_at = ?, sync_status = 'pending' WHERE id = ?",
+          [now, next.id]
+        );
+      }
+    }
+  });
 }
 
 /**

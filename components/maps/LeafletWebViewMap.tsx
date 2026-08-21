@@ -134,6 +134,15 @@ function buildMapHtml(markers: LeafletMapMarker[], tileType: MapTileType, focuse
     .editor-pin::after{content:'';width:11px;height:11px;border-radius:50%;background:#FFFFFF;}
     .editor-pin::before{content:'';position:absolute;left:50%;top:50%;margin:-23px 0 0 -23px;width:46px;height:46px;border-radius:50%;border:3px solid rgba(0,91,54,0.4);animation:epulse 1.7s ease-out infinite;}
     @keyframes epulse{0%{transform:scale(1);opacity:0.85;}100%{transform:scale(1.9);opacity:0;}}
+    /* Bigger zoom +/- buttons (2026-08-22): the default Leaflet control is a ~26px
+       target that's fiddly on a phone, which made the C&D maps hard to navigate.
+       Enlarge to a 44px touch target, round the corners, and give it room from the
+       edge — applies to every C&D map since they all render through buildMapHtml. */
+    .leaflet-bar a,.leaflet-touch .leaflet-bar a{width:44px;height:44px;line-height:44px;font-size:26px;color:#16241D;font-weight:600;}
+    .leaflet-touch .leaflet-bar{border:none;box-shadow:0 2px 8px rgba(0,0,0,0.28);}
+    .leaflet-touch .leaflet-bar a:first-child{border-top-left-radius:12px;border-top-right-radius:12px;}
+    .leaflet-touch .leaflet-bar a:last-child{border-bottom-left-radius:12px;border-bottom-right-radius:12px;}
+    .leaflet-control-zoom{margin:12px !important;}
     ${CLUSTER_BADGE_STYLE}</style>
 </head>
 <body>
@@ -143,7 +152,10 @@ function buildMapHtml(markers: LeafletMapMarker[], tileType: MapTileType, focuse
   <script>
     var markers = ${markersJson};
     var focusedMarkerId = ${focusedMarkerIdJson};
-    var map = L.map('map', { zoomControl: true, attributionControl: false, maxZoom: ${tileMaxZoom} });
+    // zoomSnap/zoomDelta 0.5 → the +/- buttons and pinch move in half-levels, so
+    // zooming is gradual instead of the jarring full-level jumps that made it easy
+    // to overshoot; wheelPxPerZoomLevel smooths trackpad/scroll zoom too.
+    var map = L.map('map', { zoomControl: true, attributionControl: false, maxZoom: ${tileMaxZoom}, zoomSnap: 0.5, zoomDelta: 0.5, wheelPxPerZoomLevel: 70, bounceAtZoomLimits: false });
     L.tileLayer('${tileUrl}', { attribution: '${CARTO_ATTRIBUTION}', maxZoom: ${tileMaxZoom} }).addTo(map);
 
     // Office/meeting pins (and plain fallback dots) cluster together when
@@ -353,6 +365,10 @@ export function LeafletWebViewMap({ markers, onMarkerPress, height = 300, tileTy
         originWhitelist={['*']}
         javaScriptEnabled
         domStorageEnabled={false}
+        // Let a map pan/zoom gesture win over the enclosing ScrollView instead of
+        // the page scrolling away under the finger (Android) — a big part of why
+        // the map felt hard to navigate.
+        nestedScrollEnabled
       />
       {loadFailed ? (
         <View style={styles.overlay}>
@@ -472,8 +488,10 @@ export function LeafletWebViewMapWithControls({
         originWhitelist={['*']}
         javaScriptEnabled
         domStorageEnabled={false}
+        // Pan/zoom the map without the enclosing ScrollView stealing the gesture.
+        nestedScrollEnabled
       />
-      
+
       {/* Map Type Selector Overlay - Inside Map */}
       <View style={{
         position: 'absolute',
