@@ -16,6 +16,8 @@ import {
 import { countDueOutboxRows, countDuePendingUploads } from './sync/due-counts';
 import { beginSyncProgress, endSyncProgress } from './sync/sync-progress';
 import { reconcileAdditionalAcks } from './sync/additional-acks';
+import { pushStoreLocations } from './sync/store-location-push';
+import { syncStoreLocationsDown } from './sync/store-location-sync-down';
 import { processCollectionPayments } from './sync/collection-payments';
 import { processCodPayments } from './sync/cod-payments';
 import { processRemittanceLinks } from './sync/remittance-link';
@@ -272,7 +274,23 @@ async function runSyncOnce(agentId: string, teamId?: string | null, role?: UserR
     console.error('processRemittanceLinks failed', err);
     return { synced: 0, failed: 0 };
   });
+  // Store Locations Phase 4 (web 113/114): push the field officer's locally-set
+  // relocation pins via the C&D RPCs. Runs BEFORE syncDown so migration 114's
+  // keep-fresh re-stamp of client_lat/client_lng onto the still-open visits/POs
+  // is pulled back onto every officer's map this same pass. Best-effort, like
+  // the payment lanes / reconcileAdditionalAcks: a throw here must never fail
+  // the pass — each row manages its own retry via its 'pending' sync_status.
+  await pushStoreLocations(db).catch((err: unknown) => {
+    console.error('pushStoreLocations failed', err);
+  });
   await syncDown(agentId, teamId, role);
+  // Store Locations down-sync (web 113): pull the field-set relocation pins other
+  // officers set (with who/when) so a co-worker sees the corrected store location,
+  // not the stale registered spot. Runs AFTER syncDown so it reconciles against
+  // the visit/PO rows just pulled. Best-effort — never fails the pass.
+  await syncStoreLocationsDown(db).catch((err: unknown) => {
+    console.error('syncStoreLocationsDown failed', err);
+  });
   // F-007 Additional Collection (web 068/069): acknowledge additional stores
   // back to the server via the collector-only RPCs — received (just pulled) and
   // seen (collector opened it offline earlier). Best-effort: it manages its own

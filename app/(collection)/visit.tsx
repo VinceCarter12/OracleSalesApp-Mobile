@@ -12,7 +12,6 @@ import {
   Footprints,
   Lightbulb,
   Lock,
-  MessageSquareWarning,
   Receipt,
   Smartphone,
 } from 'lucide-react-native';
@@ -26,6 +25,7 @@ import { BizTopBar } from '../../components/bizlink/BizTopBar';
 import { BizSectionHeader } from '../../components/bizlink/BizSectionHeader';
 import { BizButton } from '../../components/bizlink/BizButton';
 import { PhotoSlot } from '../../components/collection-delivery/PhotoSlot';
+import { StoreLocationCard } from '../../components/collection-delivery/StoreLocationCard';
 import { SignaturePad, type SignaturePadHandle } from '../../components/collection-delivery/SignaturePad';
 import { formatCapturedTimestamp, formatPeso, isOpenForCollection, remainingBalance, type PaymentMethod } from '../../lib/collection-delivery-data';
 import { useNow } from '../../lib/use-now';
@@ -318,9 +318,30 @@ export default function CollectPaymentScreen() {
           <Avatar initials={store.initials} background={BIZLINK_COLORS.tintA} color={BIZLINK_COLORS.ink} />
           <YStack>
             <Text fontFamily={BIZLINK_FONTS.semibold} fontSize={15} color={BIZLINK_COLORS.text}>{store.name}</Text>
-            <Text fontSize={12.5} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted}>{store.area}, Bataan</Text>
+            <Text fontSize={12.5} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted}>{store.area}, {store.province ?? 'Bataan'}</Text>
           </YStack>
         </XStack>
+
+        {/* Store location — where the store actually is (field pin → registered
+            pin → last visit GPS), so the collector knows where to go and can
+            fix it if it moved. */}
+        <StoreLocationCard
+          clientId={store.clientId}
+          initials={store.initials}
+          gpsLat={store.gpsLat}
+          gpsLng={store.gpsLng}
+          clientLat={store.clientLat}
+          clientLng={store.clientLng}
+          onSetLocation={
+            store.clientId
+              ? () =>
+                  router.push({
+                    pathname: '/(collection)/set-location',
+                    params: { clientId: store.clientId ?? '', name: store.name, back: '/(collection)/today' },
+                  })
+              : undefined
+          }
+        />
 
         {/* Claim / "On the way" — hard lock (web 046). Also shown for a partial
             store, which is still open for a follow-up collection. */}
@@ -458,14 +479,6 @@ export default function CollectPaymentScreen() {
             </XStack>
           </>
         ) : null}
-
-        {/* SMS pending banner */}
-        <XStack alignItems="center" gap="$2.5" backgroundColor={BIZLINK_COLORS.amberSoft} borderRadius={20} paddingHorizontal={16} paddingVertical={13} marginTop={12}>
-          <MessageSquareWarning size={16} color={BIZLINK_COLORS.orange} strokeWidth={1.75} />
-          <Text flex={1} fontSize={12} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.orange} lineHeight={17}>
-            SMS confirmation to the customer — sent once synced. Provider/API still pending, so don’t rely on it yet.
-          </Text>
-        </XStack>
 
         {/* Remarks */}
         <BizSectionHeader title="Remarks" />

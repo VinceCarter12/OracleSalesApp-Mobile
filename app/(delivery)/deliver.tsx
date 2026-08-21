@@ -14,8 +14,10 @@ import { BizTopBar } from '../../components/bizlink/BizTopBar';
 import { BizSectionHeader } from '../../components/bizlink/BizSectionHeader';
 import { BizButton } from '../../components/bizlink/BizButton';
 import { PhotoSlot } from '../../components/collection-delivery/PhotoSlot';
+import { StoreLocationCard } from '../../components/collection-delivery/StoreLocationCard';
 import { SignaturePad, type SignaturePadHandle } from '../../components/collection-delivery/SignaturePad';
 import { formatCapturedTimestamp, formatPeso, remainingCod, type CodMethod } from '../../lib/collection-delivery-data';
+import { initialsFromCompany } from '../../lib/local-collection-delivery-mapper';
 import { useNow } from '../../lib/use-now';
 import { claimStop, collectCodTopUp, deliverPo, failPo, releaseStop } from '../../lib/collection-delivery-write';
 import { runSync } from '../../lib/sync-engine';
@@ -418,9 +420,30 @@ export default function DeliverPoScreen() {
             {isCod ? <StatusBadge label="COD" background={COLORS.purpleSoft} color={COLORS.purple} /> : null}
           </XStack>
           <Text fontSize={12.5} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted}>
-            {po.client} · {po.area}, Bataan
+            {po.client} · {po.area}, {po.province ?? 'Bataan'}
           </Text>
         </YStack>
+
+        {/* Store location — where the store actually is (field pin → registered
+            pin → last delivery GPS), so the driver knows where to go and can
+            fix it if it moved. */}
+        <StoreLocationCard
+          clientId={po.clientId}
+          initials={initialsFromCompany(po.client)}
+          gpsLat={po.gpsLat}
+          gpsLng={po.gpsLng}
+          clientLat={po.clientLat}
+          clientLng={po.clientLng}
+          onSetLocation={
+            po.clientId
+              ? () =>
+                  router.push({
+                    pathname: '/(delivery)/set-location',
+                    params: { clientId: po.clientId ?? '', name: po.client, back: '/(delivery)/pos' },
+                  })
+              : undefined
+          }
+        />
 
         {/* Claim / "On the way" — hard lock (web 046) */}
         {po.status === 'pending' ? (

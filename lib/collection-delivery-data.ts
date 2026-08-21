@@ -125,6 +125,8 @@ export interface CollectionStore {
   clientId?: string;
   name: string;
   area: string;
+  /** Province shown after the area in the header — the field-set pin's real province, else undefined (header falls back to the app-wide "Bataan"). */
+  province?: string;
   initials: string;
   /** `amount_due` — admin-entered, NEVER shown on the Collect Payment screen (anchoring bias). */
   due: number;
@@ -137,6 +139,15 @@ export interface CollectionStore {
   /** GPS captured at payment-photo time (already agreed for collection). */
   gpsLat?: number;
   gpsLng?: number;
+  /**
+   * Store's DEFAULT map coordinate — `collection_visits.client_lat/client_lng`,
+   * denormalized server-side (web 114) as COALESCE(current relocation pin,
+   * office pin). The office-pin tier of the map resolver; present before a stop
+   * is worked (unlike gpsLat/gpsLng, which is visit-time GPS). Undefined for a
+   * store with no pin at all, and for the mock arrays (which never sync).
+   */
+  clientLat?: number;
+  clientLng?: number;
   reschedTo?: string;
   /**
    * MOCK-ONLY (⚠️ not in web 043/044 yet): another collector has claimed this
@@ -212,6 +223,8 @@ export interface DeliveryPo {
   client: string;
   /** Coarser than an address; with the customer name this is the whole listing. No line-items. */
   area: string;
+  /** Province shown after the area in the header — the field-set pin's real province, else undefined (header falls back to the app-wide "Bataan"). */
+  province?: string;
   status: DeliveryPoStatus;
   /** `truck_plate` — per-trip reference. */
   plate?: string;
@@ -226,6 +239,9 @@ export interface DeliveryPo {
   /** GPS captured with the proof (or backload) photo — delivery HAS GPS now. */
   gpsLat?: number;
   gpsLng?: number;
+  /** Store's DEFAULT map coordinate — `purchase_orders.client_lat/client_lng`, denormalized server-side (web 114). Office-pin tier of the map resolver; see CollectionStore.clientLat. */
+  clientLat?: number;
+  clientLng?: number;
   /** Backload photo is a capture on a failed row (proof the goods rode back). */
   backloadCaptured?: boolean;
   /** COD is a per-PO toggle, not every delivery. */

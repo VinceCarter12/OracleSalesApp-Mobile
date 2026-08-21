@@ -29,6 +29,10 @@ export interface StoreLocation {
   setBy: string | null;
   setByName: string | null;
   capturedAt: string;
+  /** Optional municipality (PSGC name) the officer picked — overrides the store's registered city in the header. */
+  area: string | null;
+  /** Province of the picked municipality — replaces the header's hardcoded ", Bataan". */
+  province: string | null;
 }
 
 interface StoreLocationRow {
@@ -43,6 +47,8 @@ interface StoreLocationRow {
   set_by: string | null;
   set_by_name: string | null;
   captured_at: string;
+  area: string | null;
+  province: string | null;
 }
 
 function rowToStoreLocation(row: StoreLocationRow): StoreLocation {
@@ -58,6 +64,8 @@ function rowToStoreLocation(row: StoreLocationRow): StoreLocation {
     setBy: row.set_by,
     setByName: row.set_by_name,
     capturedAt: row.captured_at,
+    area: row.area,
+    province: row.province,
   };
 }
 
@@ -88,6 +96,10 @@ export interface AddStoreLocationInput {
   label?: string | null;
   setBy?: string | null;
   setByName?: string | null;
+  /** Optional municipality (PSGC name) the officer picked — shown in the store header in place of the registered city. */
+  area?: string | null;
+  /** Province of the picked municipality — replaces the header's hardcoded ", Bataan". */
+  province?: string | null;
   /** Defaults to "now" — the moment the officer set the pin. */
   capturedAt?: string;
 }
@@ -119,9 +131,9 @@ export async function addStoreLocation(input: AddStoreLocationInput): Promise<St
     );
     await db.runAsync(
       `INSERT INTO client_locations
-        (id, client_id, seq, label, lat, lng, is_current, source, set_by, set_by_name, captured_at, created_at, local_updated_at, sync_status)
-       VALUES (?, ?, ?, ?, ?, ?, 1, 'field_set', ?, ?, ?, ?, ?, 'pending')`,
-      [id, input.clientId, seq, input.label ?? null, input.lat, input.lng, input.setBy ?? null, input.setByName ?? null, capturedAt, now, now]
+        (id, client_id, seq, label, lat, lng, is_current, source, set_by, set_by_name, captured_at, created_at, local_updated_at, sync_status, area, province)
+       VALUES (?, ?, ?, ?, ?, ?, 1, 'field_set', ?, ?, ?, ?, ?, 'pending', ?, ?)`,
+      [id, input.clientId, seq, input.label ?? null, input.lat, input.lng, input.setBy ?? null, input.setByName ?? null, capturedAt, now, now, input.area ?? null, input.province ?? null]
     );
 
     created = {
@@ -136,6 +148,8 @@ export async function addStoreLocation(input: AddStoreLocationInput): Promise<St
       setBy: input.setBy ?? null,
       setByName: input.setByName ?? null,
       capturedAt,
+      area: input.area ?? null,
+      province: input.province ?? null,
     };
   });
 

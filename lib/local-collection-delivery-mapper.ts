@@ -27,6 +27,9 @@ export interface LocalCollectionVisitRow {
   delivery_receipt_photo_url: string | null;
   gps_lat: number | null;
   gps_lng: number | null;
+  /** web 114: store DEFAULT map coordinate, denormalized server-side (office-pin tier). Distinct from gps_lat/gps_lng (visit-time GPS). */
+  client_lat: number | null;
+  client_lng: number | null;
   remarks: string | null;
   rescheduled_to: string | null;
   visited_at: string | null;
@@ -43,6 +46,9 @@ export interface LocalCollectionVisitRow {
   updated_at: string | null;
   /** Stamped with `now` each time sync-down writes this row into the local mirror — i.e. when this list landed on THIS device. */
   local_updated_at: string | null;
+  /** Municipality + province the field officer PICKED on the store's CURRENT relocation pin (client_locations), joined in by the read hooks. Override the registered `area`/hardcoded province in the header when present. */
+  current_location_area?: string | null;
+  current_location_province?: string | null;
 }
 
 export interface LocalPurchaseOrderRow {
@@ -66,6 +72,9 @@ export interface LocalPurchaseOrderRow {
   backload_photo_url: string | null;
   gps_lat: number | null;
   gps_lng: number | null;
+  /** web 114: store DEFAULT map coordinate, denormalized server-side (office-pin tier). Distinct from gps_lat/gps_lng (visit-time GPS). */
+  client_lat: number | null;
+  client_lng: number | null;
   remarks: string | null;
   cod_amount: number | null;
   cod_method: string | null;
@@ -78,6 +87,9 @@ export interface LocalPurchaseOrderRow {
   updated_at: string | null;
   /** Stamped with `now` each time sync-down writes this row into the local mirror — i.e. when this PO landed on THIS device. */
   local_updated_at: string | null;
+  /** Municipality + province the field officer PICKED on the store's CURRENT relocation pin (client_locations), joined in by the read hooks. Override the registered `area`/hardcoded province in the header when present. */
+  current_location_area?: string | null;
+  current_location_province?: string | null;
 }
 
 /** Two-letter initials from a customer name (e.g. "KVR Hardware" → "KV"). */
@@ -103,7 +115,12 @@ export function rowToStore(row: LocalCollectionVisitRow): CollectionStore {
     id: row.id,
     clientId: row.client_id ?? undefined,
     name: row.client_name ?? '(walang pangalan)',
-    area: row.area ?? '',
+    // A field officer who relocated the store can pick its NEW municipality; that
+    // overrides the sales-agent-set city so the header reads the real location.
+    area: row.current_location_area?.trim() || row.area || '',
+    // Real province of the picked municipality — the header falls back to the
+    // app-wide "Bataan" only when no field pin has set one.
+    province: row.current_location_province?.trim() || undefined,
     initials: initialsFromCompany(row.client_name),
     due: row.amount_due ?? 0,
     status: (row.status as CollectionStoreStatus) ?? 'pending',
@@ -112,6 +129,8 @@ export function rowToStore(row: LocalCollectionVisitRow): CollectionStore {
     visitedAt: row.visited_at ?? undefined,
     gpsLat: row.gps_lat ?? undefined,
     gpsLng: row.gps_lng ?? undefined,
+    clientLat: row.client_lat ?? undefined,
+    clientLng: row.client_lng ?? undefined,
     reschedTo: shortDate(row.rescheduled_to),
     // 046: a pending row held by anyone is "on the way". Phase 1 is read-only,
     // so we don't yet distinguish "mine vs someone else's".
@@ -139,7 +158,9 @@ export function rowToPo(row: LocalPurchaseOrderRow): DeliveryPo {
     clientId: row.client_id ?? undefined,
     po: row.po_number ?? '',
     client: row.client_name ?? '(walang pangalan)',
-    area: row.area ?? '',
+    // Field-officer-picked relocation area/province override the registered city (see rowToStore).
+    area: row.current_location_area?.trim() || row.area || '',
+    province: row.current_location_province?.trim() || undefined,
     status: (row.status as DeliveryPoStatus) ?? 'pending',
     plate: row.truck_plate ?? undefined,
     seq: row.sequence_no ?? undefined,
@@ -149,6 +170,8 @@ export function rowToPo(row: LocalPurchaseOrderRow): DeliveryPo {
     timeOut: row.time_out ?? undefined,
     gpsLat: row.gps_lat ?? undefined,
     gpsLng: row.gps_lng ?? undefined,
+    clientLat: row.client_lat ?? undefined,
+    clientLng: row.client_lng ?? undefined,
     backloadCaptured: !!row.backload_photo_url,
     cod: row.cod === 1,
     codDue: row.cod_due ?? undefined,

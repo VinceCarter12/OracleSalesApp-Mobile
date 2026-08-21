@@ -10,6 +10,8 @@ import { useStoreLocations } from '../../lib/use-store-locations';
 import { addStoreLocation, setCurrentStoreLocation } from '../../lib/store-location-service';
 import { captureGps } from '../../lib/gps';
 import { formatShortDateTime } from '../../lib/collection-delivery-data';
+import { CityMunicipalitySelector } from '../bizlink/CityMunicipalitySelector';
+import type { PsgcLocality } from '../../lib/data/psgc-localities';
 import { BizTopBar } from '../bizlink/BizTopBar';
 import { StatusBadge } from '../ui/StatusBadge';
 import { LeafletWebViewMap, type LeafletMapMarker } from './LeafletWebViewMap';
@@ -35,6 +37,10 @@ export function SetStoreLocationScreen({ clientId, clientName, backHref }: SetSt
   const { locations, current, refresh } = useStoreLocations(clientId || undefined);
 
   const [pin, setPin] = useState<{ lat: number; lng: number } | null>(null);
+  // Canonical PSGC city/municipality — same picker the sales Create Client flow
+  // uses (no free text), so a collector/driver's area is a real locality, not an
+  // arbitrary string that only reads right because the header hardcodes ", Bataan".
+  const [locality, setLocality] = useState<PsgcLocality | null>(null);
   const [capturing, setCapturing] = useState(false);
   const [saving, setSaving] = useState(false);
   // Seed the draggable pin from the current saved location once, without
@@ -88,6 +94,10 @@ export function SetStoreLocationScreen({ clientId, clientName, backHref }: SetSt
         clientId,
         lat: pin.lat,
         lng: pin.lng,
+        // Canonical PSGC pick — store the municipality name AND its real province,
+        // so the header reads "Municipality, Province" instead of a hardcoded Bataan.
+        area: locality?.name ?? null,
+        province: locality?.province ?? null,
         setBy: profileId ?? null,
         setByName: fullName ?? null,
       });
@@ -128,6 +138,15 @@ export function SetStoreLocationScreen({ clientId, clientName, backHref }: SetSt
           onPinDragEnd={(p) => setPin(p)}
         />
 
+        {/* Optional area/municipality — the SAME canonical PSGC picker the sales
+            Create Client flow uses (free text can't be saved). If the store moved
+            to a new municipality, choose it so the store header reads the real
+            area instead of the city the sales agent set at creation. */}
+        <Text fontSize={12.5} fontFamily={BIZLINK_FONTS.semibold} color={BIZLINK_COLORS.text} marginTop="$3.5" marginBottom="$1.5">
+          Area / municipality <Text fontSize={11} color={BIZLINK_COLORS.muted}>· optional</Text>
+        </Text>
+        <CityMunicipalitySelector value={locality} onSelect={setLocality} />
+
         <XStack gap="$2.5" marginTop="$3">
           <Pressable style={{ flex: 1 }} onPress={handleUseGps} disabled={capturing}>
             <XStack alignItems="center" justifyContent="center" gap="$2" backgroundColor={BIZLINK_COLORS.card} borderRadius={999} paddingVertical={13}>
@@ -159,7 +178,7 @@ export function SetStoreLocationScreen({ clientId, clientName, backHref }: SetSt
                 </View>
                 <YStack flex={1} gap="$0.5">
                   <Text fontFamily={BIZLINK_FONTS.semibold} fontSize={14} color={BIZLINK_COLORS.text}>
-                    Location {l.seq}
+                    Location {l.seq}{l.area ? ` · ${l.area}` : ''}
                   </Text>
                   <Text fontSize={11} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted}>
                     {l.lat.toFixed(5)}, {l.lng.toFixed(5)}
