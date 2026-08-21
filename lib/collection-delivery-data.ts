@@ -16,9 +16,25 @@
 
 export type CollectionStoreStatus = 'pending' | 'collected' | 'rescheduled' | 'partial';
 
-/** A store still owing money — pending (untouched) or partial (part-paid). Both stay on the list. */
+/**
+ * A store the collector still has to work TODAY — only `pending`.
+ *
+ * Balance-model change (owner, 2026-08-21): once a store pays ANYTHING it is done
+ * for the day and drops off the list, even if it didn't clear the day's amount_due
+ * (status stays `partial` server-side, per web 070). The leftover is no longer a
+ * same-day re-list — it lives in the store's persistent `credit_balance` (web
+ * migration 117), which the admin maintains and re-lists on another day. So a
+ * `partial` visit is CLOSED for the collector here, treated like `collected`.
+ * (We can't locally flip it to `collected` — the server truth is `partial` and a
+ * sync-down would revert it — so list membership keys off this helper instead.)
+ */
 export function isOpenForCollection(status: CollectionStoreStatus): boolean {
-  return status === 'pending' || status === 'partial';
+  return status === 'pending';
+}
+
+/** A store that has been worked today — fully `collected` OR part-paid (`partial`). Both are "done" and crossed out. */
+export function isCollectionWorked(status: CollectionStoreStatus): boolean {
+  return status === 'collected' || status === 'partial';
 }
 
 /** What's still owed on a store: original due minus what's been collected so far (never negative). */
@@ -360,17 +376,17 @@ export function markPoFailed(id: string, backloadCaptured: boolean, gps?: { lat:
 }
 
 export interface RemitReceiver {
-  id: number;
+  /** The admin's profile id (UUID). */
+  id: string;
   name: string;
+  /** Display label for their authority, e.g. "Collection Admin". */
   role: string;
   initials: string;
 }
 
-/** Office remittance receivers — shared by both roles' Remit screens. */
-export const REMIT_RECEIVERS: RemitReceiver[] = [
-  { id: 1, name: 'Grace Villanueva', role: 'Cashier — Head Office', initials: 'GV' },
-  { id: 2, name: 'Bong Salazar', role: 'Finance Officer', initials: 'BS' },
-];
+// The office remittance receiver is no longer a hardcoded pair — it's resolved
+// live from the real module admin accounts (the Collection/Delivery admin whose
+// `admin_scope` covers the module). See lib/use-remit-receivers.ts.
 
 export function formatPeso(n: number): string {
   return `₱${n.toLocaleString('en-PH')}`;
@@ -382,18 +398,20 @@ export function formatPesoCompact(n: number): string {
 }
 
 export function getCollectionSummary(stores: CollectionStore[] = COLLECTION_STORES) {
-  const collected = stores.filter((s) => s.status === 'collected');
-  // Still-to-collect = pending (untouched) + partial (part-paid, still owing).
+  // "Worked" = done for the day: fully collected OR part-paid (2026-08-21 balance
+  // model — a partial is closed, not still-owing on the list).
+  const worked = stores.filter((s) => isCollectionWorked(s.status));
+  // Still-to-collect = pending only. A partial has been paid and drops off.
   const open = stores.filter((s) => isOpenForCollection(s.status));
   // Cash on hand = every peso actually collected, INCLUDING partial payments —
-  // a partial store isn't 'collected' but its money is already in the bag.
+  // a partial store's money is already in the bag even though it's off the list.
   const collectedTotal = stores.reduce(
     (sum, s) => sum + (s.status === 'collected' ? (s.amountCollected ?? s.due) : (s.amountCollected ?? 0)),
     0,
   );
   return {
     total: stores.length,
-    visitedCount: collected.length,
+    visitedCount: worked.length,
     pendingCount: open.length,
     collectedTotal,
     // ⚠️ NOT remittance-aware and today-scoped only — kept for back-compat but
@@ -402,7 +420,7 @@ export function getCollectionSummary(stores: CollectionStore[] = COLLECTION_STOR
     // 2026-08-10), which subtracts what's already been remitted. Don't reintroduce
     // this as "cash on hand".
     forRemittance: collectedTotal,
-    visitedPct: stores.length === 0 ? 0 : Math.round((collected.length / stores.length) * 100),
+    visitedPct: stores.length === 0 ? 0 : Math.round((worked.length / stores.length) * 100),
   };
 }
 

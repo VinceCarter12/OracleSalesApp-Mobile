@@ -16,7 +16,6 @@ import {
   getCollectionSummary,
   isOpenForCollection,
   isScheduledForToday,
-  remainingBalance,
   sortAdditionalFirst,
   type CollectionStore,
 } from '../../lib/collection-delivery-data';
@@ -32,7 +31,11 @@ import { useSyncRefresh } from '../../lib/use-sync-refresh';
 
 function StoreRow({ store, onPress }: { store: CollectionStore; onPress?: () => void }) {
   const BIZLINK_COLORS = useBizlinkColors();
+  // "Done" = fully collected OR part-paid — a partial is closed for the day now
+  // (2026-08-21 balance model), so it's crossed out just like a collected store.
   const collected = store.status === 'collected';
+  const partial = store.status === 'partial';
+  const done = collected || partial;
   const row = (
     <XStack
       alignItems="center"
@@ -49,8 +52,8 @@ function StoreRow({ store, onPress }: { store: CollectionStore; onPress?: () => 
           <Text
             fontFamily={BIZLINK_FONTS.semibold}
             fontSize={13.5}
-            color={collected ? BIZLINK_COLORS.muted : BIZLINK_COLORS.text}
-            textDecorationLine={collected ? 'line-through' : 'none'}
+            color={done ? BIZLINK_COLORS.muted : BIZLINK_COLORS.text}
+            textDecorationLine={done ? 'line-through' : 'none'}
             flexShrink={1}
           >
             {store.name}
@@ -62,7 +65,10 @@ function StoreRow({ store, onPress }: { store: CollectionStore; onPress?: () => 
         <XStack gap="$2.5">
           <Text fontSize={10.5} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted}>{store.area}</Text>
           <Text fontSize={10.5} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted}>
-            {store.status === 'partial' ? `Balance ${formatPeso(remainingBalance(store))}` : `Due ${formatPeso(store.due)}`}
+            {/* A part-paid store shows what it PAID today, never the remaining
+                balance — the owed figure is kept off the collector's screen
+                (anchoring-bias rule) and now lives in the store's credit balance. */}
+            {partial ? `Paid ${formatPeso(store.amountCollected ?? 0)}` : `Due ${formatPeso(store.due)}`}
           </Text>
           {store.visitedAt ? (
             <Text fontSize={10.5} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted}>{formatClockTime(store.visitedAt)}</Text>
@@ -84,10 +90,11 @@ function StoreRow({ store, onPress }: { store: CollectionStore; onPress?: () => 
       </YStack>
       {collected ? (
         <StatusBadge label="Collected" background={COLORS.greenSoft} color={COLORS.ledgeGreen} />
+      ) : partial ? (
+        // Part-paid = done for today (green, like collected — not an open "Partial").
+        <StatusBadge label="Paid" background={COLORS.greenSoft} color={COLORS.ledgeGreen} />
       ) : store.status === 'rescheduled' ? (
         <StatusBadge label={`Moved to ${store.reschedTo}`} background={COLORS.amberSoft} color={COLORS.orange} />
-      ) : store.status === 'partial' ? (
-        <StatusBadge label="Partial" background={COLORS.purpleSoft} color={COLORS.purple} />
       ) : store.onTheWay ? (
         <StatusBadge label="On the way" background={COLORS.amberSoft} color={COLORS.orange} />
       ) : (

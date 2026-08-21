@@ -23,7 +23,6 @@ import {
   getCollectionSummary,
   isOpenForCollection,
   isScheduledForToday,
-  remainingBalance,
   sortAdditionalFirst,
   type CollectionStore,
 } from '../../lib/collection-delivery-data';
@@ -84,7 +83,8 @@ function StoreBadge({ store }: { store: CollectionStore }) {
     return <StatusBadge label={`Moved to ${store.reschedTo}`} background={COLORS.amberSoft} color={COLORS.orange} />;
   }
   if (store.status === 'partial') {
-    return <StatusBadge label="Partial" background={COLORS.purpleSoft} color={COLORS.purple} />;
+    // Part-paid = done for today (2026-08-21 balance model), shown green like collected.
+    return <StatusBadge label="Paid" background={COLORS.greenSoft} color={COLORS.ledgeGreen} />;
   }
   if (store.onTheWay) {
     return <StatusBadge label="On the way" background={COLORS.amberSoft} color={COLORS.orange} />;
@@ -113,7 +113,8 @@ function RoutePreviewRow({ store, onPress }: { store: CollectionStore; onPress: 
             ) : null}
           </XStack>
           <Text fontSize={11.5} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted}>
-            {store.area} · {store.status === 'partial' ? `Balance ${formatPeso(remainingBalance(store))}` : `Due ${formatPeso(store.due)}`}
+            {/* Owed balance stays off the collector's screen; a part-paid store shows what it paid. */}
+            {store.area} · {store.status === 'partial' ? `Paid ${formatPeso(store.amountCollected ?? 0)}` : `Due ${formatPeso(store.due)}`}
           </Text>
           {store.onTheWay && store.claimedBy ? (
             <XStack alignItems="center" gap="$1.5">
