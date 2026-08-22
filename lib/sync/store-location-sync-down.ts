@@ -18,12 +18,9 @@ import type { SQLiteDatabase } from 'expo-sqlite';
 // Dedup: a row THIS device pushed keeps its own local PK and links to the server
 // id via `remote_id`; a co-worker's row is inserted under the server id. Never
 // clobbers a still-`pending` local edit (same overwrite-if-synced guard as the
-// entity appliers). NOTE: web's client_locations has no area/province/kind yet,
-// so those stay local to the setting device (STORE_LOCATIONS_CONTRACT.md) — this
-// intentionally does not touch the local area/province columns, and inserted
-// remote rows fall back to the table default kind='relocation'. When web adds a
-// `kind` column + returns it here, select it and map it on insert/update so a
-// co-worker sees an 'additional_branch' as a branch (not a silent relocation).
+// entity appliers). area/province/kind now ride down too (web migration 123), so
+// a co-worker sees the field-observed municipality and an 'additional_branch' as a
+// branch — not a silent relocation.
 
 interface RemoteClientLocation {
   id: string;
@@ -38,6 +35,9 @@ interface RemoteClientLocation {
   set_by_name: string | null;
   captured_at: string;
   created_at: string;
+  area: string | null;
+  province: string | null;
+  kind: string | null;
 }
 
 /**
@@ -55,7 +55,7 @@ export async function syncStoreLocationsDown(db: SQLiteDatabase): Promise<void> 
   try {
     const { data, error } = await supabase
       .from('client_locations')
-      .select('id, client_id, seq, label, lat, lng, is_current, source, set_by, set_by_name, captured_at, created_at');
+      .select('id, client_id, seq, label, lat, lng, is_current, source, set_by, set_by_name, captured_at, created_at, area, province, kind');
     if (error) throw new Error(error.message);
     rows = (data ?? []) as RemoteClientLocation[];
   } catch (err) {
@@ -86,19 +86,22 @@ export async function syncStoreLocationsDown(db: SQLiteDatabase): Promise<void> 
           `UPDATE client_locations SET
              client_id = ?, seq = ?, label = ?, lat = ?, lng = ?, is_current = ?,
              source = ?, set_by = ?, set_by_name = ?, captured_at = ?,
+             area = ?, province = ?, kind = ?,
              remote_id = ?, sync_status = 'synced', sync_error = NULL, local_updated_at = ?
            WHERE id = ?`,
           [r.client_id, r.seq, r.label, r.lat, r.lng, r.is_current ? 1 : 0, r.source,
-            r.set_by, r.set_by_name, r.captured_at, r.id, now, existing.id]
+            r.set_by, r.set_by_name, r.captured_at, r.area, r.province, r.kind ?? 'relocation',
+            r.id, now, existing.id]
         );
       } else {
         await db.runAsync(
           `INSERT INTO client_locations
              (id, client_id, seq, label, lat, lng, is_current, source, set_by, set_by_name,
-              captured_at, created_at, local_updated_at, sync_status, remote_id)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'synced', ?)`,
+              captured_at, created_at, local_updated_at, sync_status, remote_id, area, province, kind)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'synced', ?, ?, ?, ?)`,
           [r.id, r.client_id, r.seq, r.label, r.lat, r.lng, r.is_current ? 1 : 0, r.source,
-            r.set_by, r.set_by_name, r.captured_at, r.created_at, now, r.id]
+            r.set_by, r.set_by_name, r.captured_at, r.created_at, now, r.id,
+            r.area, r.province, r.kind ?? 'relocation']
         );
       }
     } catch (err) {
