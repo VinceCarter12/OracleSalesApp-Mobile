@@ -785,6 +785,33 @@ export type Database = {
         Args: { p_location_id: string };
         Returns: undefined;
       };
+      // §visibility (web migration 126): SECURITY DEFINER read path for NON-field
+      // roles (sales/RSR/admin) to see a client's field-set relocation pins +
+      // additional-branch flags. The base client_locations SELECT stays
+      // field-role-only (113 RLS); this fn is the ONLY grant to sales/RSR, so a
+      // sales agent can see a colleague's on-the-ground correction on the client
+      // record. Rows come back ordered seq ASC. area/province are the web-derived
+      // canonical PSGC locality (Nominatim → PSGC match, migration 126) or the
+      // officer's typed fallback until the resolver names the pin — shown ALONGSIDE
+      // the registered clients.city, never replacing it. See STORE_LOCATIONS_CONTRACT.md
+      // §visibility+autoderive. Not deployed everywhere yet → mobile treats PGRST202
+      // as an empty result (graceful-degrade), so the card just hides.
+      get_client_locations: {
+        Args: { p_client_id: string };
+        Returns: {
+          id: string;
+          seq: number;
+          label: string | null;
+          lat: number;
+          lng: number;
+          is_current: boolean;
+          kind: string;
+          area: string | null;
+          province: string | null;
+          set_by_name: string | null;
+          captured_at: string;
+        }[];
+      };
       get_company_directory: {
         Args: Record<string, never>;
         Returns: {

@@ -28,6 +28,8 @@ import { ProgressRing } from '../../../components/ui/ProgressRing';
 import { StatusBadge } from '../../../components/ui/StatusBadge';
 import { StageRail } from '../../../components/ui/StageRail';
 import { ClientCutoffAllowanceBlock } from '../../../components/cutoff/ClientCutoffAllowanceBlock';
+import { ClientFieldLocationCard } from '../../../components/clients/ClientFieldLocationCard';
+import { initialsFromName } from '../../../lib/display-name';
 import type { Client } from '../../../types';
 
 export default function ClientDetailScreen() {
@@ -332,6 +334,16 @@ export default function ClientDetailScreen() {
             </YStack>
           ) : null}
         </XStack>
+
+        {/* §visibility (migration 126): the on-the-ground relocation / branch a
+            C&D officer set for this store, shown alongside the registered city.
+            Read-only for sales/RSR; hides itself when there's no field location
+            (or the RPC isn't deployed / offline). */}
+        <ClientFieldLocationCard
+          clientId={client.id}
+          registeredCity={client.city}
+          initials={initialsFromName(client.company_name)}
+        />
 
         <BizSectionHeader title="Meeting history" />
         {meetings.length === 0 ? (
