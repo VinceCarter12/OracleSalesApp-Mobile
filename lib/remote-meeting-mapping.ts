@@ -10,9 +10,9 @@ import type { RemoteMeetingOutcome, RemoteMeetingType } from '../types/database'
 // a cycle.
 //
 // Remote CHECK constraints confirmed 2026-07-16 via `pg_constraint` (see
-// Bugs.md B-012):
+// Bugs.md B-012), widened 2026-08-20 for ADR-063 (Web migration 116):
 // `meetings_meeting_type_check`: ('f2f', 'online')
-// `meetings_location_type_check`: ('client_office', 'other')
+// `meetings_location_type_check`: ('client_office', 'company_office', 'other')
 // `meetings_outcome_check`: ('successful', 'follow_up', 'no_decision', 'lost_opportunity')
 
 export function toRemoteMeetingType(mode: MeetingMode): RemoteMeetingType {
@@ -24,15 +24,19 @@ export function fromRemoteMeetingType(meetingType: RemoteMeetingType | null): Me
   return meetingType === 'online' ? 'online' : 'in_person';
 }
 
-export function toRemoteLocationType(locationType: string | null | undefined): 'client_office' | 'other' {
+export function toRemoteLocationType(locationType: string | null | undefined): 'client_office' | 'company_office' | 'other' {
   if (!locationType) return 'client_office';
-  return locationType === 'Others' ? 'other' : 'client_office';
+  if (locationType === 'Others') return 'other';
+  if (locationType === 'Company Office') return 'company_office';
+  return 'client_office';
 }
 
 /** Reverse of `toRemoteLocationType` — needed by anything reading meetings straight from Supabase. */
 export function fromRemoteLocationType(locationType: string | null | undefined): string | null {
   if (!locationType) return null;
-  return locationType === 'other' ? 'Others' : 'Client Office';
+  if (locationType === 'other') return 'Others';
+  if (locationType === 'company_office') return 'Company Office';
+  return 'Client Office';
 }
 
 const OUTCOME_TO_REMOTE: Record<MeetingOutcome, RemoteMeetingOutcome> = {

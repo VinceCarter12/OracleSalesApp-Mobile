@@ -61,7 +61,14 @@ export default function ManagerMeetingDetailScreen() {
     );
   }
 
-  const meeting = overview?.meetings.find((m) => m.id === id);
+  // Guest Records fallback (2026-08-22, addition beyond the enumerated file
+  // list — required for correctness): `useTeamOverview()` here defaults to
+  // 'combined', which populates `overview.guestMeetings`, but the Meetings
+  // list screen's guest rows link here by id — without this fallback,
+  // tapping one would show "Meeting not found" the same way a held client
+  // did pre-fix. Same fallback pattern as B-131's `overview.meetings`
+  // lookup, just extended one field further.
+  const meeting = overview?.meetings.find((m) => m.id === id) ?? overview?.guestMeetings.find((m) => m.id === id);
   if (!meeting) {
     return (
       <YStack flex={1} justifyContent="center" alignItems="center" backgroundColor={BIZLINK_COLORS.canvas}>
@@ -70,9 +77,18 @@ export default function ManagerMeetingDetailScreen() {
     );
   }
 
-  const client = overview?.clients.find((c) => c.id === meeting.clientId);
+  const client = overview?.clients.find((c) => c.id === meeting.clientId) ?? overview?.guestClients.find((c) => c.id === meeting.clientId);
+  const ownerAgentName = meeting.tagAlongOwnerAgentName ?? meeting.guestOwnerAgentName ?? client?.guestOwnerAgentName;
   const agent = overview?.agents.find((a) => a.id === meeting.agentId)
-    ?? (profileId === meeting.agentId && fullName ? { id: profileId, name: fullName, initials: initialsFromName(fullName) } : undefined);
+    ?? (profileId === meeting.agentId && fullName ? { id: profileId, name: fullName, initials: initialsFromName(fullName) } : undefined)
+    ?? (ownerAgentName
+      ? { id: meeting.agentId, name: ownerAgentName, initials: initialsFromName(ownerAgentName) }
+      : undefined);
+  // B-131 / Guest Records fix: a tag-along guest record's or held client's
+  // client belongs to another team and isn't in `overview.clients` — the
+  // name travels either on the meeting row itself (B-131) or on the
+  // resolved `client` (via `overview.guestClients`, Guest Records).
+  const clientDisplayName = client?.name ?? meeting.tagAlongOwnerClientName;
   const isOnline = meeting.meetingMode === 'online';
   const sharedMeeting = Boolean(localCompanion);
   const sharedManagerName = localCompanion ? (fullName?.trim() || 'You') : undefined;
@@ -108,8 +124,9 @@ export default function ManagerMeetingDetailScreen() {
       <YStack flex={1} backgroundColor={BIZLINK_COLORS.canvas} paddingTop={insets.top}>
         <BizTopBar title="Meeting Detail" fallbackHref="/(manager)/more/meetings" />
         <ScrollView contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 24 }}>
-          <HeaderCard agentName={agent?.name} agentId={agent?.id} initials={agent?.initials} clientName={client?.name} />
+          <HeaderCard agentName={agent?.name} agentId={agent?.id} initials={agent?.initials} clientName={clientDisplayName} />
           <ManagerSharedRecordCard shared={sharedMeeting} managerName={sharedManagerName} status={sharedStatus} />
+          <TagAlongGuestBanner meeting={meeting} agentName={agent?.name} />
           <BizSectionHeader title="Status" />
           <XStack alignItems="center" gap="$2" flexWrap="wrap">
             {meetingBadge(meeting)}
@@ -159,8 +176,9 @@ export default function ManagerMeetingDetailScreen() {
     <YStack flex={1} backgroundColor={BIZLINK_COLORS.canvas} paddingTop={insets.top}>
       <BizTopBar title="Meeting Detail" fallbackHref="/(manager)/more/meetings" />
       <ScrollView contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 24 }}>
-        <HeaderCard agentName={agent?.name} agentId={agent?.id} initials={agent?.initials} clientName={client?.name} />
+        <HeaderCard agentName={agent?.name} agentId={agent?.id} initials={agent?.initials} clientName={clientDisplayName} />
         <ManagerSharedRecordCard shared={sharedMeeting} managerName={sharedManagerName} status={sharedStatus} />
+        <TagAlongGuestBanner meeting={meeting} agentName={agent?.name} />
 
         <BizSectionHeader title="Outcome" />
         <XStack alignItems="center" gap="$2" flexWrap="wrap">
@@ -304,6 +322,39 @@ function ManagerSharedRecordCard({ shared, managerName, status }: { shared: bool
         {shared ? 'This is one canonical meeting record. A team-wide attendee list is not available offline yet.' : 'This meeting has no locally recorded manager attendee.'}
       </Text>
     </BizCard>
+  );
+}
+
+/**
+ * B-131 fix: distinct from the existing "Companion — {name} joined" banner
+ * below (which is written for "this is MY OWN team's meeting and a
+ * companion manager joined it"). This is the opposite perspective — the
+ * VIEWER is the guest, tagging along on someone else's meeting they don't
+ * own. Deliberately separate copy/field (`isTagAlongGuestRecord`) rather
+ * than overloading `tagAlong`, which keeps its original same-team-companion
+ * meaning.
+ *
+ * Copy revised 2026-08-22 (Vince: the original "this is their record, you
+ * don't own it" wording undersold what actually happens on accept — ADR-067
+ * grants a permanent holder relationship, and Guest Records surfaces it as
+ * a real, standing part of the manager's own accessible records, not a
+ * one-off visibility exception). {agentName} stays named as the meeting's
+ * original owner because that fact is still true and still drives
+ * quota/reporting attribution — only the framing of the manager's own
+ * relationship to the record changed, not the underlying ownership.
+ */
+function TagAlongGuestBanner({ meeting, agentName }: { meeting: TeamMeeting; agentName?: string }) {
+  if (!meeting.isTagAlongGuestRecord) return null;
+  return (
+    <XStack alignItems="flex-start" gap="$2" backgroundColor={BIZLINK_COLORS.soft} borderRadius={20} padding={14} marginTop="$3">
+      <UsersIcon size={15} color={BIZLINK_COLORS.navy} strokeWidth={1.75} />
+      <Text fontSize={12} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.navy} flex={1} lineHeight={17}>
+        You tagged along with {agentName ?? meeting.tagAlongOwnerAgentName ?? 'this agent'}'s meeting — this client is
+        now part of your Guest Records, with full access to its history going forward.{' '}
+        {agentName ?? meeting.tagAlongOwnerAgentName ?? 'This agent'} stays the original meeting owner for
+        quota/reporting, and your own attendance is credited to your quota.
+      </Text>
+    </XStack>
   );
 }
 

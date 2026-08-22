@@ -37,7 +37,8 @@ const STATUS_FILTER_OPTIONS: BizFilterOption<StatusFilterValue>[] = [
 
 // Same toggle pattern as Sales' My Requests kind row (`app/(tabs)/more/my-requests/index.tsx`):
 // no "All" chip, tapping a selected chip clears back to showing every kind.
-const KIND_FILTER_OPTIONS: BizFilterOption<ManagerRequestKind>[] = [
+const KIND_FILTER_OPTIONS: BizFilterOption<KindFilterValue>[] = [
+  { value: 'all', label: 'All' },
   { value: 'po_confirmation', label: 'PO Confirmation' },
   { value: 'client_edit', label: 'Client Edit' },
   { value: 'tag_along', label: 'Tag-Along' },
@@ -72,7 +73,7 @@ export default function ManagerRequestsScreen() {
   // initial state, same as any other deep-link-style entry param in this
   // app; the in-screen Filters chips still fully control it afterward.
   const { kind: initialKindParam } = useLocalSearchParams<{ kind?: string }>();
-  const [statusFilter, setStatusFilter] = useState<StatusFilterValue>('all');
+  const [statusFilter, setStatusFilter] = useState<StatusFilterValue>('pending');
   const [kindFilter, setKindFilter] = useState<KindFilterValue>(() =>
     isManagerRequestKind(initialKindParam) ? initialKindParam : 'all'
   );
@@ -80,7 +81,8 @@ export default function ManagerRequestsScreen() {
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [respondingId, setRespondingId] = useState<string | null>(null);
   const [respondError, setRespondError] = useState<string | null>(null);
-  function handleKindChipPress(kind: ManagerRequestKind): void {
+
+  function handleKindChipPress(kind: KindFilterValue): void {
     setKindFilter((current) => (current === kind ? 'all' : kind));
   }
 
@@ -94,10 +96,10 @@ export default function ManagerRequestsScreen() {
   });
 
   const { page, totalPages, pageItems, setPage } = usePagination(filteredRows, `${statusFilter}|${kindFilter}|${normalizedSearch}`);
-  const filtersActive = statusFilter !== 'all' || kindFilter !== 'all';
+  const filtersActive = statusFilter !== 'pending' || kindFilter !== 'all';
 
   function resetFilters(): void {
-    setStatusFilter('all');
+    setStatusFilter('pending');
     setKindFilter('all');
   }
 
@@ -210,7 +212,7 @@ export default function ManagerRequestsScreen() {
           <BizFilterScroll options={STATUS_FILTER_OPTIONS} value={statusFilter} onChange={setStatusFilter} />
         </BizFilterSheetRow>
         <BizFilterSheetRow label="Request type" value={kindFilter === 'all' ? 'All types' : KIND_FILTER_OPTIONS.find((option) => option.value === kindFilter)?.label ?? 'All types'}>
-          <BizFilterScroll options={KIND_FILTER_OPTIONS} value={kindFilter === 'all' ? null : kindFilter} onChange={handleKindChipPress} />
+          <BizFilterScroll options={KIND_FILTER_OPTIONS} value={kindFilter} onChange={handleKindChipPress} />
         </BizFilterSheetRow>
       </BizFilterSheet>
     </YStack>

@@ -4,17 +4,22 @@ import { uuidv4 } from './uuid';
 import { supabase } from './supabase';
 import { rawSupabaseRestInsert } from './supabase-raw-probe';
 import { isLikelyOnline } from './sync/connectivity';
+import { enqueueOutboxRow } from './sync/entity-registry';
+import { enqueuePendingUpload, ensurePoPhotoQueued } from './sync/photo-uploads';
+import { buildPhotoStoragePath } from './sync/photo-upload-registry';
 import { withTimeout } from './with-timeout';
 import { MEETING_PHOTO_BUCKET, PHOTO_UPLOAD_TIMEOUT_MS } from './meeting-photo-service';
 import { RLS_PERMISSION_DENIED_CODE, UNIQUE_VIOLATION_CODE } from './sync/outbox-status';
 import {
   canAttemptSubmission,
   derivePoConfirmationDisplayStatus,
+  derivePoConfirmationSlotState,
+  LOCAL_ONLY_PO_CONFIRMATION_STATUSES,
   PO_CONFIRMATION_REQUEST_KIND,
   type LocalPoConfirmationStatus,
   type PoConfirmationDisplayStatus,
+  type PoConfirmationSlotState,
 } from './policies/po-confirmation-status-policy';
-import { hasActivePoConfirmation } from './policies/po-confirmation-status-policy';
 import type { SQLiteDatabase } from 'expo-sqlite';
 
 // ADR-044 (Migration 039) + ADR-046 point 7 (Batch 3, Slice 5): the Sales/RSR
@@ -100,13 +105,32 @@ export async function capturePoEvidenceLocally(
 ): Promise<string> {
   const id = uuidv4();
   const now = new Date().toISOString();
-  const existing = await db.getAllAsync<{ status: LocalPoConfirmationStatus }>(
-    `SELECT status FROM po_confirmation_requests WHERE client_id = ? AND cycle_id = ? ORDER BY created_at DESC`,
+  const existing = await db.getAllAsync<{ id: string; status: LocalPoConfirmationStatus }>(
+    `SELECT id, status FROM po_confirmation_requests WHERE client_id = ? AND cycle_id = ? ORDER BY created_at DESC`,
     [input.clientId, input.cycleId],
   );
-  // Any active row reserves the client/cycle slot. Terminal history may remain
-  // newest, but must not hide an older draft/pending/approved reservation.
-  const blocked = hasActivePoConfirmation(existing.map((row) => row.status));
+  // B-125 (Vince, 2026-08-20): only a SERVER-confirmed row reserves the
+  // client/cycle slot. Local-only evidence (draft / duplicate_blocked /
+  // superseded) never reached Supabase, so it holds no real reservation —
+  // it is replaced by this newer capture instead of blocking it forever.
+  // Previously any `draft` blocked, which meant a single failed submission
+  // permanently locked the agent out of filing a PO for that client.
+  const slotState = derivePoConfirmationSlotState(existing.map((row) => row.status));
+  const blocked = slotState === 'server_confirmed';
+  if (slotState === 'replaceable_local') {
+    // Retire the stale local rows rather than deleting them: the photo path
+    // stays on the device for support/audit, and 'superseded' is already the
+    // established local-only terminal state for evidence that can never be
+    // sent (isTerminalPoConfirmationFailure). Scoped to local-only statuses
+    // so a concurrently-arrived server row can never be clobbered here.
+    for (const row of existing) {
+      if (!LOCAL_ONLY_PO_CONFIRMATION_STATUSES.has(row.status)) continue;
+      await db.runAsync(
+        `UPDATE po_confirmation_requests SET status = 'superseded', decision_note = ?, updated_at = ? WHERE id = ?`,
+        ['Replaced by newer PO evidence for the same client cycle.', now, row.id],
+      );
+    }
+  }
   await db.runAsync(
     `INSERT INTO po_confirmation_requests
       (id, client_id, cycle_id, meeting_id, requester_id, po_photo_path, status, created_at, updated_at, synced_at)
@@ -141,11 +165,151 @@ export async function captureAndSubmitPoEvidence(
 ): Promise<void> {
   try {
     const requestId = await capturePoEvidenceLocally(db, input);
-    await submitPoConfirmation(db, requestId, input.userId);
+
+    const row = await db.getFirstAsync<{ status: LocalPoConfirmationStatus }>(
+      'SELECT status FROM po_confirmation_requests WHERE id = ?',
+      [requestId]
+    );
+    // A duplicate_blocked capture is deliberate local-only evidence — it must
+    // never be pushed, or it would race the row that legitimately holds the
+    // client/cycle slot (B-125).
+    if (row?.status !== 'draft') return;
+
+    await enqueuePoConfirmationForSync(db, requestId, input);
   } catch (err) {
-    console.error('[po-confirmation-service] capture-and-submit failed:', err instanceof Error ? err.message : String(err));
+    console.error(
+      '[po-confirmation-service] capture-and-queue failed:',
+      err instanceof Error ? `${err.name}: ${err.message}` : String(err)
+    );
   }
 }
+
+/**
+ * B-127 (Vince, 2026-08-20): queues the PO through the normal offline-first
+ * lane instead of the old online-only direct insert.
+ *
+ * ADR-044 decision 5 made every approval action online-only, but lumped
+ * request CREATION in with manager DECISIONS. Only the decision half needed
+ * it (that genuinely requires the server's compare-and-set to stay race-safe
+ * — `decide_po_confirmation()` is unchanged). Creation is field work captured
+ * mid-meeting, exactly where signal is worst, and making it online-only broke
+ * rule 1 of this app: all writes go to SQLite first, the sync layer uploads.
+ *
+ * What this replaces, and why each piece is now redundant:
+ *  - the manual `pushOutboxOnly()` + 1500ms sleep + `sync_status` re-check
+ *    that hand-rolled the meeting-FK ordering (B-088/B-091) — the registry's
+ *    `dependencies` on `clients` + `meetings` does that correctly;
+ *  - the "leave it 'draft' and hope a Notifications visit retries it" path —
+ *    the outbox retries on its own schedule;
+ *  - the inline Storage upload with no retry (B-098) — the photo now goes
+ *    through `pending_uploads` and self-patches `po_photo_path`, the same
+ *    lane a meeting selfie already uses.
+ *
+ * The row pushes with the LOCAL file path in `po_photo_path` and is patched
+ * with the public URL once the photo upload lands — identical to how a
+ * meeting pushes with a local `file://` selfie_url. It also becomes visible
+ * in Sync Center/History for free, which is what Vince expected all along.
+ */
+async function enqueuePoConfirmationForSync(
+  db: SQLiteDatabase,
+  requestId: string,
+  input: CaptureAndSubmitPoEvidenceInput
+): Promise<void> {
+  const now = new Date().toISOString();
+  const createdOnline = await isLikelyOnline();
+
+  await enqueueOutboxRow(db, {
+    outboxId: uuidv4(),
+    recordId: requestId,
+    tableName: 'po_confirmation_requests',
+    operation: 'insert',
+    payload: JSON.stringify({
+      id: requestId,
+      client_id: input.clientId,
+      cycle_id: input.cycleId,
+      meeting_id: input.meetingId,
+      requester_id: input.requesterId,
+      // B-127: the FINAL public URL, not the local file:// path. The storage
+      // path is deterministic and `getPublicUrl()` is a pure string builder
+      // (no network), so the correct URL is knowable offline at capture time.
+      // This is what lets PO skip the post-upload URL patch entirely — which
+      // migration 039's RLS makes impossible anyway (its only UPDATE policy
+      // is `with check (status = 'cancelled')`, so any patch that leaves the
+      // row pending is refused 42501). The URL 404s only until the queued
+      // upload lands.
+      po_photo_path: buildPoEvidencePublicUrl(input.userId, requestId),
+      status: 'pending',
+      created_at: now,
+      updated_at: now,
+    }),
+    createdAt: now,
+    createdOnline,
+  });
+
+  // Local status moves to 'pending' the moment it is queued: from the agent's
+  // point of view it is now genuinely awaiting a manager, not sitting
+  // un-sent. 'draft' from here on means only "captured but not yet queued".
+  // Local row mirrors what was pushed, so the meeting-detail PO card and My
+  // Requests show the same URL the manager sees. The device keeps rendering
+  // fine either way — the local file is still on disk until the OS clears
+  // the cache — but they must not disagree about what was submitted.
+  await db.runAsync(
+    `UPDATE po_confirmation_requests SET status = 'pending', po_photo_path = ?, updated_at = ? WHERE id = ? AND status = 'draft'`,
+    [buildPoEvidencePublicUrl(input.userId, requestId), now, requestId]
+  );
+
+  await queuePoPhotoUpload(db, requestId, input);
+}
+
+/**
+ * The PO row pushes with a local `file://` path in `po_photo_path`; this
+ * queues the upload that replaces it with the public URL. If it never runs,
+ * the request still reaches the manager but points at a path only the
+ * capturing device can read — so a failure here is worth one retry rather
+ * than a single best-effort attempt.
+ *
+ * One retry, because the failure actually seen on-device was transient
+ * SQLite contention (`NativeStatement.finalizeAsync` rejected) from a sync
+ * pass running concurrently, not a bad payload. `ensurePoPhotoQueued()` is
+ * the durable backstop for anything that still slips through.
+ */
+/** The public URL the queued upload will eventually serve, computed offline from the deterministic storage path. */
+function buildPoEvidencePublicUrl(authUserId: string, requestId: string): string {
+  const storagePath = buildPhotoStoragePath('po_confirmation_requests', authUserId, requestId, 'po_evidence');
+  return supabase.storage.from(MEETING_PHOTO_BUCKET).getPublicUrl(storagePath).data.publicUrl;
+}
+
+async function queuePoPhotoUpload(
+  db: SQLiteDatabase,
+  requestId: string,
+  input: CaptureAndSubmitPoEvidenceInput
+): Promise<void> {
+  try {
+    // Wrapped in withTransactionAsync so it goes through `getDb()`'s
+    // `serializeTransactions()` queue. Bare `runAsync` here raced whatever
+    // sync pass was already in flight on the app's single native connection,
+    // and expo-sqlite rejected it with `NativeStatement.finalizeAsync has
+    // been rejected` — which is exactly how the PO photo silently failed to
+    // queue while the request itself went through.
+    await db.withTransactionAsync(async () => {
+      await enqueuePendingUpload(db, {
+        parentTable: 'po_confirmation_requests',
+        parentId: requestId,
+        agentId: input.requesterId,
+        kind: 'po_evidence',
+        localUri: input.localPhotoUri,
+        storagePath: buildPhotoStoragePath('po_confirmation_requests', input.userId, requestId, 'po_evidence'),
+      });
+    });
+  } catch (err) {
+    // The request itself is already durably queued — a photo-queue failure
+    // must never undo it (same best-effort contract as meeting-service.ts's
+    // own photoToQueue block). `ensurePoPhotoQueued()` re-queues it on the
+    // next sync pass, so this is recoverable rather than lost.
+    console.error('[po-confirmation-service] PO photo queue failed; sync will retry:', err instanceof Error ? err.message : String(err));
+  }
+}
+
 
 function buildPoEvidenceStoragePath(userId: string, requestId: string): string {
   return `meetings/${userId}/${requestId}-po-evidence.jpg`;
@@ -278,9 +442,21 @@ async function remoteRequestExists(requestId: string): Promise<boolean> {
   return !error && data?.id === requestId;
 }
 
-export async function hasActivePoEvidence(db: SQLiteDatabase, clientId: string, cycleId: string): Promise<boolean> {
+/**
+ * B-125: the Save-time preflight for a new PO capture. Returns WHICH kind of
+ * occupancy the client/cycle slot has, so the UI can tell a genuine
+ * server-side reservation ('server_confirmed' — still blocked) apart from
+ * stale local-only evidence ('replaceable_local' — warn, then overwrite).
+ * Replaces the old boolean, which conflated the two and let one failed
+ * submission lock an agent out of that client's PO permanently.
+ */
+export async function getPoEvidenceSlotState(
+  db: SQLiteDatabase,
+  clientId: string,
+  cycleId: string
+): Promise<PoConfirmationSlotState> {
   const rows = await db.getAllAsync<{ status: LocalPoConfirmationStatus }>('SELECT status FROM po_confirmation_requests WHERE client_id = ? AND cycle_id = ? ORDER BY created_at DESC', [clientId, cycleId]);
-  return hasActivePoConfirmation(rows.map((row) => row.status));
+  return derivePoConfirmationSlotState(rows.map((row) => row.status));
 }
 
 /**
@@ -360,6 +536,26 @@ async function attemptSubmission(row: LocalPoConfirmationRow, userId: string, re
  * `.upsert(..., {ignoreDuplicates})` on insert-only RLS policies like this
  * table's.
  */
+/**
+ * B-120 (2026-08-20): records WHY a still-'draft' row did not reach the
+ * server, without changing its status — the row stays 'draft' and stays
+ * retryable, exactly as before. Purely additive diagnostics: every path that
+ * used to return silently now leaves a plain-language reason the agent can
+ * read on the Notifications PO card, instead of the meeting appearing to
+ * save perfectly while nothing arrives in the manager's approvals inbox.
+ */
+async function recordDeferralReason(db: SQLiteDatabase, requestId: string, reason: string): Promise<void> {
+  try {
+    await db.runAsync(
+      `UPDATE po_confirmation_requests SET decision_note = ?, updated_at = ? WHERE id = ? AND status = 'draft'`,
+      [reason, new Date().toISOString(), requestId]
+    );
+  } catch (err) {
+    // Diagnostics must never break the submission path they describe.
+    console.error('[po-confirmation-service] could not record deferral reason:', err instanceof Error ? err.message : String(err));
+  }
+}
+
 export async function submitPoConfirmation(
   db: SQLiteDatabase,
   requestId: string,
@@ -373,13 +569,30 @@ export async function submitPoConfirmation(
 
   const online = await isLikelyOnline();
   if (!canAttemptSubmission(row.status, online)) {
-    return row.status !== 'draft' ? 'skipped_not_draft' : 'offline';
+    if (row.status === 'draft') {
+      await recordDeferralReason(db, requestId, 'No connection when this was saved. It will send automatically once you are online.');
+      return 'offline';
+    }
+    return 'skipped_not_draft';
   }
 
   // B-088: attempting the insert before the meeting itself lands in
   // Supabase violates po_confirmation_requests_meeting_id_fkey — defer
   // instead of crashing; the row stays 'draft' for a later retry.
-  if (!(await isMeetingSynced(db, row.meeting_id)) || !(await isClientSynced(db, row.client_id))) {
+  //
+  // B-120 diagnosis aid (2026-08-20): these two guards are the most common
+  // reason a PO silently never reaches the manager, and until now they
+  // returned 'offline' leaving NO trace of which one fired — the agent saw a
+  // successful meeting save and an empty approvals inbox with nothing to
+  // explain it. The reason is now written onto the row so the PO card in
+  // Notifications can state it, and so a support/diagnosis pass can tell the
+  // two apart without a device log.
+  if (!(await isMeetingSynced(db, row.meeting_id))) {
+    await recordDeferralReason(db, requestId, 'Waiting for this meeting to finish uploading before the purchase order can be sent.');
+    return 'offline';
+  }
+  if (!(await isClientSynced(db, row.client_id))) {
+    await recordDeferralReason(db, requestId, 'Waiting for this client record to finish uploading before the purchase order can be sent.');
     return 'offline';
   }
 
@@ -410,6 +623,7 @@ export async function submitPoConfirmation(
     // build proves this is a genuine ownership/policy failure; do not destroy
     // the only local copy by marking it permanently superseded.
     console.error('[po-confirmation-service] submission rejected (RLS/transport); leaving local evidence draft for retry:', `${reason} | retried after session refresh`);
+    await recordDeferralReason(db, requestId, 'The server refused this purchase order upload. It is saved on this phone and will retry — report this if it keeps happening.');
     return 'failed';
   }
 
@@ -421,6 +635,7 @@ export async function submitPoConfirmation(
       details = `status=${status} code=${code}`;
     }
     console.error('[po-confirmation-service] submission failed:', details);
+    await recordDeferralReason(db, requestId, `The purchase order upload did not go through (${details}). It is saved on this phone and will retry.`);
     return 'failed';
   }
 
@@ -434,9 +649,14 @@ export async function submitPoConfirmation(
   }
 
   const now = new Date().toISOString();
+  // `decision_note` is cleared here on purpose: a row that deferred once
+  // (recordDeferralReason above) and then succeeded on a later retry must not
+  // keep displaying the old "did not go through" text next to a successfully
+  // submitted PO. The manager's real decision note, when one arrives, comes
+  // from the server via getMyPoConfirmationStatuses()'s reconciliation.
   await db.runAsync(
     `UPDATE po_confirmation_requests
-       SET status = 'pending', po_photo_path = ?, updated_at = ?, synced_at = ?
+       SET status = 'pending', po_photo_path = ?, updated_at = ?, synced_at = ?, decision_note = NULL
      WHERE id = ?`,
     [result.publicUrl, now, now, requestId]
   );
@@ -470,6 +690,31 @@ export async function getClientIdsWithPendingPoConfirmation(requesterId: string)
       WHERE p.requester_id = ?
         AND p.status = 'pending'
         AND c.status = 'in_progress'`,
+    [requesterId]
+  );
+  return new Set(rows.map((row) => row.client_id));
+}
+
+/**
+ * ADR-061 (Vince, 2026-08-19/20): the same lookup as
+ * `getClientIdsWithPendingPoConfirmation()` above, scoped to `prospect`
+ * instead of `in_progress` — Scenario 1's "PO submitted straight from
+ * Prospect" case. Deliberately a separate function rather than a
+ * status-parameterized one: the caller needs to distinguish the two (they
+ * render different badges — `WAITING_MANAGER_PO_APPROVAL_PROSPECT_BADGE` vs
+ * `WAITING_MANAGER_PO_APPROVAL_BADGE` in `lib/client-status.ts`), and this
+ * keeps that distinction explicit at every call site instead of encoded in a
+ * status argument that's easy to pass wrong.
+ */
+export async function getClientIdsWithPendingProspectPoConfirmation(requesterId: string): Promise<Set<string>> {
+  const db = await getDb();
+  const rows = await db.getAllAsync<PendingPoConfirmationClientRow>(
+    `SELECT DISTINCT p.client_id as client_id
+       FROM po_confirmation_requests p
+       JOIN clients c ON c.id = p.client_id
+      WHERE p.requester_id = ?
+        AND p.status = 'pending'
+        AND c.status = 'prospect'`,
     [requesterId]
   );
   return new Set(rows.map((row) => row.client_id));
@@ -532,6 +777,21 @@ async function retryDraftPoConfirmations(db: SQLiteDatabase, requesterId: string
  */
 export async function getMyPoConfirmationStatuses(requesterId: string): Promise<PoConfirmationRecord[]> {
   const db = await getDb();
+
+  // B-127: re-queue any PO photo stranded by a failed capture-time
+  // enqueue. Deliberately here and NOT inside runSync()'s pass: this is a
+  // quiet, UI-triggered moment on the app's single native SQLite
+  // connection, the same slot the old draft-retry already used safely.
+  // Attempting it mid-sync had expo-sqlite reject the statement with
+  // `NativeStatement.finalizeAsync has been rejected`, even wrapped in a
+  // transaction.
+  try {
+    const { data } = await supabase.auth.getSession();
+    const authUid = data.session?.user.id;
+    if (authUid) await ensurePoPhotoQueued(db, requesterId, authUid);
+  } catch (err) {
+    console.error('[po-confirmation-service] PO photo re-queue skipped:', err instanceof Error ? err.message : String(err));
+  }
 
   try {
     await retryDraftPoConfirmations(db, requesterId);

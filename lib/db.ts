@@ -12,7 +12,18 @@ export const DATABASE_NAME = 'oracle-sales-app.db';
 
 // Bump this and add a new `case` below whenever the schema changes — never
 // edit an already-shipped case, since devices may have already run it.
-const LATEST_SCHEMA_VERSION = 34;
+// B-124 (2026-08-20): was 34 while migration blocks for `currentVersion === 34`
+// (-> 35, normalized_name backfill) and `currentVersion === 35` (-> 36, the
+// `duplicate_blocked` CHECK constraint) already existed below. The runner
+// returns early on `currentVersion >= LATEST_SCHEMA_VERSION`, so both blocks
+// were unreachable and every device stayed on v34. That left the live table's
+// CHECK as ('draft','pending','approved','rejected','cancelled','superseded')
+// while lib/po-confirmation-service.ts writes 'duplicate_blocked' in two
+// places — each throwing SQLITE_CONSTRAINT_CHECK straight into a silent
+// catch, so a PO confirmation vanished with no row and no error. Keep this
+// constant in lockstep with the highest `currentVersion = N` assignment in
+// runMigrations().
+const LATEST_SCHEMA_VERSION = 39;
 
 const SELFIE_PROOF_COLUMNS: readonly (readonly [string, string])[] = [
   ['selfie_captured_at', 'TEXT'],
@@ -389,6 +400,25 @@ async function ensureJointManagerTablesExist(db: SQLiteDatabase): Promise<void> 
  * rows so an old pending outbox item can never resurrect that superseded path.
  * The remote migration history is intentionally left untouched.
  */
+/**
+ * B-127 one-time cleanup: PO photo-URL patch outbox rows can never succeed.
+ * Migration 039's only UPDATE policy on `po_confirmation_requests` is
+ * `with check (status = 'cancelled')`, so any update leaving the row pending
+ * is refused with 42501 — permanently, no retry can fix it. The app no longer
+ * creates these (the final public URL is written at capture time instead, see
+ * `buildPoEvidencePublicUrl`), but a device that ran the intermediate build
+ * holds one per PO, each retrying until it dead-letters and surfacing as a
+ * failure in Sync Center for something that is actually fine.
+ *
+ * Scoped to `operation = 'update'` only — the 'insert' rows are the real PO
+ * submissions and must never be touched.
+ */
+async function retireImpossiblePoPhotoPatchRows(db: SQLiteDatabase): Promise<void> {
+  await db.runAsync(
+    "DELETE FROM outbox WHERE table_name = 'po_confirmation_requests' AND operation = 'update'"
+  );
+}
+
 async function retireLegacyJointManagerData(db: SQLiteDatabase): Promise<void> {
   await db.execAsync(`
     DELETE FROM outbox
@@ -420,6 +450,7 @@ export async function migrateDbIfNeeded(db: SQLiteDatabase): Promise<void> {
     await ensureCutoffDailyQuotaColumns(db);
     await ensureJointManagerTablesExist(db);
     await retireLegacyJointManagerData(db);
+    await retireImpossiblePoPhotoPatchRows(db);
     return;
   }
 
@@ -1736,8 +1767,17 @@ export async function migrateDbIfNeeded(db: SQLiteDatabase): Promise<void> {
       CREATE TABLE po_confirmation_requests_new (
         id TEXT PRIMARY KEY NOT NULL, client_id TEXT NOT NULL, cycle_id TEXT NOT NULL,
         meeting_id TEXT NOT NULL, requester_id TEXT NOT NULL, po_photo_path TEXT NOT NULL,
+        -- B-124: 'superseded' is deliberately KEPT alongside the newly
+        -- added 'duplicate_blocked'. As originally written this block added
+        -- one and silently dropped the other, even though v34's own CHECK
+        -- allows 'superseded' and LocalPoConfirmationStatus still declares
+        -- it. The block was unreachable (LATEST_SCHEMA_VERSION was pinned at
+        -- 34) so that was never exercised; now that it runs, a device holding
+        -- even one 'superseded' row would have failed this rebuild's
+        -- INSERT ... SELECT and broken migration for that user. This CHECK
+        -- must stay the union of every value LocalPoConfirmationStatus allows.
         status TEXT NOT NULL DEFAULT 'draft'
-          CHECK (status IN ('draft', 'pending', 'approved', 'rejected', 'cancelled', 'duplicate_blocked')),
+          CHECK (status IN ('draft', 'pending', 'approved', 'rejected', 'cancelled', 'superseded', 'duplicate_blocked')),
         decided_by TEXT, decided_at TEXT, decision_note TEXT, created_at TEXT NOT NULL,
         updated_at TEXT NOT NULL, synced_at TEXT
       );
@@ -1751,6 +1791,128 @@ export async function migrateDbIfNeeded(db: SQLiteDatabase): Promise<void> {
     currentVersion = 36;
   }
 
+  // B-124 device-repair step (2026-08-20). LATEST_SCHEMA_VERSION was
+  // committed at 34 for its entire history (verified: `git log -p -- lib/db.ts`
+  // never shows it above 34 before today), yet a physical test device was
+  // found already sitting at `user_version = 36` with the ORIGINAL buggy
+  // `po_confirmation_requests` CHECK — missing 'superseded' — that the block
+  // above exists to fix. That can only mean an earlier, never-committed local
+  // edit ran on that device (matching Context.md's "Batch 3 ... SQLite schema
+  // v36 carries this state" claim, written before this file's constant was
+  // ever raised past 34), which advanced its `user_version` to 36 without
+  // ever going through a correct rebuild.
+  //
+  // Devices in that state are invisible to the block above: the early-return
+  // guard (`currentVersion >= LATEST_SCHEMA_VERSION`) treats `user_version =
+  // 36` as "nothing to do" the moment LATEST_SCHEMA_VERSION reaches 36, so the
+  // corrected CHECK from the block above would never reach them. This step
+  // closes that gap unconditionally for every device sitting at 36, whether
+  // they arrived via the block above (already correct — this rebuild is then
+  // a harmless no-op restating the same CHECK) or via the earlier stray path
+  // (actually broken — this is the only step that will ever repair them).
+  // The new CHECK is a strict superset of every prior variant, so no existing
+  // row can violate it.
+  if (currentVersion === 36) {
+    await db.execAsync(`
+      CREATE TABLE po_confirmation_requests_new (
+        id TEXT PRIMARY KEY NOT NULL, client_id TEXT NOT NULL, cycle_id TEXT NOT NULL,
+        meeting_id TEXT NOT NULL, requester_id TEXT NOT NULL, po_photo_path TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'draft'
+          CHECK (status IN ('draft', 'pending', 'approved', 'rejected', 'cancelled', 'superseded', 'duplicate_blocked')),
+        decided_by TEXT, decided_at TEXT, decision_note TEXT, created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL, synced_at TEXT
+      );
+      INSERT INTO po_confirmation_requests_new SELECT * FROM po_confirmation_requests;
+      DROP TABLE po_confirmation_requests;
+      ALTER TABLE po_confirmation_requests_new RENAME TO po_confirmation_requests;
+      CREATE INDEX idx_po_confirmation_meeting ON po_confirmation_requests (meeting_id);
+      CREATE INDEX idx_po_confirmation_requester ON po_confirmation_requests (requester_id, status);
+      CREATE INDEX idx_po_confirmation_client ON po_confirmation_requests (client_id);
+    `);
+    currentVersion = 37;
+  }
+
+  // B-127 (2026-08-20): PO evidence joins the offline photo-upload lane, so
+  // `pending_uploads` must accept its parent table and kind. Without this the
+  // INSERT is rejected by the CHECK constraints below — and expo-sqlite
+  // surfaces that as `NativeStatement.finalizeAsync has been rejected`, not
+  // as a readable constraint error, which is exactly how the PO photo
+  // silently failed to queue while the request itself synced fine. Same class
+  // of code/schema drift as B-124: the code learned a new enum value the
+  // table never did.
+  //
+  // SQLite cannot ALTER a CHECK, so this is the same create-new -> copy ->
+  // drop -> rename rebuild the earlier pending_uploads migrations used. Both
+  // new CHECKs are strict supersets of the previous ones, so no existing row
+  // can violate them.
+  if (currentVersion === 37) {
+    await db.execAsync(`
+      CREATE TABLE pending_uploads_new (
+        id TEXT PRIMARY KEY NOT NULL,
+        parent_table TEXT NOT NULL DEFAULT 'meetings'
+          CHECK (parent_table IN ('meetings', 'collection_visits', 'purchase_orders', 'po_confirmation_requests')),
+        parent_id TEXT NOT NULL,
+        agent_id TEXT NOT NULL,
+        kind TEXT NOT NULL CHECK (kind IN (
+          'selfie', 'start', 'end',
+          'payment', 'delivery_receipt',
+          'proof', 'backload', 'cod', 'signature',
+          'po_evidence'
+        )),
+        local_uri TEXT NOT NULL,
+        storage_path TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'pending'
+          CHECK (status IN ('pending', 'syncing', 'synced', 'conflict', 'failed')),
+        retry_count INTEGER NOT NULL DEFAULT 0,
+        last_error TEXT,
+        last_attempt_at TEXT,
+        next_attempt_at TEXT,
+        created_at TEXT NOT NULL,
+        synced_at TEXT,
+        failure_class TEXT
+          CHECK (failure_class IN ('validation','network','authentication','conflict','server','rate_limited','unknown'))
+      );
+      INSERT INTO pending_uploads_new SELECT * FROM pending_uploads;
+      DROP TABLE pending_uploads;
+      ALTER TABLE pending_uploads_new RENAME TO pending_uploads;
+    `);
+    currentVersion = 38;
+  }
+
+  // ADR-067 (2026-08-22, simplified same day): guest-manager record holders.
+  // Web migration 118 adds `client_meeting_holders`, populated automatically
+  // by a server-side trigger (`grant_client_holder_on_tagalong_accept()`) the
+  // instant a manager accepts a meeting-context Tag-Along invite -- there is
+  // no separate holder-decision column, RPC, or UI step; `status` on
+  // `tag_along_requests` (unchanged, still drives meeting/quota credit per
+  // migrations 076/077) is the only signal.
+  //
+  // `client_meeting_holders` is the local read-only mirror of that
+  // server-authoritative holder set. NOT the same table as the retired
+  // `client_record_holders` (SQLite v32/v33, cleared every launch by
+  // `retireLegacyJointManagerData()`) -- reusing that name would have this
+  // new, permanent data wiped on every app start. This table is genuinely new
+  // and is never touched by the retirement cleanup. No local INSERT/UPDATE/
+  // DELETE path exists for it -- sync-down's `client_meeting_holders` entity
+  // (lib/sync/entity-registry.ts) is the only writer, matching the "no revoke,
+  // ever" rule (ADR-067 decision 3): rows are append/upsert-only, never
+  // deleted.
+  if (currentVersion === 38) {
+    await db.execAsync(`
+      CREATE TABLE IF NOT EXISTS client_meeting_holders (
+        client_id TEXT NOT NULL,
+        manager_id TEXT NOT NULL,
+        granted_via_request_id TEXT,
+        created_at TEXT NOT NULL,
+        synced_at TEXT NOT NULL,
+        PRIMARY KEY (client_id, manager_id)
+      );
+      CREATE INDEX IF NOT EXISTS idx_cmh_manager ON client_meeting_holders(manager_id);
+      CREATE INDEX IF NOT EXISTS idx_cmh_client ON client_meeting_holders(client_id);
+    `);
+    currentVersion = 39;
+  }
+
   // Keep this unconditional as a final defensive check for databases that
   // traversed an older path with a partially-applied v30 block.
   await ensureSelfieProofColumns(db);
@@ -1761,6 +1923,7 @@ export async function migrateDbIfNeeded(db: SQLiteDatabase): Promise<void> {
   await ensureCutoffDailyQuotaColumns(db);
   await ensureJointManagerTablesExist(db);
   await retireLegacyJointManagerData(db);
+  await retireImpossiblePoPhotoPatchRows(db);
 
   await db.execAsync(`PRAGMA user_version = ${currentVersion}`);
 }

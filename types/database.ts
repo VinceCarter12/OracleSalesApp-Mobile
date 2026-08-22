@@ -20,7 +20,8 @@ export type RemoteClientStatus = 'active' | 'inactive' | 'lost' | 'deleted';
 // types (./index) use entirely different casing/wording; translation lives
 // in lib/meeting-service.ts::createMeeting().
 export type RemoteMeetingType = 'f2f' | 'online';
-export type RemoteLocationType = 'client_office' | 'other';
+// 'company_office' added 2026-08-20 (ADR-063, Web migration 116).
+export type RemoteLocationType = 'client_office' | 'company_office' | 'other';
 export type RemoteOnlinePlatform = 'zoom' | 'googlemeet';
 export type RemoteMeetingOutcome = 'successful' | 'follow_up' | 'no_decision' | 'lost_opportunity';
 
@@ -336,6 +337,25 @@ export type Database = {
           // lib/tag-along-invitee-service.ts) also re-stamps updated_at.
           updated_at?: string;
         };
+        Relationships: [];
+      };
+      // ADR-067 / Web migration 118: purely server-derived, append-only read
+      // model -- the only writer is the `grant_client_holder_on_tagalong_accept()`
+      // trigger, which fires the instant a manager accepts a meeting-context
+      // Tag-Along invite (no separate holder-decision RPC/column exists).
+      // No local Insert/Update path exists or is planned (no removal
+      // mechanism either, ADR-067 decision 3) -- declared here only so a
+      // typed `.from('client_meeting_holders').select('*')` sync-down read
+      // is possible; mobile never calls `.insert()`/`.update()` on it.
+      client_meeting_holders: {
+        Row: {
+          client_id: string;
+          manager_id: string;
+          granted_via_request_id: string | null;
+          created_at: string;
+        };
+        Insert: never;
+        Update: never;
         Relationships: [];
       };
       // ADR-041 / Migration 035 (Migration-035-Report.md): generalized

@@ -11,7 +11,18 @@ import { BizChip } from '../bizlink/BizChip';
 // a separate mode toggle + a 2-chip location group. `aSetMeetingLocation()`
 // (line 1762) derives `mode` from this same selection:
 // `aSetMeetingMode(kind==='online'?'online':'in_person')`.
-export const MEETING_LOCATIONS = ['Client Office', 'Online', 'Others'] as const;
+//
+// 'Company Office' added per ADR-063 (Vince, 2026-08-19/20): a meeting held
+// at our own office, with NO geofence/radius validation — the tag alone,
+// visible to the admin on the map, is sufficient. Placed after 'Client
+// Office' since both are in-person; `record.tsx`'s existing
+// `loc === 'Online' ? 'online' : 'in_person'` mode derivation already covers
+// it correctly with no change. Guard (Office-Location-Spec-2026-07-29): only
+// an EXACT `'Client Office'` match may capture `clients.office_lat/lng`
+// (`lib/meeting-record-assembler.ts`'s `captureOfficePin`) — 'Company
+// Office' must never trip that, and does not, since it is a different
+// string entirely.
+export const MEETING_LOCATIONS = ['Client Office', 'Company Office', 'Online', 'Others'] as const;
 export type MeetingLocationOption = (typeof MEETING_LOCATIONS)[number];
 
 interface MeetingLocationPickerProps {

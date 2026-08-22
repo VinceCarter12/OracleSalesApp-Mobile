@@ -389,6 +389,54 @@ export async function upsertSyncedClientEditRequest(
 }
 
 /**
+ * B-127 (Vince, 2026-08-20): PO confirmation joins the offline-first sync
+ * lane, reversing ADR-044 decision 5's online-only rule for request CREATION.
+ * Same shape as `upsertSyncedClientEditRequest` above — the closest existing
+ * analogue (a Sales/RSR-created approval request that IS outbox-queued).
+ *
+ * The local-only statuses (`draft`, `duplicate_blocked`, `superseded`) must
+ * never be clobbered by a sync-down: `draft` means "this device still owes
+ * the server this row", and overwriting it would lose the local photo path
+ * that has not uploaded yet. The guard below keeps them intact and lets the
+ * server win only on rows it actually knows about.
+ */
+export async function upsertSyncedPoConfirmationRequest(
+  db: SQLiteDatabase,
+  row: Record<string, unknown>,
+  now: string,
+  agentId: string
+): Promise<void> {
+  void agentId;
+  await db.runAsync(
+    `INSERT INTO po_confirmation_requests
+      (id, client_id, cycle_id, meeting_id, requester_id, po_photo_path, status,
+       decided_by, decided_at, decision_note, created_at, updated_at, synced_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+     ON CONFLICT(id) DO UPDATE SET
+       status = excluded.status, decided_by = excluded.decided_by,
+       decided_at = excluded.decided_at, decision_note = excluded.decision_note,
+       po_photo_path = excluded.po_photo_path,
+       updated_at = excluded.updated_at, synced_at = excluded.synced_at
+     WHERE po_confirmation_requests.status NOT IN ('draft', 'duplicate_blocked', 'superseded')`,
+    [
+      row.id as string,
+      row.client_id as string,
+      row.cycle_id as string,
+      row.meeting_id as string,
+      row.requester_id as string,
+      row.po_photo_path as string,
+      (row.status as string) ?? 'pending',
+      (row.decided_by as string) ?? null,
+      (row.decided_at as string) ?? null,
+      (row.decision_note as string) ?? null,
+      (row.created_at as string | undefined) ?? now,
+      (row.updated_at as string | undefined) ?? (row.created_at as string | undefined) ?? now,
+      now,
+    ]
+  );
+}
+
+/**
  * F-007 (web 043/045/046): LWW-safe upsert of a synced-down collection_visit
  * into the local mirror. Read path (Phase 1) — the field app never invents
  * these (the admin publishes the list), so the same overwrite-if-synced guard
@@ -615,6 +663,43 @@ export async function upsertSyncedCodRemittance(
       toIdJson(row.po_ids),
       (row.submitted_at as string) ?? null,
       (row.created_at as string) ?? null,
+      now,
+    ]
+  );
+}
+
+/**
+ * ADR-067: LWW-safe upsert of a synced-down `client_meeting_holders` row.
+ * Purely server-derived (Web migration 118's
+ * `grant_client_holder_on_tagalong_accept()` trigger is the only writer) and
+ * permanent by construction (no removal path exists, ADR-067 decision 3) --
+ * so unlike every other applier above, there is no
+ * "don't clobber a local unsynced edit" guard to preserve: this table has no
+ * local writes to protect, ever. `ON CONFLICT DO UPDATE` is therefore always
+ * safe and unconditional (no `WHERE ... sync_status = 'synced'` gate, since
+ * the table doesn't carry that column at all -- see `hasSyncStatusColumn:
+ * false` on its entity-registry.ts entry). `agentId` is unused (signature
+ * uniformity, same as the appliers above).
+ */
+export async function upsertSyncedClientMeetingHolder(
+  db: SQLiteDatabase,
+  row: Record<string, unknown>,
+  now: string,
+  agentId: string
+): Promise<void> {
+  void agentId;
+  await db.runAsync(
+    `INSERT INTO client_meeting_holders (client_id, manager_id, granted_via_request_id, created_at, synced_at)
+     VALUES (?, ?, ?, ?, ?)
+     ON CONFLICT(client_id, manager_id) DO UPDATE SET
+       granted_via_request_id = excluded.granted_via_request_id,
+       created_at = excluded.created_at,
+       synced_at = excluded.synced_at`,
+    [
+      row.client_id as string,
+      row.manager_id as string,
+      (row.granted_via_request_id as string | null | undefined) ?? null,
+      (row.created_at as string | undefined) ?? now,
       now,
     ]
   );

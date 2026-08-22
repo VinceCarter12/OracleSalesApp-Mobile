@@ -12,6 +12,7 @@ describe('predictsProspectToInProgress', () => {
         agendaIds: ['agenda-close-deal'],
         validCatalogAgendaIds: VALID_IDS,
         hasPendingManagerTagAlong: false,
+        hasPoEvidence: false,
       })
     ).toBe(true);
   });
@@ -24,6 +25,7 @@ describe('predictsProspectToInProgress', () => {
         agendaIds: ['agenda-close-deal'],
         validCatalogAgendaIds: VALID_IDS,
         hasPendingManagerTagAlong: true,
+        hasPoEvidence: false,
       })
     ).toBe(false);
   });
@@ -37,6 +39,7 @@ describe('predictsProspectToInProgress', () => {
           agendaIds: ['agenda-close-deal'],
           validCatalogAgendaIds: VALID_IDS,
           hasPendingManagerTagAlong: false,
+          hasPoEvidence: false,
         })
       ).toBe(false);
     }
@@ -50,6 +53,7 @@ describe('predictsProspectToInProgress', () => {
         agendaIds: ['agenda-close-deal'],
         validCatalogAgendaIds: VALID_IDS,
         hasPendingManagerTagAlong: false,
+        hasPoEvidence: false,
       })
     ).toBe(false);
   });
@@ -62,6 +66,7 @@ describe('predictsProspectToInProgress', () => {
         agendaIds: ['agenda-not-in-catalog'],
         validCatalogAgendaIds: VALID_IDS,
         hasPendingManagerTagAlong: false,
+        hasPoEvidence: false,
       })
     ).toBe(false);
   });
@@ -74,6 +79,7 @@ describe('predictsProspectToInProgress', () => {
         agendaIds: [],
         validCatalogAgendaIds: VALID_IDS,
         hasPendingManagerTagAlong: false,
+        hasPoEvidence: false,
       })
     ).toBe(false);
   });
@@ -87,6 +93,7 @@ describe('predictsProspectToInProgress', () => {
           agendaIds: ['agenda-close-deal'],
           validCatalogAgendaIds: VALID_IDS,
           hasPendingManagerTagAlong: false,
+          hasPoEvidence: false,
         })
       ).toBe(false);
     }
@@ -100,7 +107,23 @@ describe('predictsProspectToInProgress', () => {
         agendaIds: ['agenda-not-in-catalog', 'agenda-presentation'],
         validCatalogAgendaIds: VALID_IDS,
         hasPendingManagerTagAlong: false,
+        hasPoEvidence: false,
       })
     ).toBe(true);
+  });
+
+  // ADR-061 (Vince, 2026-08-19/20): a PO-bearing meeting keeps the client at
+  // PROSPECT awaiting the manager's decision, instead of flashing IN PROGRESS.
+  it('does not predict promotion when this meeting carries PO evidence', () => {
+    expect(
+      predictsProspectToInProgress({
+        currentStatus: 'prospect',
+        outcome: 'Successful',
+        agendaIds: ['agenda-close-deal'],
+        validCatalogAgendaIds: VALID_IDS,
+        hasPendingManagerTagAlong: false,
+        hasPoEvidence: true,
+      })
+    ).toBe(false);
   });
 });

@@ -2,6 +2,8 @@ import { supabase } from './supabase';
 import { fromRemoteOutcome } from './remote-meeting-mapping';
 import { buildTeamAgents, initialsOf } from './team-remote-mappers';
 import { DEFAULT_MANAGER_SCOPE, partitionByScope, type ManagerScope } from './manager-scope';
+import { fetchAcceptedTagAlongMeetingIds } from './manager-tag-along-meetings';
+import { fetchHeldClientContext, type HeldClientContext } from './manager-held-clients';
 import type { ManagerDashboardSummary, TeamMeetingPreview } from '../types';
 
 // Real cross-agent Supabase queries for the Manager dashboard (2026-07-16,
@@ -57,6 +59,26 @@ function isSameMonth(iso: string, reference: Date): boolean {
   return d.getMonth() === reference.getMonth() && d.getFullYear() === reference.getFullYear();
 }
 
+/**
+ * B-131 fix: a manager's own ACCEPTED meeting-context Tag-Along
+ * participation in ANOTHER team's meeting is otherwise invisible to the
+ * `teamMeetings`/`teamMeetingsSuccessful` tiles — the query above only ever
+ * scopes to `agent_id IN (own team roster)`. Lean columns only (no
+ * agent/client names) — unlike `lib/manager-team-service.ts`'s equivalent,
+ * this dashboard tile only needs counts, not a navigable detail record.
+ */
+async function fetchTagAlongMeetingsThisMonth(
+  managerProfileId: string,
+  excludeMeetingIds: ReadonlySet<string>,
+  now: Date
+): Promise<MeetingRow[]> {
+  const acceptedIds = (await fetchAcceptedTagAlongMeetingIds(managerProfileId)).filter((id) => !excludeMeetingIds.has(id));
+  if (acceptedIds.length === 0) return [];
+  const { data, error } = await supabase.from('meetings').select('id, client_id, agent_id, outcome, meeting_date').in('id', acceptedIds);
+  if (error) throw error;
+  return ((data ?? []) as MeetingRow[]).filter((m) => isSameMonth(m.meeting_date, now));
+}
+
 export async function fetchManagerDashboard(
   managerTeamId: string,
   managerFirstName: string,
@@ -88,11 +110,37 @@ export async function fetchManagerDashboard(
     : [{ data: [] }, { data: [] }];
   const allClients = (clientRows ?? []) as ClientRow[];
   const allMeetings = (meetingRows ?? []) as MeetingRow[];
-  const clients = partitionByScope(allClients, (c) => c.assigned_agent_id, managerProfileId, scope);
-  const meetings = partitionByScope(allMeetings, (m) => m.agent_id, managerProfileId, scope);
+  const scopedClients = partitionByScope(allClients, (c) => c.assigned_agent_id, managerProfileId, scope);
+  const scopedMeetings = partitionByScope(allMeetings, (m) => m.agent_id, managerProfileId, scope);
 
   const now = new Date();
-  const thisMonthMeetings = meetings.filter((m) => isSameMonth(m.meeting_date, now));
+  // Guest Records scope (2026-08-22): held clients/meetings from OTHER
+  // teams, fetched only when the scope actually needs them ('guest' or
+  // 'combined') — same gate `lib/manager-team-service.ts::fetchTeamOverview()`
+  // uses for its own `guestClients`/`guestMeetings`. `scopedClients`/
+  // `scopedMeetings` are already `[]` for scope='guest' (`partitionByScope`'s
+  // explicit guest case), so concatenating held data on top works uniformly
+  // for every scope value, no per-scope branching needed here.
+  const needsGuestData = scope === 'guest' || scope === 'combined';
+  const heldContext: HeldClientContext = needsGuestData
+    ? await fetchHeldClientContext(managerProfileId)
+    : { clients: [], meetings: [], agentsById: new Map() };
+  const clients = [...scopedClients, ...heldContext.clients];
+  const meetings = [...scopedMeetings, ...heldContext.meetings];
+
+  // Only 'combined' (the default) adds tag-along-accepted meetings — mirrors
+  // `lib/manager-attendance-history-service.ts::getManagerAttendanceHistory()`'s
+  // exact scope semantics: 'mine' means agent_id-owned only (a tag-along
+  // guest attendance isn't "mine"), 'team' means the team roster only.
+  // Excludes anything already surfaced via `heldContext.meetings` (B-131's
+  // narrower fix is now a strict subset of Guest Records' full held-client
+  // history whenever the tag-along's client granted holder status) so a
+  // jointly-covered meeting is never counted twice.
+  const alreadyCountedIds = new Set([...scopedMeetings, ...heldContext.meetings].map((m) => m.id));
+  const tagAlongMeetingsThisMonth = scope === 'combined'
+    ? await fetchTagAlongMeetingsThisMonth(managerProfileId, alreadyCountedIds, now)
+    : [];
+  const thisMonthMeetings = [...meetings, ...tagAlongMeetingsThisMonth].filter((m) => isSameMonth(m.meeting_date, now));
 
   // Dedup (B-054 Phase 1): shared with lib/manager-team-service.ts via
   // lib/team-remote-mappers.ts::buildTeamAgents(). B-055 fix: agents are now
@@ -107,13 +155,22 @@ export async function fetchManagerDashboard(
   // them ('mine'/'combined' scope can surface the manager's own meetings,
   // but `agents` above never includes the manager as a roster entry).
   const managerAsAgent = { id: managerProfileId, name: managerFirstName, initials: initialsOf(managerFirstName) };
-  const agentById = new Map([...agents, managerAsAgent].map((a) => [a.id, a]));
-  // Built from the full (unpartitioned) client set, not the scope-filtered
-  // `clients` above — a meeting's `agent_id` (who ran it) and its client's
-  // `assigned_agent_id` (who owns it) can legitimately differ (reassignment,
-  // tag-along), so this name lookup must not depend on the scope partition
-  // or it could wrongly show "Unknown client" for an in-scope meeting.
-  const clientNameById = new Map(allClients.map((c) => [c.id, c.company_name]));
+  // Guest Records scope: a held client's owning agent is outside this team's
+  // roster entirely, so `recentMeetings`' name lookup needs
+  // `heldContext.agentsById` too, or a guest meeting would show "Unknown
+  // agent" even though the owning agent's name was already fetched.
+  const guestAgents = Array.from(heldContext.agentsById.values()).map((p) => ({
+    id: p.id,
+    name: p.full_name,
+    initials: initialsOf(p.full_name),
+  }));
+  const agentById = new Map([...agents, managerAsAgent, ...guestAgents].map((a) => [a.id, a]));
+  // Built from the full (unpartitioned) client set PLUS held clients — a
+  // meeting's `agent_id` (who ran it) and its client's `assigned_agent_id`
+  // (who owns it) can legitimately differ (reassignment, tag-along), so this
+  // name lookup must not depend on the scope partition or it could wrongly
+  // show "Unknown client" for an in-scope meeting.
+  const clientNameById = new Map([...allClients, ...heldContext.clients].map((c) => [c.id, c.company_name]));
 
   // Existing-client fast-path meetings have no outcome at all (ADR-015) —
   // filtered out here same as the old mock summary did, rather than

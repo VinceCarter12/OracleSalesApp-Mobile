@@ -9,7 +9,17 @@
  * doc-comment for why it isn't in `lib/team-remote-mappers.ts`) is the one
  * shared answer both now use.
  */
-export type ManagerScope = 'mine' | 'team' | 'combined';
+/**
+ * Guest Records scope (2026-08-22, ADR-067 addendum "Gap found during device
+ * testing"): a 4th value, `'guest'` — held clients (`client_meeting_holders`)
+ * from OTHER teams, structurally distinct from `'team'` (own roster only). No
+ * screen ever infers guest inclusion from `'team'`/`'combined'` implicitly —
+ * every screen is purely scope-driven, so `'combined'` explicitly means own +
+ * team + guest, and `'guest'` isolates just held clients. See
+ * `lib/manager-held-clients.ts`/`lib/client-holder-service.ts::getHeldClientIds()`
+ * for the data source.
+ */
+export type ManagerScope = 'mine' | 'team' | 'combined' | 'guest';
 
 /**
  * Sprint.md "Scope Filter Decisions Confirmed (2026-08-02)": default scope on
@@ -53,7 +63,16 @@ export function partitionByScope<T>(
     case 'team':
       return rows.filter((row) => agentIdOf(row) !== managerProfileId);
     case 'combined':
-    default:
       return rows;
+    // Guest Records (2026-08-22): this function only ever partitions rows
+    // already scoped to the manager's own team roster + self — a guest-held
+    // client's owning agent is by definition OUTSIDE that set, so it can
+    // never legitimately appear in `rows`. Guest rows are sourced and merged
+    // in entirely separately by each caller (`lib/manager-held-clients.ts`),
+    // never derived from this team-scoped input array. Explicit case, not a
+    // `default` fallthrough, so a 5th scope value would fail to compile here
+    // instead of silently reusing this branch.
+    case 'guest':
+      return [];
   }
 }

@@ -100,6 +100,55 @@ export function hasActivePoConfirmation(rows: readonly LocalPoConfirmationStatus
   return rows.some(blocksPoConfirmationReplacement);
 }
 
+/**
+ * B-125 (Vince, 2026-08-20): statuses that exist ONLY on this device. The
+ * server has never seen them, so they hold no real reservation and must never
+ * permanently block a new PO.
+ *
+ * This is the concrete failure Vince reported: a `draft` that never reached
+ * Supabase — for any of the reasons catalogued in B-120, and guaranteed for
+ * every device while B-124 was live — silently reserved the client/cycle slot
+ * forever. The agent could not file a PO for that client again, and the old
+ * blocking dialog's only forward option was "Continue meeting without new PO",
+ * which discarded the new evidence rather than replacing the stale row.
+ */
+export const LOCAL_ONLY_PO_CONFIRMATION_STATUSES = new Set<LocalPoConfirmationStatus>([
+  'draft',
+  'duplicate_blocked',
+  'superseded',
+]);
+
+/**
+ * Statuses the SERVER has confirmed. Only these genuinely reserve the slot.
+ *
+ * Deliberately matches the server's own authority, not a stricter local guess:
+ * web migration 039 declares `unique index uq_po_pending_per_cycle on
+ * (cycle_id) where status = 'pending'`. `approved` is included here on top of
+ * that because ADR-060 (Vince, 2026-08-14) rules that an approved PO also
+ * closes the cycle's slot — a product rule, not a database constraint. If that
+ * rule is ever relaxed, remove `approved` here and nothing else changes.
+ */
+export const SERVER_CONFIRMED_PO_CONFIRMATION_STATUSES = new Set<LocalPoConfirmationStatus>([
+  'pending',
+  'approved',
+]);
+
+/**
+ * `free` — nothing holds the slot.
+ * `replaceable_local` — only local-only evidence holds it; warn, then replace.
+ * `server_confirmed` — a real server-side PO holds it; genuinely blocked.
+ */
+export type PoConfirmationSlotState = 'free' | 'replaceable_local' | 'server_confirmed';
+
+/** Server-confirmed wins over local-only: a device holding both must be treated as genuinely blocked. */
+export function derivePoConfirmationSlotState(
+  rows: readonly LocalPoConfirmationStatus[]
+): PoConfirmationSlotState {
+  if (rows.some((status) => SERVER_CONFIRMED_PO_CONFIRMATION_STATUSES.has(status))) return 'server_confirmed';
+  if (rows.some((status) => LOCAL_ONLY_PO_CONFIRMATION_STATUSES.has(status))) return 'replaceable_local';
+  return 'free';
+}
+
 // ADR-046 correction addendum point 3: the live discriminator literal —
 // never the shorthand 'po'. Exported so every call site (service, UI) reads
 // this constant instead of re-typing the string literal.
@@ -120,11 +169,23 @@ export const PO_CONFIRMATION_REQUEST_KIND = 'po_confirmation' as const;
  * the single place that condition is now expressed so both call sites (the
  * evidence card's visibility and the actual submission trigger) can never
  * drift apart again.
+ *
+ * ADR-061 (Vince, 2026-08-19/20): `prospect` joins `in_progress` here.
+ * Scenario 1 — a prospect may attach PO evidence directly (Close deal is
+ * OPTIONAL at this stage, per agenda-policy.ts's DEFAULT_AGENDA_STAGE_RULES
+ * update) and route straight to manager approval -> `new`, skipping
+ * `in_progress` entirely if approved. The outcome/agenda conditions are
+ * unchanged and apply identically at both stages — a PO always means a
+ * closed deal, regardless of which stage the client started the meeting at.
  */
 export function isCloseDealPoEligible(
   clientStatus: ClientStatus | null | undefined,
   outcome: MeetingOutcome | null | undefined,
   agendas: readonly string[]
 ): boolean {
-  return clientStatus === 'in_progress' && outcome === 'Successful' && agendas.includes(CLOSE_DEAL_AGENDA);
+  return (
+    (clientStatus === 'in_progress' || clientStatus === 'prospect') &&
+    outcome === 'Successful' &&
+    agendas.includes(CLOSE_DEAL_AGENDA)
+  );
 }

@@ -26,6 +26,7 @@ function tagAlong(overrides: Partial<IncomingCompanionRequest>): IncomingCompani
     clientId: 'client-1',
     clientName: 'RMC Fuels',
     relatedMeetingId: null,
+    context: 'meeting',
     ...overrides,
   };
 }

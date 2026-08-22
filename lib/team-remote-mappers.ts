@@ -252,6 +252,7 @@ function toManagerOutcome(outcome: RemoteMeetingOutcome | null): ManagerOutcome 
 function resolveLocation(row: Pick<MeetingRow, 'meeting_type' | 'location_type' | 'location_name'>): string {
   if (row.meeting_type === 'online') return 'Online (video call)';
   if (row.location_type === 'other') return row.location_name || 'Others';
+  if (row.location_type === 'company_office') return 'Company Office';
   return 'Client Office';
 }
 

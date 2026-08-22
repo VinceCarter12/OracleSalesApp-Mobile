@@ -303,6 +303,19 @@ export interface TeamClient {
   deadlineWarn?: boolean;
   /** B-060 addendum: `clients.created_at`, real-data-only (real read path via `lib/manager-team-service.ts` always sets it; mock fixtures in `lib/manager-data.ts` don't carry a real timestamp so leave it unset there). Used for Reports' timeframe-scoped "new clients acquired" stat. */
   createdAt?: string;
+  /**
+   * Guest Records scope (2026-08-22): true only for a client injected into
+   * `TeamOverview.guestClients` because the VIEWING manager holds
+   * (`client_meeting_holders`) it — i.e. a cross-team client they don't own
+   * but can see/edit-approve per ADR-067. Parallel to `TeamMeeting`'s
+   * `isTagAlongGuestRecord`, but for the client record itself rather than
+   * one meeting. Never set on `TeamOverview.clients` — deliberately kept out
+   * of that array so Team roster/reassign/aggregate-math consumers can't
+   * accidentally pick it up.
+   */
+  isGuestRecord?: true;
+  /** Owning agent's display name, set only alongside `isGuestRecord` — `overview.agents` only contains the viewer's own team roster and won't have this agent. */
+  guestOwnerAgentName?: string;
 }
 
 export interface TeamMeeting {
@@ -354,6 +367,34 @@ export interface TeamMeeting {
    * out of scope this batch). Use `getMeetingLifecycleStatus()`.
    */
   clientStatusAtMeeting?: ClientStatus | null;
+  /**
+   * B-131 fix: true only for a meeting injected into `TeamOverview.meetings`
+   * because the VIEWING manager has an accepted meeting-context Tag-Along
+   * invite for it, and the meeting is NOT owned by their own team roster —
+   * i.e. this is the guest's own participation in someone else's meeting.
+   * Deliberately a separate field from `tagAlong` (dead code until now):
+   * `tagAlong` means "a companion manager joined MY team's meeting" (the
+   * viewer owns the record); this field means the opposite perspective —
+   * "I (the viewer) tagged along on someone else's meeting". Overloading one
+   * field for both would render the wrong banner copy for one of the two.
+   */
+  isTagAlongGuestRecord?: boolean;
+  /** Owning agent's display name, set only alongside `isTagAlongGuestRecord` — `overview.agents` only contains the viewer's own team roster and won't have this agent. */
+  tagAlongOwnerAgentName?: string;
+  /** Owning client's display name, set only alongside `isTagAlongGuestRecord` — `overview.clients` only contains the viewer's own team roster's clients and won't have this one. */
+  tagAlongOwnerClientName?: string;
+  /**
+   * Guest Records scope (2026-08-22): true only for a meeting injected into
+   * `TeamOverview.guestMeetings` because it belongs to a client the VIEWING
+   * manager holds — the client's FULL meeting history, not just the meeting
+   * that originally granted holder status. Deliberately a separate field
+   * from `isTagAlongGuestRecord` (B-131): that one means "I personally
+   * tagged along on this specific meeting"; this one means "this meeting
+   * belongs to a client I hold, whether or not I was ever at it".
+   */
+  isGuestRecord?: true;
+  /** Owning agent's display name, set only alongside `isGuestRecord` — `overview.agents` only contains the viewer's own team roster and won't have this agent. */
+  guestOwnerAgentName?: string;
 }
 
 // ─── Tag-Along companion selector (ADR-030, F-015) ─────────────────────────────

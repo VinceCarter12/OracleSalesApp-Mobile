@@ -40,8 +40,9 @@ import { KeyboardAwareScrollView } from '../../../components/ui/KeyboardAwareScr
 import { OngoingMeetingWarningDialog } from '../../../components/meetings/OngoingMeetingWarningDialog';
 import { InAppCameraOverlay } from '../../../components/meetings/InAppCameraOverlay';
 import { isCloseDealPoEligible } from '../../../lib/policies/po-confirmation-status-policy';
-import { hasActivePoEvidence } from '../../../lib/po-confirmation-service';
+import { getPoEvidenceSlotState } from '../../../lib/po-confirmation-service';
 import { SameClientPoBlockedDialog } from '../../../components/meetings/SameClientPoBlockedDialog';
+import { PoOverwriteWarningDialog } from '../../../components/meetings/PoOverwriteWarningDialog';
 import { CLOSE_DEAL_AGENDA, type MeetingOutcome } from '../../../types';
 
 /** mm:ss, matching VisitInProgressPanel's format and the wireframe's `a-visitElapsed`. */
@@ -131,6 +132,11 @@ export default function RecordMeetingScreen() {
   const [pickingPoEvidence, setPickingPoEvidence] = useState(false);
   const [poPreviewOpen, setPoPreviewOpen] = useState(false);
   const [poBlockedDialogOpen, setPoBlockedDialogOpen] = useState(false);
+  // B-125: stale local-only PO evidence warns instead of blocking. Set by the
+  // overwrite dialog's Continue so the re-entered doSave() skips the preflight
+  // it just answered rather than looping on the same dialog.
+  const [poOverwriteDialogOpen, setPoOverwriteDialogOpen] = useState(false);
+  const [confirmedPoOverwrite, setConfirmedPoOverwrite] = useState(false);
   const [skipPoSubmission, setSkipPoSubmission] = useState(false);
 
   const [saving, setSaving] = useState(false);
@@ -277,10 +283,38 @@ export default function RecordMeetingScreen() {
       Alert.alert('Outcome Required', 'Please select a meeting outcome.');
       return;
     }
-    if (poPhotoUri && client?.status === 'in_progress' && !client.cycle_id) {
+    // B-117 (Vince, 2026-08-19): a meeting could be saved and synced with no
+    // agenda at all. Required for EVERY client status, prospect through
+    // existing — mirrored in record-visit.tsx for the new/existing fast path.
+    // Not cosmetic: the server's advance_prospect_to_in_progress() (web
+    // migration 049) needs at least one prospect-visible agenda, so an
+    // agenda-less meeting can never promote its client and says nothing.
+    if (selectedAgendas.length === 0) {
+      Alert.alert('Agenda Required', 'Please select at least one agenda before saving this meeting.');
+      return;
+    }
+    // ADR-061 (Vince, 2026-08-19/20): at `in_progress`, a Close deal REQUIRES
+    // a PO photo — this is the tightened half of the rule. A follow-up
+    // meeting (no Close deal) still needs none; the client simply stays
+    // in_progress. Deliberately scoped to `in_progress` only: at `prospect`,
+    // Close deal + PO is Scenario 1 but remains OPTIONAL (Vince: "pwede nila
+    // i select or hindi yung close deal sa prospect").
+    if (client?.status === 'in_progress' && selectedAgendas.includes(CLOSE_DEAL_AGENDA) && !poPhotoUri) {
+      Alert.alert(
+        'PO Evidence Required',
+        'Closing a deal on an In Progress client requires purchase order evidence. Attach a PO photo, or remove Close deal from the agenda if this is a follow-up visit.'
+      );
+      return;
+    }
+    if (poPhotoUri && (client?.status === 'in_progress' || client?.status === 'prospect') && !client.cycle_id) {
       // ADR-044: po_confirmation_requests.cycle_id is NOT NULL — without a
       // synced-down cycle_id the request can't be submitted at all. Block
       // rather than silently drop the captured evidence.
+      //
+      // ADR-061 (2026-08-20, B-120): this guard used to check only
+      // `in_progress`, so a prospect's missing cycle_id fell through with no
+      // warning and the PO photo was silently discarded — the exact same
+      // failure class B-120 documented for the outcome arm. Widened here.
       Alert.alert(
         'Sync Required',
         "This client's current cycle hasn't been received by this device yet. Connect online and try again before saving with PO evidence."
@@ -295,10 +329,30 @@ export default function RecordMeetingScreen() {
       Alert.alert('Client Required', 'Select a client from the client picker before recording a meeting.');
       return;
     }
+    // B-120: isCloseDealPoEligible() needs status + outcome + agenda together,
+    // but only the cycle_id branch above ever warned the agent. A PO photo
+    // that failed on outcome alone was thrown away silently at save time.
+    if (
+      poPhotoUri &&
+      (client?.status === 'in_progress' || client?.status === 'prospect') &&
+      selectedAgendas.includes(CLOSE_DEAL_AGENDA) &&
+      outcome !== 'Successful'
+    ) {
+      Alert.alert(
+        'PO Evidence Will Not Be Sent',
+        'The purchase order photo only sends when the meeting outcome is "Successful". Change the outcome to Successful to send it, or remove the PO photo to save this meeting without it.'
+      );
+      return;
+    }
     const poEligible = Boolean(poPhotoUri && client?.cycle_id && isCloseDealPoEligible(client?.status, outcome, selectedAgendas));
-    if (poEligible && client?.cycle_id && !skipPoSubmission && !forceSkipPo) {
+    // B-125: a stale LOCAL-only PO (one that never reached Supabase) must not
+    // permanently block a new one — it warns, and continuing overwrites it.
+    // Only a server-confirmed PO still hard-blocks.
+    if (poEligible && client?.cycle_id && !skipPoSubmission && !forceSkipPo && !confirmedPoOverwrite) {
       try {
-        if (await hasActivePoEvidence(db, client.id, client.cycle_id)) { setPoBlockedDialogOpen(true); return; }
+        const slotState = await getPoEvidenceSlotState(db, client.id, client.cycle_id);
+        if (slotState === 'server_confirmed') { setPoBlockedDialogOpen(true); return; }
+        if (slotState === 'replaceable_local') { setPoOverwriteDialogOpen(true); return; }
       } catch (error) { Alert.alert('PO status unavailable', error instanceof Error ? error.message : 'Refresh this client before submitting PO evidence.'); return; }
     }
 
@@ -504,7 +558,13 @@ export default function RecordMeetingScreen() {
                   // which is a real UX regression, not just a cosmetic deviation —
                   // see isCloseDealPoEligible's use in the poEvidence trigger above
                   // for where the outcome check actually belongs.
-                  visible={client?.status === 'in_progress' && selectedAgendas.includes(CLOSE_DEAL_AGENDA)}
+                  // ADR-061: prospect joins in_progress — Close deal is
+                  // selectable at prospect now (agenda-policy.ts), so the
+                  // card must appear there too, matching isCloseDealPoEligible().
+                  visible={
+                    (client?.status === 'in_progress' || client?.status === 'prospect') &&
+                    selectedAgendas.includes(CLOSE_DEAL_AGENDA)
+                  }
                   photoUri={poPhotoUri}
                   busy={pickingPoEvidence}
                   onTakePhoto={capturePoPhoto}
@@ -537,7 +597,18 @@ export default function RecordMeetingScreen() {
                   selected and never reset — the wireframe's actual runtime
                   label is always status-aware, not the placeholder text. */}
               <YStack flex={1}>
-                <BizButton label={saving ? 'Saving…' : `Save ${actionName}`} onPress={doSave} disabled={saving} />
+                {/* B-126 ROOT CAUSE (2026-08-20): this was `onPress={doSave}`. React
+                    Native hands the handler a GestureResponderEvent as its first
+                    argument, which landed in doSave's `forceSkipPo = false`
+                    parameter — so every Save tap made forceSkipPo a truthy event
+                    object. That made `!forceSkipPo` false, skipping the PO
+                    preflight AND nulling poEvidence, so a PO confirmation could
+                    never be created from this screen: no local row, no remote
+                    row, no error, 100% of the time. Proven on-device by the
+                    diagnostic logging forceSkipPo as a FiberNode-bearing
+                    synthetic event. Must stay wrapped so doSave() is called with
+                    no arguments and its default applies. */}
+                <BizButton label={saving ? 'Saving…' : `Save ${actionName}`} onPress={() => { void doSave(); }} disabled={saving} />
               </YStack>
               {!saving ? (
                 <YStack flex={1}>
@@ -612,6 +683,13 @@ export default function RecordMeetingScreen() {
         onViewPo={() => { setPoBlockedDialogOpen(false); router.push('/(tabs)/more/my-requests'); }}
         onContinue={() => { setPoBlockedDialogOpen(false); setSkipPoSubmission(true); void doSave(true); }}
         onCancel={() => setPoBlockedDialogOpen(false)}
+      />
+      {/* B-125: unlike the block above, Continue here KEEPS the new PO and
+          replaces the stale local-only evidence — it does not skip submission. */}
+      <PoOverwriteWarningDialog
+        visible={poOverwriteDialogOpen}
+        onContinue={() => { setPoOverwriteDialogOpen(false); setConfirmedPoOverwrite(true); void doSave(); }}
+        onCancel={() => setPoOverwriteDialogOpen(false)}
       />
     </YStack>
   );

@@ -5,6 +5,7 @@ import { markUploadRow, markUploadSynced, markUploadSyncing, scheduleUploadRetry
 import { enqueueSyncAuditRow } from './audit-log';
 import { reportSyncProgressStep } from './sync-progress';
 import {
+  buildPhotoStoragePath,
   enqueuePhotoUrlUpdate,
   PHOTO_UPLOAD_KINDS,
   publicUrlFor,
@@ -180,7 +181,22 @@ async function processOneRow(
   }
 
   await markUploadSynced(db, row.id);
-  await enqueuePhotoUrlUpdate(db, row.parent_table, row.parent_id, row.kind as keyof typeof PHOTO_UPLOAD_KINDS, publicUrl, row.agent_id);
+  // B-127: PO evidence needs no URL patch. `po_confirmation_requests` is
+  // written with the FINAL public URL at capture time — the storage path is
+  // deterministic (`buildPhotoStoragePath`) and `getPublicUrl()` is a pure
+  // string builder with no network call, so the correct URL is knowable
+  // offline before the upload happens.
+  //
+  // Skipping the patch is not just an optimisation, it is required: migration
+  // 039's only UPDATE policy on that table is
+  // `with check (status = 'cancelled')`, so ANY update that leaves the row
+  // pending is refused with `42501 new row violates row-level security
+  // policy`. Patching would fail forever and dead-letter the outbox row.
+  // Doing it this way also keeps PO fully offline-first with no server
+  // round-trip and needs no RLS widening.
+  if (row.kind !== 'po_evidence') {
+    await enqueuePhotoUrlUpdate(db, row.parent_table, row.parent_id, row.kind as keyof typeof PHOTO_UPLOAD_KINDS, publicUrl, row.agent_id);
+  }
   await enqueueUploadAudit(db, row, 'synced', null);
   return 'synced';
 }
@@ -216,8 +232,22 @@ async function computeSyncedParents(db: SQLiteDatabase, rows: PendingUploadRow[]
     const placeholders = idList.map(() => '?').join(',');
     // `table` is a controlled union value (the parent_table CHECK constraint),
     // never user input — safe to interpolate.
+    //
+    // B-127: `po_confirmation_requests` has no `sync_status` column (its own
+    // `status` column is the sync state, like client_edit_requests), so the
+    // generic predicate threw `no such column: sync_status` and took down the
+    // whole sync pass. For that table "the parent has reached the server"
+    // means its status left the local-only `draft` state — anything the
+    // server has acknowledged (`pending`/`approved`/`rejected`) is safe to
+    // attach a photo to, while `draft`/`duplicate_blocked`/`superseded` are
+    // local-only and must hold the upload back exactly as an unsynced parent
+    // would.
+    const syncedPredicate =
+      table === 'po_confirmation_requests'
+        ? "status IN ('pending', 'approved', 'rejected')"
+        : "sync_status = 'synced'";
     const found = await db.getAllAsync<{ id: string }>(
-      `SELECT id FROM ${table} WHERE sync_status = 'synced' AND id IN (${placeholders})`,
+      `SELECT id FROM ${table} WHERE ${syncedPredicate} AND id IN (${placeholders})`,
       idList
     );
     for (const r of found) synced.add(`${table}:${r.id}`);
@@ -274,3 +304,54 @@ export async function processPendingUploads(db: SQLiteDatabase, agentId: string)
 }
 
 export { recoverStuckPendingUploads } from './pending-upload-status';
+
+/**
+ * Durable backstop for B-127: re-queues the photo upload for any PO row that
+ * still carries a local `file://` path and has no live `pending_uploads` row.
+ * Without this, a PO whose photo queue failed at capture time would sit on
+ * the server forever pointing at a path only one device can read, with
+ * nothing to notice or fix it.
+ *
+ * Safe to call repeatedly — it only ever adds a row for a request that has
+ * none, and never touches rows whose path is already a remote URL.
+ */
+export async function ensurePoPhotoQueued(db: SQLiteDatabase, requesterId: string, authUserId: string): Promise<void> {
+  try {
+    // Runs INSIDE withTransactionAsync on purpose. `getDb()`'s
+    // `serializeTransactions()` wrapper only queues `withTransactionAsync`
+    // calls — bare `getAllAsync`/`runAsync` are NOT serialized, so issuing
+    // them here raced the sync pass already in flight on the app's single
+    // native connection and expo-sqlite rejected the statement with
+    // `NativeStatement.finalizeAsync has been rejected`. Going through the
+    // transaction queue is what makes this safe to call mid-sync.
+    await db.withTransactionAsync(async () => {
+      const rows = await db.getAllAsync<{ id: string; po_photo_path: string }>(
+        `SELECT p.id, p.po_photo_path
+           FROM po_confirmation_requests p
+          WHERE p.requester_id = ?
+            AND p.po_photo_path LIKE 'file://%'
+            AND p.status IN ('draft', 'pending')
+            AND NOT EXISTS (
+              SELECT 1 FROM pending_uploads u
+               WHERE u.parent_table = 'po_confirmation_requests'
+                 AND u.parent_id = p.id
+                 AND u.status IN ('pending', 'syncing', 'synced')
+            )`,
+        [requesterId]
+      );
+      for (const row of rows) {
+        await enqueuePendingUpload(db, {
+          parentTable: 'po_confirmation_requests',
+          parentId: row.id,
+          agentId: requesterId,
+          kind: 'po_evidence',
+          localUri: row.po_photo_path,
+          storagePath: buildPhotoStoragePath('po_confirmation_requests', authUserId, row.id, 'po_evidence'),
+        });
+      }
+    });
+  } catch (err) {
+    console.error('[photo-uploads] ensurePoPhotoQueued failed:', err instanceof Error ? err.message : String(err));
+  }
+}
+

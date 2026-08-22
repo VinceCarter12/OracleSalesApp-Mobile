@@ -29,6 +29,18 @@ export interface LocalLifecyclePredictionInput {
   validCatalogAgendaIds: ReadonlySet<string>;
   /** True if a MANAGER-kind tag-along is currently pending for this client (any prior meeting), or this meeting's OWN validity_status is 'pending_confirmation'. */
   hasPendingManagerTagAlong: boolean;
+  /**
+   * ADR-061 (Vince, 2026-08-19/20): true when THIS meeting carries PO
+   * evidence eligible for submission (i.e. `poEvidence` will be built —
+   * see record.tsx's `poEligible`). While a PO decision is pending or
+   * approved, the client must stay `PROSPECT`, never flash `IN PROGRESS` —
+   * that is what keeps this prediction honest with the new server-side rule
+   * (Web migration 109 excludes a cycle with a pending/approved PO from
+   * `advance_prospect_to_in_progress()`). Predicting `in_progress` here
+   * anyway would show the agent a status the server is about to contradict
+   * the moment the PO reaches it.
+   */
+  hasPoEvidence: boolean;
 }
 
 /**
@@ -48,5 +60,8 @@ export function predictsProspectToInProgress(input: LocalLifecyclePredictionInpu
   if (input.currentStatus !== 'prospect') return false;
   if (input.outcome !== 'Successful') return false;
   if (input.hasPendingManagerTagAlong) return false;
+  // ADR-061: a PO-bearing meeting keeps the client at PROSPECT, awaiting the
+  // manager's decision (Scenario 1) — never predict in_progress for it.
+  if (input.hasPoEvidence) return false;
   return input.agendaIds.some((agendaId) => input.validCatalogAgendaIds.has(agendaId));
 }

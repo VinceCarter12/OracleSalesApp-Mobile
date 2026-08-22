@@ -25,4 +25,13 @@ describe('classifyMeetingMarkerType', () => {
     expect(classifyMeetingMarkerType(null, 'Others')).toBe('others');
     expect(classifyMeetingMarkerType(null, 'Client Office')).toBe('client_office');
   });
+
+  // ADR-063 (Vince, 2026-08-19/20): Company Office meeting mode, no geofence.
+  it('classifies in-person "Company Office" location as company_office', () => {
+    expect(classifyMeetingMarkerType('in_person', 'Company Office')).toBe('company_office');
+  });
+
+  it('classifies online regardless of a Company Office location', () => {
+    expect(classifyMeetingMarkerType('online', 'Company Office')).toBe('online');
+  });
 });

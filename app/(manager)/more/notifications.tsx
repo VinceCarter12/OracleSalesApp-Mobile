@@ -19,6 +19,8 @@ import { isWithinDateRange } from '../../../lib/date-range';
 import { timeAgo } from '../../../lib/time-ago';
 import { checkConnectivity, isOfflineState } from '../../../lib/sync/connectivity';
 import { BizOfflineNotice } from '../../../components/bizlink/BizOfflineNotice';
+import { BizFloatingPager } from '../../../components/bizlink/BizFloatingPager';
+import { usePagination } from '../../../lib/use-pagination';
 
 // 2026-08-16 (Vince): `getManagerNotificationFeedItems()` calls
 // `fetchManagerApprovalFeed()`, an online-only Supabase RPC with no local
@@ -27,7 +29,7 @@ import { BizOfflineNotice } from '../../../components/bizlink/BizOfflineNotice';
 // since this screen's load() isn't hook-extracted.
 const NOTIFICATIONS_OFFLINE_MESSAGE = 'Notifications need an internet connection to load — connect and try again.';
 
-type Filter = 'all' | ManagerNotificationCategory;
+type Filter = 'needs_action' | 'all' | ManagerNotificationCategory;
 type StatusFilter = 'all' | 'archived';
 // Keep the primary filters visible in the compact chip row (this order
 // mirrors Wireframe-Manager-BizLink.html renderNotifications()'s `filters`
@@ -36,6 +38,7 @@ type StatusFilter = 'all' | 'archived';
 // there, same as here). Lost/Sync stay in the Filters sheet below, matching
 // the Manager wireframe's compact header treatment already established here.
 const QUICK_FILTERS: BizFilterOption<Filter>[] = [
+  { value: 'needs_action', label: 'Needs action' },
   { value: 'all', label: 'All' },
   { value: 'approvals', label: 'Approvals' },
   { value: 'tag_along', label: 'Tag-Along' },
@@ -55,7 +58,8 @@ export default function ManagerNotificationsScreen() {
   const [readIds, setReadIds] = useState<Set<string>>(new Set());
   const [archivedIds, setArchivedIds] = useState<Set<string>>(new Set());
   const [clearedIds, setClearedIds] = useState<Set<string>>(new Set());
-  const [filter, setFilter] = useState<Filter>('all');
+  const [filter, setFilter] = useState<Filter>('needs_action');
+  const [earlierOpen, setEarlierOpen] = useState(false);
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
   const [dateRange, setDateRange] = useState<DateRange | null>(null);
   const [filterOpen, setFilterOpen] = useState(false);
@@ -93,13 +97,18 @@ export default function ManagerNotificationsScreen() {
   }, [profileId]);
   useFocusEffect(useCallback(() => { load(); }, [load]));
 
-  const visible = useMemo(() => feed.filter((item) => {
+  const allVisible = useMemo(() => feed.filter((item) => {
     if (clearedIds.has(item.id)) return false;
     if (statusFilter === 'archived' ? !archivedIds.has(item.id) : archivedIds.has(item.id)) return false;
-    if (filter !== 'all' && item.category !== filter) return false;
+    if (filter !== 'all' && filter !== 'needs_action' && item.category !== filter) return false;
     return isWithinDateRange(new Date(item.timestamp), dateRange);
   }), [archivedIds, clearedIds, dateRange, feed, filter, statusFilter]);
-  const filtersActive = filter !== 'all' || dateRange !== null || statusFilter !== 'all';
+  const actionable = useMemo(() => allVisible.filter((item) => !readIds.has(item.id)), [allVisible, readIds]);
+  const earlier = useMemo(() => allVisible.filter((item) => readIds.has(item.id)), [allVisible, readIds]);
+  const displayed = earlierOpen ? allVisible : actionable;
+  const { page, totalPages, pageItems, setPage } = usePagination(displayed, `${filter}:${statusFilter}:${dateRange?.start.getTime() ?? 'all'}:${dateRange?.end.getTime() ?? 'all'}:${earlierOpen}:${readIds.size}`);
+  const visible = pageItems;
+  const filtersActive = filter !== 'needs_action' || dateRange !== null || statusFilter !== 'all';
 
   function icon(item: ManagerNotificationFeedItem): React.ReactNode {
     if (item.category === 'approvals') return <PencilLine size={18} color={colors.brand} strokeWidth={1.8} />;
@@ -142,7 +151,7 @@ export default function ManagerNotificationsScreen() {
       },
     ]);
   }
-  function resetFilters(): void { setFilter('all'); setDateRange(null); setStatusFilter('all'); }
+  function resetFilters(): void { setFilter('needs_action'); setDateRange(null); setStatusFilter('all'); }
 
   return <YStack flex={1} backgroundColor={colors.canvas} paddingTop={insets.top}>
     <BizTopBar
@@ -170,11 +179,13 @@ export default function ManagerNotificationsScreen() {
         </Pressable>
       }
     />
-    <ScrollView contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 24 }} keyboardShouldPersistTaps="handled">
+    <ScrollView contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 120 }} keyboardShouldPersistTaps="handled">
       <Text fontSize={13} fontFamily={BIZLINK_FONTS.medium} color={colors.muted} lineHeight={18} marginBottom="$2.5">Requests, approval outcomes, Tag-Along responses, and sync alerts. A local action is never presented as server-final until sync confirms it.</Text>
       <YStack marginBottom="$3"><BizFilterScroll options={QUICK_FILTERS} value={filter} onChange={setFilter} /></YStack>
+      {earlier.length > 0 ? <Pressable accessibilityRole="button" onPress={() => setEarlierOpen((open) => !open)} style={{ minHeight: 44, alignSelf: 'flex-start', justifyContent: 'center', marginBottom: 8 }}><Text fontSize={13} fontFamily={BIZLINK_FONTS.semibold} color={colors.brand}>{earlierOpen ? 'Hide earlier' : `Earlier (${earlier.length})`}</Text></Pressable> : null}
       {loading && !loaded ? <YStack alignItems="center" padding="$8"><Spinner size="large" color={colors.brand} /></YStack> : offline && error ? <YStack padding="$6" gap="$3"><BizOfflineNotice message={error} /><Pressable onPress={load} hitSlop={8}><Text fontSize={13} fontFamily={BIZLINK_FONTS.semibold} color={colors.brand}>Retry</Text></Pressable></YStack> : error ? <YStack alignItems="center" padding="$8" gap="$2.5"><Text fontSize={13} fontFamily={BIZLINK_FONTS.medium} color={colors.red} textAlign="center">{error}</Text><Pressable onPress={load} hitSlop={8}><Text fontSize={13} fontFamily={BIZLINK_FONTS.semibold} color={colors.brand}>Retry</Text></Pressable></YStack> : visible.length === 0 ? <YStack alignItems="center" padding="$8" gap="$2.5"><Bell size={40} color={colors.muted} strokeWidth={1.75} /><Text fontSize={13} fontFamily={BIZLINK_FONTS.medium} color={colors.muted} textAlign="center">Wala pang notification sa filter na ito.</Text></YStack> : visible.map((item) => { const unread = !readIds.has(item.id); return <Pressable key={item.id} onPress={() => press(item)} hitSlop={4}><XStack gap="$3" alignItems="flex-start" backgroundColor={unread ? colors.tintA : colors.card} borderRadius={20} padding={16} marginBottom={10} minHeight={44}><YStack width={36} height={36} borderRadius={18} alignItems="center" justifyContent="center" backgroundColor={colors.soft}>{icon(item)}</YStack><YStack flex={1} gap="$1"><XStack alignItems="center" gap="$1.5"><Text flex={1} fontFamily={BIZLINK_FONTS.semibold} fontSize={13.5} color={colors.text}>{item.title}</Text>{unread ? <YStack width={7} height={7} borderRadius={3.5} backgroundColor={colors.brand} /> : null}<Pressable accessibilityRole="button" accessibilityLabel={`Archive ${item.title}`} onPress={(event) => { event.stopPropagation(); confirmArchive([item.id]); }} hitSlop={8} style={{ minWidth: 44, minHeight: 44, alignItems: 'center', justifyContent: 'center' }}><Archive size={17} color={colors.muted} strokeWidth={1.75} /></Pressable></XStack><Text fontSize={12} fontFamily={BIZLINK_FONTS.medium} color={colors.muted} lineHeight={17}>{item.body}</Text><Text fontSize={11} fontFamily={BIZLINK_FONTS.regular} color={colors.muted} marginTop="$1">{timeAgo(item.timestamp)}</Text></YStack></XStack></Pressable>; })}
     </ScrollView>
+    {totalPages > 1 ? <BizFloatingPager page={page} totalPages={totalPages} onPageChange={setPage} bottomOffset={insets.bottom + 16} /> : null}
     <BizFilterSheet visible={filterOpen} onClose={() => setFilterOpen(false)} filtersActive={filtersActive} onReset={resetFilters}>
       <BizFilterSheetRow label="Category" value={filter === 'approvals' ? 'Approvals' : filter === 'tag_along' ? 'Tag-Along' : CATEGORY_FILTERS.find((option) => option.value === filter)?.label ?? 'All'}><BizFilterScroll options={CATEGORY_FILTERS} value={filter} onChange={setFilter} /></BizFilterSheetRow>
       <DateRangeFilterRow range={dateRange} onApply={setDateRange} />

@@ -14,7 +14,7 @@ import { getPoConfirmationForMeeting, type PoConfirmationRecord } from '../../..
 import { PO_CONFIRMATION_STATUS_LABELS, PO_CONFIRMATION_BADGE_TONES } from '../../../lib/policies/po-confirmation-status-policy';
 import { OUTCOME_BADGE_STYLES, useBizlinkColors, BIZLINK_ON_INK, BIZLINK_FONTS } from '../../../lib/theme';
 import { getClientById } from '../../../lib/client-service';
-import { getClientStatus, getMeetingLifecycleStatus, WAITING_MANAGER_PO_APPROVAL_BADGE } from '../../../lib/client-status';
+import { getClientStatus, getMeetingLifecycleStatus, WAITING_MANAGER_PO_APPROVAL_BADGE, WAITING_MANAGER_PO_APPROVAL_PROSPECT_BADGE, PROSPECT_PO_PENDING_WARNING } from '../../../lib/client-status';
 import { getClientJourneyProgress } from '../../../lib/client-progress';
 import { useMeetings } from '../../../lib/useMeetings';
 import { useClientFlowRoutes } from '../../../lib/use-role-routes';
@@ -149,7 +149,11 @@ export default function MeetingDetailScreen() {
 
   return (
     <YStack flex={1} backgroundColor={BIZLINK_COLORS.canvas} paddingTop={insets.top}>
-      <BizTopBar title="Meeting Detail" />
+      {/* B-118: reached cross-tab from Clients ([id].tsx), More/Notifications,
+          and in-stack from this same Meetings tab's list — `fallbackOnlyIfNoHistory`
+          keeps normal in-stack back working while covering the cross-tab jump
+          (B-019's failure mode) the same way record.tsx/record-visit.tsx already do. */}
+      <BizTopBar title="Meeting Detail" fallbackHref={routes.meetingsHome()} fallbackOnlyIfNoHistory />
       <ScrollView contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 24 }}>
         <SelectedClientCard
           clientName={meeting.client_name ?? null}
@@ -183,7 +187,21 @@ export default function MeetingDetailScreen() {
               color={BIZLINK_COLORS[WAITING_MANAGER_PO_APPROVAL_BADGE.color]}
             />
           ) : null}
+          {/* ADR-061 Scenario 1: prospect-stage variant of the badge above — client stays PROSPECT while this is pending. */}
+          {clientStatus === 'prospect' && poConfirmation?.displayStatus === 'pending' ? (
+            <StatusBadge
+              label={WAITING_MANAGER_PO_APPROVAL_PROSPECT_BADGE.label}
+              background={BIZLINK_COLORS[WAITING_MANAGER_PO_APPROVAL_PROSPECT_BADGE.background]}
+              color={BIZLINK_COLORS[WAITING_MANAGER_PO_APPROVAL_PROSPECT_BADGE.color]}
+            />
+          ) : null}
         </XStack>
+        {/* ADR-061: Vince's "warning message" ask. */}
+        {clientStatus === 'prospect' && poConfirmation?.displayStatus === 'pending' ? (
+          <Text fontSize={11.5} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.orange} marginTop="$1" lineHeight={16}>
+            {PROSPECT_PO_PENDING_WARNING}
+          </Text>
+        ) : null}
 
         {poConfirmation ? (
           <YStack backgroundColor={BIZLINK_COLORS[PO_CONFIRMATION_BADGE_TONES[poConfirmation.displayStatus].background]} borderRadius={20} padding={14} marginTop="$3">

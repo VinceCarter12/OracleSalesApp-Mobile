@@ -1,9 +1,11 @@
 import {
   upsertSyncedClient,
   upsertSyncedClientEditRequest,
+  upsertSyncedClientMeetingHolder,
   upsertSyncedCodRemittance,
   upsertSyncedCollectionVisit,
   upsertSyncedMeeting,
+  upsertSyncedPoConfirmationRequest,
   upsertSyncedPurchaseOrder,
   upsertSyncedRemittance,
   upsertSyncedTagAlongRequest,
@@ -20,10 +22,12 @@ export type EntityTableName =
   | 'meetings'
   | 'tag_along_requests'
   | 'client_edit_requests'
+  | 'po_confirmation_requests'
   | 'collection_visits'
   | 'purchase_orders'
   | 'remittances'
-  | 'cod_remittances';
+  | 'cod_remittances'
+  | 'client_meeting_holders';
 
 /**
  * Structural constraint for `SyncEntityConfig.applyScope` (ADR-030): matches
@@ -183,6 +187,48 @@ export const ENTITY_REGISTRY: Record<EntityTableName, SyncEntityConfig> = {
       },
     ],
   },
+  // B-127 (Vince, 2026-08-20): PO confirmation becomes offline-first,
+  // reversing ADR-044 decision 5's online-only rule for request CREATION.
+  // (Manager/admin DECISIONS stay online-only via decide_po_confirmation() —
+  // that arm of decision 5 is unaffected and still correct, since a decision
+  // needs the server's compare-and-set to stay race-safe.)
+  //
+  // Priority 32: after tag_along_requests (30), before client_edit_requests
+  // (35). Depends on BOTH `clients` and `meetings` because the server's
+  // INSERT policy checks client ownership and the row carries a
+  // `po_confirmation_requests_meeting_id_fkey` — exactly the two races that
+  // `submitMeetingPoEvidenceIfPresent()` was hand-rolling with a manual
+  // push + 1500ms sleep + re-check (B-088/B-091). The dependency guard does
+  // that correctly and generically, so those manual workarounds become
+  // redundant. `applyScope` restricts sync-down to the requester's own rows,
+  // same as client_edit_requests — a Manager's inbox comes from
+  // get_manager_approval_feed(), not this pull.
+  po_confirmation_requests: {
+    remoteTable: 'po_confirmation_requests',
+    priority: 32,
+    onConflict: 'id',
+    applyRemoteRow: upsertSyncedPoConfirmationRequest,
+    applyScope: (query, agentId) => query.eq('requester_id', agentId),
+    // Like `client_edit_requests` below, this table has NO generic
+    // `sync_status`/`sync_error` mirror columns — its own `status` column
+    // carries that meaning. Omitting this defaulted it to `true`, and the
+    // push pipeline's generic `UPDATE ... SET sync_status = ...` then threw
+    // `no such column: sync_status`, which surfaced as
+    // `NativeDatabase.prepareAsync has been rejected` and killed the WHOLE
+    // sync pass — the exact failure B-104 already documents for
+    // client_edit_requests.
+    hasSyncStatusColumn: false,
+    dependencies: [
+      {
+        table: 'clients',
+        extractForeignKey: (payload) => (payload.client_id as string | null | undefined) ?? null,
+      },
+      {
+        table: 'meetings',
+        extractForeignKey: (payload) => (payload.meeting_id as string | null | undefined) ?? null,
+      },
+    ],
+  },
   // F-007 (web 043-046): the admin publishes the day's list; field roles read
   // the WHOLE list (RLS scopes by role) and update rows they claim/work — they
   // never INSERT, and client_name/area/claimed_by_name are denormalized, so
@@ -219,6 +265,32 @@ export const ENTITY_REGISTRY: Record<EntityTableName, SyncEntityConfig> = {
     onConflict: 'id',
     applyRemoteRow: upsertSyncedCodRemittance,
     applyScope: (query, agentId) => query.eq('driver_id', agentId),
+  },
+  // ADR-067: purely server-derived read model (Web migration 118's
+  // `grant_client_holder_on_tagalong_accept()` trigger is the only writer,
+  // mobile never inserts/updates this table) -- no outbox participation,
+  // ever, same as every other entry's `hasSyncStatusColumn: false` siblings
+  // but taken further: there is no local write path at all. `applyScope`
+  // returns the query unchanged (same technique as
+  // `collection_visits`/`purchase_orders` above) to defeat the default
+  // per-agent `.eq()` scope -- RLS (migration 118's "Holders read their
+  // client's holder set" policy) already returns
+  // both this device's own holder rows AND any co-holder's row for a client
+  // this agent also holds, which a client-side `.eq('manager_id', agentId)`
+  // filter would incorrectly exclude.
+  client_meeting_holders: {
+    remoteTable: 'client_meeting_holders',
+    priority: 36,
+    onConflict: 'client_id,manager_id',
+    applyRemoteRow: upsertSyncedClientMeetingHolder,
+    applyScope: (query) => query,
+    hasSyncStatusColumn: false,
+    dependencies: [
+      {
+        table: 'clients',
+        extractForeignKey: (payload) => (payload.client_id as string | null | undefined) ?? null,
+      },
+    ],
   },
 };
 

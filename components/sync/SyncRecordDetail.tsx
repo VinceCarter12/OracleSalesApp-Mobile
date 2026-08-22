@@ -6,6 +6,7 @@ import { getDisplayStatus, getResultMessage, SYNC_TABLE_LABEL } from '../../lib/
 import { BizCard } from '../bizlink/BizCard';
 
 const STATUS_LABELS: Record<string, string> = {
+  waiting: 'Still waiting',
   synced: 'Uploaded',
   resolved: 'Fixed',
   retried: 'Retrying',
@@ -101,6 +102,8 @@ export function SyncRecordDetail({ entry, showFullFields, noticeText }: SyncReco
             </>
           ) : null}
           <InfoRow label="Result:" value={getResultMessage(entry)} />
+          {entry.createdOnline !== null ? <InfoRow label="Origin:" value={entry.createdOnline ? 'Direct to online' : 'Saved offline, then uploaded'} /> : null}
+          {entry.partCount > 1 ? <InfoRow label="Included parts:" value={String(entry.partCount)} /> : null}
           <InfoRow label="Completed:" value={completedAt} />
         </YStack>
       </YStack>

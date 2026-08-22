@@ -97,7 +97,10 @@ export default function MyPerformanceScreen() {
 
   return (
     <YStack flex={1} backgroundColor={BIZLINK_COLORS.canvas} paddingTop={insets.top}>
-      <BizTopBar title="My Performance" />
+      {/* B-118: only ever reached cross-tab, straight from Home's "Performance"
+          Quick Action — same pattern as its sibling manager/executive Reports
+          screens, both of which already set this. */}
+      <BizTopBar title="My Performance" fallbackHref="/(tabs)" />
       <ScrollView contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 24 }}>
         <XStack flexWrap="wrap" gap={10}>
           <YStack width="48%">

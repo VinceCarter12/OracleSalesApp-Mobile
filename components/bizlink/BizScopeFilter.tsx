@@ -8,13 +8,21 @@ const SCOPE_OPTIONS: BizFilterOption<ManagerScope>[] = [
   { value: 'mine', label: 'My Records' },
   { value: 'team', label: 'My Team' },
   { value: 'combined', label: 'Combined' },
+  // Guest Records (2026-08-22, ADR-067 addendum — wireframe-skip authorized,
+  // same exception as the original holder-decision UI): held clients from
+  // OTHER teams (`client_meeting_holders`) — never folded into "My Team" (a
+  // guest agent is not a roster member) or silently added to "My Records"
+  // (the manager didn't create it).
+  { value: 'guest', label: 'Guest Records' },
 ];
 
 /**
  * Design-System-Catalog "BizScopeFilter" — label + `BizFilterScroll` chip
  * row for the manager record scope. Labels/order/values match
- * Wireframe-Manager-BizLink.html's `renderManagerScope()` exactly (line
- * ~1121: `[['mine','My Records'],['team','My Team'],['combined','Combined']]`).
+ * Wireframe-Manager-BizLink.html's `renderManagerScope()` for the first
+ * three (line ~1121: `[['mine','My Records'],['team','My Team'],['combined','Combined']]`)
+ * — the 4th, "Guest Records", has no wireframe entry (2026-08-22 skip
+ * authorization).
  *
  * Reads/writes `useManagerScope()` itself — no scope prop needed from
  * callers, so Manager Home and Manager Meetings (PR C's only two consumers,

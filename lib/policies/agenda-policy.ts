@@ -137,9 +137,17 @@ export const DEFAULT_AGENDA_CATALOG: readonly AgendaCatalogEntry[] = [
   },
 ];
 
-/** Mirrors the live seed's stage-rule inserts (Migration-038-Report.md lines 231-234): prospect = 6 ordinary; in_progress = all 7. */
+/**
+ * ADR-061 (Vince, 2026-08-19/20): Close deal is now available at the
+ * prospect stage — a prospect may attach PO evidence directly (Scenario 1:
+ * prospect + Close deal + PO -> manager approval -> new), optional at this
+ * stage. Previously this filtered CLOSE_DEAL_AGENDA_ID out of prospect
+ * entirely; both stages now carry the full catalog. Mirrored server-side by
+ * Web migration 109's `agenda_stage_rules` update (supersedes migration
+ * 038's original seed, which this constant's old comment described).
+ */
 export const DEFAULT_AGENDA_STAGE_RULES: readonly AgendaStageRule[] = [
-  ...DEFAULT_AGENDA_CATALOG.filter((entry) => entry.agendaId !== CLOSE_DEAL_AGENDA_ID).map(
+  ...DEFAULT_AGENDA_CATALOG.map(
     (entry): AgendaStageRule => ({
       agendaId: entry.agendaId,
       policyVersion: DEFAULT_AGENDA_POLICY_VERSION,

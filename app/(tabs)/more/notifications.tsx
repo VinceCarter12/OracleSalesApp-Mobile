@@ -15,6 +15,8 @@ import { useSession } from '../../../lib/session-store';
 import { useClientFlowRoutes } from '../../../lib/use-role-routes';
 import { BizTopBar } from '../../../components/bizlink/BizTopBar';
 import { BizFilterScroll, type BizFilterOption } from '../../../components/bizlink/BizFilterScroll';
+import { BizFloatingPager } from '../../../components/bizlink/BizFloatingPager';
+import { usePagination } from '../../../lib/use-pagination';
 
 /**
  * Wireframe `id="a-notifications"` (`aRenderNotifications()`, ~line 1233)
@@ -47,7 +49,8 @@ export default function NotificationsScreen() {
   const [loading, setLoading] = useState(true);
   const [loadedOnce, setLoadedOnce] = useState(false);
   const [search, setSearch] = useState('');
-  const [filter, setFilter] = useState<NotificationFilterValue>('all');
+  const [filter, setFilter] = useState<NotificationFilterValue>('action');
+  const [earlierOpen, setEarlierOpen] = useState(false);
 
   const load = useCallback(() => {
     setLoading(true);
@@ -96,6 +99,10 @@ export default function NotificationsScreen() {
       return item.title.toLowerCase().includes(query) || item.body.toLowerCase().includes(query);
     });
   }, [feedItems, readIds, filter, search]);
+  const actionableItems = useMemo(() => items.filter((item) => !readIds.has(item.id)), [items, readIds]);
+  const earlierItems = useMemo(() => items.filter((item) => readIds.has(item.id)), [items, readIds]);
+  const displayedItems = earlierOpen ? items : actionableItems;
+  const { page, totalPages, pageItems, setPage } = usePagination(displayedItems, `${filter}:${search.trim().toLowerCase()}:${earlierOpen}:${readIds.size}`);
 
   function handlePress(item: NotificationFeedItem): void {
     if (!readIds.has(item.id)) {
@@ -111,7 +118,7 @@ export default function NotificationsScreen() {
   return (
     <YStack flex={1} backgroundColor={BIZLINK_COLORS.canvas} paddingTop={insets.top}>
       <BizTopBar title="Notifications" fallbackHref="/(tabs)" />
-      <KeyboardAwareScrollView contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 24 }} keyboardShouldPersistTaps="handled">
+      <KeyboardAwareScrollView contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 120 }} keyboardShouldPersistTaps="handled">
         <Text fontSize={13} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} marginBottom="$2.5" lineHeight={18}>
           Updates sent to your phone. Items needing action come first so nothing gets missed.
         </Text>
@@ -140,7 +147,7 @@ export default function NotificationsScreen() {
           <YStack alignItems="center" padding="$8">
             <Spinner size="large" color={BIZLINK_COLORS.brand} />
           </YStack>
-        ) : items.length === 0 ? (
+        ) : displayedItems.length === 0 && earlierItems.length === 0 ? (
           <YStack alignItems="center" padding="$8" gap="$2.5">
             <Bell size={40} color={BIZLINK_COLORS.muted} strokeWidth={1.75} />
             <Text fontSize={13} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} textAlign="center">
@@ -148,7 +155,8 @@ export default function NotificationsScreen() {
             </Text>
           </YStack>
         ) : (
-          items.map((item, index) => {
+          <>
+          {pageItems.map((item, index) => {
             const unread = !readIds.has(item.id);
             return (
               <Pressable key={item.id} onPress={() => handlePress(item)} hitSlop={4}>
@@ -181,9 +189,21 @@ export default function NotificationsScreen() {
                 </XStack>
               </Pressable>
             );
-          })
+          })}
+          {!earlierOpen && earlierItems.length > 0 ? (
+            <Pressable accessibilityRole="button" onPress={() => setEarlierOpen(true)} style={{ minHeight: 48, alignItems: 'center', justifyContent: 'center' }}>
+              <Text fontSize={13} fontFamily={BIZLINK_FONTS.semibold} color={BIZLINK_COLORS.brand}>Earlier ({earlierItems.length})</Text>
+            </Pressable>
+          ) : null}
+          {earlierOpen ? (
+            <Pressable accessibilityRole="button" onPress={() => setEarlierOpen(false)} style={{ minHeight: 48, alignItems: 'center', justifyContent: 'center' }}>
+              <Text fontSize={13} fontFamily={BIZLINK_FONTS.semibold} color={BIZLINK_COLORS.brand}>Hide earlier</Text>
+            </Pressable>
+          ) : null}
+          </>
         )}
       </KeyboardAwareScrollView>
+      {totalPages > 1 ? <BizFloatingPager page={page} totalPages={totalPages} onPageChange={setPage} bottomOffset={insets.bottom + 16} /> : null}
     </YStack>
   );
 }

@@ -20,6 +20,8 @@ export interface ApplyLocalLifecyclePredictionInput {
   agendaCatalog: readonly AgendaCatalogEntry[];
   /** This specific meeting's own validity_status — 'pending_confirmation' also blocks the prediction (this meeting itself invited an unaccepted manager companion). */
   meetingValidityStatus: 'valid' | 'pending_confirmation';
+  /** ADR-061: true when this meeting carries PO evidence — see `LocalLifecyclePredictionInput.hasPoEvidence`'s doc comment. */
+  hasPoEvidence: boolean;
 }
 
 /**
@@ -57,6 +59,7 @@ export async function applyLocalLifecyclePrediction(
     agendaIds: input.agendaIds,
     validCatalogAgendaIds,
     hasPendingManagerTagAlong,
+    hasPoEvidence: input.hasPoEvidence,
   });
 
   if (!shouldPromote) return;

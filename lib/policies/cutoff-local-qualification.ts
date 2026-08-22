@@ -1,6 +1,3 @@
-import { isCloseDealPoEligible } from './po-confirmation-status-policy';
-import type { ClientStatus, MeetingOutcome } from '../../types';
-
 export interface MeetingCandidateRow {
   id: string;
   outcome: string | null;
@@ -16,25 +13,55 @@ export interface MeetingCandidateRow {
    */
   selfie_url: string | null;
   start_captured_at: string | null;
+  /**
+   * Still selected by callers and still meaningful elsewhere in the PO
+   * workflow, but deliberately NOT read here any more — see the doc comment
+   * on `isQualifyingLocalMeeting()`.
+   */
   po_confirmation_status: string | null;
 }
 
 // A completed meeting counts regardless of its non-lost outcome. Lost
 // Opportunity is intentionally excluded; a missing outcome is only valid for
 // the New/Existing fast-path, which uses its end photo as completion proof.
+// Matches the live server gate in `attribute_meeting_cutoff()` (web migration
+// 098) exactly: `m.outcome in ('successful','follow_up','no_decision')`.
 const COUNTABLE_OUTCOMES = new Set(['Successful', 'Follow-up Required', 'No Decision']);
-// Any status after `draft` means the confirmation row reached the server.
-// Approval/rejection is deliberately not part of quota eligibility.
-const SUBMITTED_PO_CONFIRMATION_STATUSES = new Set(['pending', 'approved', 'rejected', 'cancelled']);
 
-/** Returns true only when all local evidence required for quota is present. */
+/**
+ * Returns true only when all local evidence required for quota is present.
+ *
+ * ADR-062 (Vince, 2026-08-19): a meeting counts toward quota **as soon as the
+ * agent records it**, for prospect and in_progress alike, displayed offline
+ * immediately — it is never held back waiting for PO evidence to reach the
+ * server.
+ *
+ * This removed a PO gate that had no counterpart on the server. The live
+ * `attribute_meeting_cutoff()` (web migration 098; 107 only wraps it in
+ * `reattribute_meeting_cutoff()`, 108 is a backfill) gates solely on
+ *
+ *   if declined
+ *      or m.outcome not in ('successful','follow_up','no_decision')
+ *      or not has_valid_evidence
+ *
+ * There is no PO check anywhere in server-side attribution and there never
+ * has been. Requiring one here made mobile strictly stricter than the server,
+ * so an agent saw "not counted yet" for a meeting already credited in
+ * `meeting_cutoff_attributions` — worst for offline agents, since PO
+ * submission is online-only (ADR-044 decision 5, no outbox lane). See B-121.
+ *
+ * The two gates below are the local mirror of the server's own: outcome, and
+ * evidence. Nothing else belongs in this function.
+ */
 export function isQualifyingLocalMeeting(row: MeetingCandidateRow): boolean {
   // New/Existing customer visits use the fast path: they intentionally have
   // no outcome or start photo (the Start button captures GPS/time only), and
   // the end photo is the completion evidence. They still consume the agent's
   // cutoff quota once the local meeting is complete. Keep this branch before
   // the full-form outcome/evidence checks so the fast-path shape is not
-  // mistaken for an incomplete meeting.
+  // mistaken for an incomplete meeting. Mirrors 098's own `has_valid_evidence`
+  // second arm (`client_status_at_meeting in ('new','existing') and
+  // start_captured_at is not null and end_photo_url is not null`).
   if (row.client_status_at_meeting === 'new' || row.client_status_at_meeting === 'existing') {
     return Boolean(row.start_captured_at && row.end_photo_url);
   }
@@ -52,21 +79,8 @@ export function isQualifyingLocalMeeting(row: MeetingCandidateRow): boolean {
   // full-form meeting. The visible effect was a pending chip frozen at 0 while
   // the server happily counted the same meetings as confirmed, because the two
   // rules were reading different columns.
-  if (!row.start_captured_at || !row.selfie_url) return false;
-
-  let agendas: unknown = [];
-  try {
-    agendas = row.agendas ? JSON.parse(row.agendas) : [];
-  } catch {
-    agendas = [];
-  }
-  const selectedAgendas = Array.isArray(agendas) ? agendas.filter((value): value is string => typeof value === 'string') : [];
-  if (!isCloseDealPoEligible(row.client_status_at_meeting as ClientStatus | null, row.outcome as MeetingOutcome | null, selectedAgendas)) {
-    return true;
-  }
-
-  // A draft was captured locally but has not uploaded. A superseded row was
-  // permanently rejected before submission (for example by upload/RLS error).
-  // Once submitted, the Manager's decision does not affect quota counting.
-  return SUBMITTED_PO_CONFIRMATION_STATUSES.has(row.po_confirmation_status ?? '');
+  //
+  // No PO-status check here — per this function's own doc comment (ADR-062),
+  // the server's gate is outcome + evidence only. Nothing else belongs here.
+  return Boolean(row.start_captured_at && row.selfie_url);
 }

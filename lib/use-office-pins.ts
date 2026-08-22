@@ -55,11 +55,18 @@ export function useOfficePins(): UseOfficePins {
     // sufficient — no IS NULL branch needed. Without this, a client the
     // agent already marked inactive kept showing a permanent office pin
     // here and on the map forever.
+    // B-130 (Vince, 2026-08-21): was `ORDER BY company_name ASC` — the
+    // Maps card list showed alphabetical order, not the most recently
+    // pinned office first, matching the same "latest should lead" fix as
+    // B-129 (Manager Meeting Details/Clients). `office_pin_updated_at` is
+    // never null here — every row in this result already passed the
+    // `office_lat/lng IS NOT NULL` guard above, and both are only ever
+    // written together (lib/office-pin-service.ts).
     const rows = await db.getAllAsync<OfficePinRow>(
       `SELECT id, company_name, office_lat, office_lng, office_pin_updated_at, office_pin_source
          FROM clients
         WHERE agent_id = ? AND office_lat IS NOT NULL AND office_lng IS NOT NULL AND status != 'inactive'
-        ORDER BY company_name ASC`,
+        ORDER BY office_pin_updated_at DESC`,
       [profileId]
     );
     setPins(

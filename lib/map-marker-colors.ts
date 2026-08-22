@@ -26,6 +26,17 @@ export const MAP_OFFICE_PIN_COLOR = BIZLINK_COLORS.brand;
 export const MAP_TEAM_RECORD_COLOR = BIZLINK_COLORS.navy;
 
 /**
+ * Guest Records scope (2026-08-22, ADR-067 addendum) — a held client's
+ * office pin/meeting marker gets its OWN distinct color, confirmed not to
+ * reuse `MAP_TEAM_RECORD_COLOR` (a held client is not a roster member of the
+ * viewer's own team) or `MAP_ORG_WIDE_PROSPECT_COLOR` (a different, opt-in
+ * layer). Amber/gold reads as visually distinct from every other color in
+ * this palette (brand green, navy, purple/orange/blue/teal/gray status
+ * colors, hot pink org-wide prospect).
+ */
+export const MAP_GUEST_RECORD_COLOR = '#CA8A04';
+
+/**
  * Org-wide prospect layer only (2026-08-16, Vince direction) — the new
  * opt-in, all-teams prospect-pin filter available on all three Maps screens
  * (Sales/RSR, Manager, Executive). Must read as visually distinct from both
