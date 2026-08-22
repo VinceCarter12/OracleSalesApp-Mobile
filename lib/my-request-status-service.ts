@@ -133,10 +133,73 @@ export async function fetchMyRequestStatuses(): Promise<MyRequestRow[]> {
   if (error) throw new Error(error.message);
   const rows = (data ?? []) as RemoteMyRequestRow[];
 
-  const clientIds = Array.from(new Set(rows.map((row) => row.client_id)));
+  const localPoRows = await fetchLocalOnlyPoRequests(new Set(rows.map((row) => row.request_id)));
+
+  const clientIds = Array.from(new Set([
+    ...rows.map((row) => row.client_id),
+    ...localPoRows.map((row) => row.clientId),
+  ]));
   const nameByClientId = await fetchLocalClientNames(clientIds);
 
-  return rows
-    .map((row) => toRow(row, nameByClientId))
-    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  return [
+    ...rows.map((row) => toRow(row, nameByClientId)),
+    ...localPoRows.map((row) => ({
+      ...row,
+      clientName: nameByClientId.get(row.clientId) ?? 'Client record',
+    })),
+  ].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+}
+
+/**
+ * B-123 (Vince, 2026-08-20): PO evidence a device captured but has not yet
+ * got onto the server was invisible EVERYWHERE — this screen is a pure
+ * `get_my_request_statuses()` read, so an agent whose PO failed or was taken
+ * offline saw a successful meeting and simply no request, with nothing to
+ * retry from and no way to tell it had gone missing.
+ *
+ * Local rows still awaiting the server are merged in here so the agent can
+ * see them. Server rows always win: anything the RPC already returned is
+ * skipped by `remoteRequestIds`, so a row that HAS synced is never shown
+ * twice or shown with a stale local status. Only genuinely local-only
+ * statuses are surfaced — decided/synced rows come from the server or not at
+ * all.
+ */
+async function fetchLocalOnlyPoRequests(
+  remoteRequestIds: ReadonlySet<string>
+): Promise<(MyRequestRowBase & { requestKind: 'po_confirmation'; summary: PoConfirmationMyRequestSummary })[]> {
+  try {
+    const db = await getDb();
+    const rows = await db.getAllAsync<{
+      id: string;
+      client_id: string;
+      status: string;
+      po_photo_path: string;
+      created_at: string;
+    }>(
+      `SELECT id, client_id, status, po_photo_path, created_at
+         FROM po_confirmation_requests
+        WHERE status IN ('draft', 'duplicate_blocked', 'superseded')
+        ORDER BY created_at DESC`
+    );
+    return rows
+      .filter((row) => !remoteRequestIds.has(row.id))
+      .map((row) => ({
+        id: row.id,
+        clientId: row.client_id,
+        clientName: 'Client record',
+        // Not yet decided by anyone — it has not reached a decider. 'pending'
+        // is the honest requester-facing status; the row's own local status
+        // carries the finer detail on the PO card in Notifications.
+        status: 'pending' as const,
+        createdAt: row.created_at,
+        decidedAt: null,
+        requestKind: 'po_confirmation' as const,
+        summary: { poPhotoPath: row.po_photo_path },
+      }));
+  } catch (err) {
+    // Never let the local merge break the server-backed list this screen
+    // has always shown.
+    console.error('[my-request-status-service] local PO merge failed:', err instanceof Error ? err.message : String(err));
+    return [];
+  }
 }

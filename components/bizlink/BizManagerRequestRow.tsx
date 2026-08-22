@@ -52,9 +52,19 @@ function formatDate(iso: string): string {
  * as the retired screen, no tap-to-navigate affordance since there is no
  * tag-along detail screen.
  */
-export function BizManagerRequestRow({ row, rowNumber, onPress, onAccept, onDecline, responding }: BizManagerRequestRowProps) {
+export function BizManagerRequestRow({
+  row,
+  rowNumber,
+  onPress,
+  onAccept,
+  onDecline,
+  responding,
+}: BizManagerRequestRowProps) {
   const BIZLINK_COLORS = useBizlinkColors();
   const isTagAlong = row.kind === 'tag_along';
+  // ADR-064: green is intentionally the "needs your decision" signal in
+  // this work queue; decided rows return to the neutral card surface.
+  const needsDecision = row.status === 'pending';
   const reviewNote =
     !isTagAlong && row.approval.requestKind === 'client_edit' ? row.approval.summary.reviewNote : null;
 
@@ -62,6 +72,9 @@ export function BizManagerRequestRow({ row, rowNumber, onPress, onAccept, onDecl
     <BizCard
       onPress={isTagAlong ? undefined : onPress}
       pressStyle={isTagAlong ? undefined : { opacity: 0.85 }}
+      backgroundColor={needsDecision ? BIZLINK_COLORS.tintA : BIZLINK_COLORS.card}
+      borderWidth={needsDecision ? 1 : 0}
+      borderColor={needsDecision ? BIZLINK_COLORS.brand : 'transparent'}
       marginBottom={10}
       gap="$1.5"
     >

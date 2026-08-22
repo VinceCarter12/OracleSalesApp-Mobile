@@ -29,7 +29,8 @@ type RemoteTableName =
   | 'collection_visits'
   | 'purchase_orders'
   | 'remittances'
-  | 'cod_remittances';
+  | 'cod_remittances'
+  | 'client_meeting_holders';
 
 // Remote column is `assigned_agent_id` on `clients` — confirmed via
 // PostgREST introspection (2026-07-15); `meetings.agent_id` is correct
@@ -44,6 +45,9 @@ const AGENT_SCOPED_COLUMN: Record<EntityTableName, string> = {
   // pull, ADR-052), so this entry is unused in practice — present only to
   // keep the Record exhaustive, same as tag_along_requests above.
   client_edit_requests: 'requested_by',
+  // B-127: always supplies its own `applyScope` (requester-only pull), so
+  // this entry is unused in practice — present to keep the Record exhaustive.
+  po_confirmation_requests: 'requester_id',
   // collection_visits/purchase_orders always supply their own `applyScope`
   // (whole-day pull, RLS-scoped by role), so these are unused — present only
   // to keep the Record exhaustive, same as tag_along_requests.
@@ -54,6 +58,10 @@ const AGENT_SCOPED_COLUMN: Record<EntityTableName, string> = {
   // exhaustive, same as the entries above.
   remittances: 'collector_id',
   cod_remittances: 'driver_id',
+  // ADR-067: always supplies its own `applyScope` (identity pull, RLS-scoped
+  // to own + co-held rows) so this entry is unused in practice -- present
+  // only to keep the Record exhaustive, same as the entries above.
+  client_meeting_holders: 'manager_id',
 };
 
 async function pullEntity(db: SQLiteDatabase, agentId: string, tableName: EntityTableName): Promise<void> {
@@ -118,6 +126,27 @@ export async function syncDown(agentId: string, teamId?: string | null, role?: U
     console.error('[sync-down] tag_along_requests pull failed:', err);
   }
 
+  // B-119 (Migration 111): the manager's own-agent meetings pull above never
+  // reaches a meeting they only attended as a tag-along invitee outside
+  // their own team - `meetings`' default pull scope is `.eq('agent_id', ...)`.
+  // Supplements with exactly the meeting/client rows the just-synced
+  // tag_along_requests rows point at. Best-effort, like every pull above.
+  await pullTagAlongMeetingContext(db, agentId, now);
+
+  // ADR-067: pulls this device's current holder set FIRST (best-effort, like
+  // tag_along_requests above -- Web migration 118 may not be applied yet in a
+  // given environment), then widens the client/meeting pull to the WHOLE
+  // history of every held client -- not just the one meeting a holder was
+  // originally invited to (that narrower scope is `pullTagAlongMeetingContext`
+  // above). This is what actually delivers ADR-067 decision 2/4's "full
+  // client history visibility, independent of meeting attendance."
+  try {
+    await pullEntity(db, agentId, 'client_meeting_holders');
+  } catch (err) {
+    console.error('[sync-down] client_meeting_holders pull failed:', err);
+  }
+  await pullHeldClientHistory(db, agentId, now);
+
   // ADR-052 (Batch 6 Phase 5): best-effort, like tag_along_requests above —
   // the live `client_edit_requests` table may not exist yet in a given
   // environment (Migration File A not pushed as of 2026-08-01), and this
@@ -126,6 +155,16 @@ export async function syncDown(agentId: string, teamId?: string | null, role?: U
     await pullEntity(db, agentId, 'client_edit_requests');
   } catch (err) {
     console.error('[sync-down] client_edit_requests pull failed:', err);
+  }
+
+  // B-127: PO confirmations the requester owns — brings the Manager's/admin's
+  // decision back to the device so a local 'pending' row becomes
+  // approved/rejected without a manual refresh. Best-effort like the pulls
+  // above; a failure here must never abort the rest of syncDown().
+  try {
+    await pullEntity(db, agentId, 'po_confirmation_requests');
+  } catch (err) {
+    console.error('[sync-down] po_confirmation_requests pull failed:', err);
   }
 
   // F-007 (web 043-046): pull the day's Collection & Delivery lists. Best-effort
@@ -232,6 +271,113 @@ export async function syncDown(agentId: string, teamId?: string | null, role?: U
   // pulls now always run, same as every other sync-down pull, no per-device
   // toggle required.
   await syncCutoffQuotaSnapshots(db, agentId);
+}
+
+/**
+ * B-119: supplements the ordinary meetings pull with exactly the
+ * meeting/client rows a manager needs for a cross-team tag-along that
+ * `getManagerAttendanceHistory()` (lib/manager-attendance-history-service.ts)
+ * already reads locally, mirroring that function's own predicate
+ * (meeting-context, this profile as invitee, not cancelled). Requires
+ * Migration 111's `meetings` RLS policy - without it this pull simply
+ * returns zero rows, same graceful degradation as every other best-effort
+ * pull in this file.
+ */
+async function pullTagAlongMeetingContext(db: SQLiteDatabase, agentId: string, now: string): Promise<void> {
+  try {
+    const rows = await db.getAllAsync<{ related_meeting_id: string; related_client_id: string | null }>(
+      `SELECT DISTINCT related_meeting_id, related_client_id FROM tag_along_requests
+        WHERE invitee_id = ? AND context = 'meeting' AND status <> 'cancelled' AND related_meeting_id IS NOT NULL`,
+      [agentId]
+    );
+    const meetingIds = [...new Set(rows.map((row) => row.related_meeting_id))];
+    if (meetingIds.length === 0) return;
+
+    const clientIds = [...new Set(rows.map((row) => row.related_client_id).filter((id): id is string => Boolean(id)))];
+    if (clientIds.length > 0) {
+      const { data, error } = await withTimeout(
+        Promise.resolve(supabase.from('clients').select('*').in('id', clientIds)),
+        SYNC_TIMEOUT_MS,
+        'sync-down tag-along clients'
+      );
+      if (error) throw new Error(error.message);
+      for (const row of data ?? []) {
+        try {
+          await ENTITY_REGISTRY.clients.applyRemoteRow(db, row as Record<string, unknown>, now, agentId);
+        } catch (err) {
+          console.error(`[sync-down] failed to apply tag-along client row ${(row as { id?: string }).id}:`, err);
+        }
+      }
+    }
+
+    const { data: meetingRows, error: meetingError } = await withTimeout(
+      Promise.resolve(supabase.from('meetings').select('*').in('id', meetingIds)),
+      SYNC_TIMEOUT_MS,
+      'sync-down tag-along meetings'
+    );
+    if (meetingError) throw new Error(meetingError.message);
+    for (const row of meetingRows ?? []) {
+      try {
+        await ENTITY_REGISTRY.meetings.applyRemoteRow(db, row as Record<string, unknown>, now, agentId);
+      } catch (err) {
+        console.error(`[sync-down] failed to apply tag-along meeting row ${(row as { id?: string }).id}:`, err);
+      }
+    }
+  } catch (err) {
+    console.error('[sync-down] tag-along meeting-context pull failed:', err);
+  }
+}
+
+/**
+ * ADR-067: pulls EVERY client/meeting row for a client this agent currently
+ * holds (per the just-synced local `client_meeting_holders` mirror) --
+ * deliberately unscoped by meeting/tag-along, unlike `pullTagAlongMeetingContext`
+ * above, because a holder must see the client's WHOLE timeline, not just the
+ * meeting they were originally invited to. Relies entirely on Web migration
+ * 117's "Client record holders read held clients"/"...held client meetings"
+ * RLS policies actually permitting the read; a client not yet covered by
+ * that RLS (environment without 117 applied) simply returns zero rows, same
+ * graceful degradation as every other best-effort pull in this file.
+ */
+async function pullHeldClientHistory(db: SQLiteDatabase, agentId: string, now: string): Promise<void> {
+  try {
+    const holderRows = await db.getAllAsync<{ client_id: string }>(
+      `SELECT DISTINCT client_id FROM client_meeting_holders WHERE manager_id = ?`,
+      [agentId]
+    );
+    const clientIds = [...new Set(holderRows.map((row) => row.client_id))];
+    if (clientIds.length === 0) return;
+
+    const { data: clientRows, error: clientError } = await withTimeout(
+      Promise.resolve(supabase.from('clients').select('*').in('id', clientIds)),
+      SYNC_TIMEOUT_MS,
+      'sync-down held-client clients'
+    );
+    if (clientError) throw new Error(clientError.message);
+    for (const row of clientRows ?? []) {
+      try {
+        await ENTITY_REGISTRY.clients.applyRemoteRow(db, row as Record<string, unknown>, now, agentId);
+      } catch (err) {
+        console.error(`[sync-down] failed to apply held-client client row ${(row as { id?: string }).id}:`, err);
+      }
+    }
+
+    const { data: meetingRows, error: meetingError } = await withTimeout(
+      Promise.resolve(supabase.from('meetings').select('*').in('client_id', clientIds)),
+      SYNC_TIMEOUT_MS,
+      'sync-down held-client meetings'
+    );
+    if (meetingError) throw new Error(meetingError.message);
+    for (const row of meetingRows ?? []) {
+      try {
+        await ENTITY_REGISTRY.meetings.applyRemoteRow(db, row as Record<string, unknown>, now, agentId);
+      } catch (err) {
+        console.error(`[sync-down] failed to apply held-client meeting row ${(row as { id?: string }).id}:`, err);
+      }
+    }
+  } catch (err) {
+    console.error('[sync-down] held-client history pull failed:', err);
+  }
 }
 
 /**

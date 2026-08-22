@@ -9,9 +9,11 @@ import { describe, expect, it, vi } from 'vitest';
 vi.mock('./entity-appliers', () => ({
   upsertSyncedClient: vi.fn(),
   upsertSyncedClientEditRequest: vi.fn(),
+  upsertSyncedClientMeetingHolder: vi.fn(),
   upsertSyncedCodRemittance: vi.fn(),
   upsertSyncedCollectionVisit: vi.fn(),
   upsertSyncedMeeting: vi.fn(),
+  upsertSyncedPoConfirmationRequest: vi.fn(),
   upsertSyncedPurchaseOrder: vi.fn(),
   upsertSyncedRemittance: vi.fn(),
   upsertSyncedTagAlongRequest: vi.fn(),
@@ -33,13 +35,30 @@ import {
 // ERR_INTERNAL_SQLITE_ERROR) from inside the caller's fire-and-forget
 // background `runSync()`. See Bugs.md for the full incident.
 describe('tableHasSyncStatusColumn', () => {
-  it('is false for client_edit_requests (no sync_status/sync_error columns on that table)', () => {
-    expect(tableHasSyncStatusColumn('client_edit_requests')).toBe(false);
+  // B-127 added the second entry: `po_confirmation_requests` also carries its
+  // own `status` column instead of the generic sync mirror. Omitting its
+  // `hasSyncStatusColumn: false` made the push pipeline emit
+  // `UPDATE ... SET sync_status = ...` against a table without that column,
+  // which threw `no such column: sync_status` and killed the entire sync pass
+  // — not just that row. Keep this list exact.
+  //
+  // ADR-067 added the third entry: `client_meeting_holders` has no local
+  // write path at all (server-derived only, see entity-registry.ts's doc
+  // comment on that entry), so it never had a sync_status/sync_error mirror
+  // column to begin with.
+  const TABLES_WITHOUT_SYNC_STATUS: EntityTableName[] = [
+    'client_edit_requests',
+    'po_confirmation_requests',
+    'client_meeting_holders',
+  ];
+
+  it.each(TABLES_WITHOUT_SYNC_STATUS)('is false for %s (its own status column carries that meaning)', (table) => {
+    expect(tableHasSyncStatusColumn(table)).toBe(false);
   });
 
   it('is true (default) for every other registered entity', () => {
     const otherTables = (Object.keys(ENTITY_REGISTRY) as EntityTableName[]).filter(
-      (table) => table !== 'client_edit_requests'
+      (table) => !TABLES_WITHOUT_SYNC_STATUS.includes(table)
     );
     expect(otherTables.length).toBeGreaterThan(0);
     for (const table of otherTables) {

@@ -7,11 +7,11 @@ import { Spinner, Text, XStack, YStack } from 'tamagui';
 import { useBizlinkColors, BIZLINK_FONTS, BIZLINK_ON_INK } from '../../../lib/theme';
 import { useClients } from '../../../lib/useClients';
 import { useMeetings } from '../../../lib/useMeetings';
-import { SALES_CLIENT_STATUS_BADGES, getClientStatus, WAITING_MANAGER_APPROVAL_BADGE, MEETING_IN_PROGRESS_BADGE, WAITING_MANAGER_PO_APPROVAL_BADGE } from '../../../lib/client-status';
+import { SALES_CLIENT_STATUS_BADGES, getClientStatus, WAITING_MANAGER_APPROVAL_BADGE, MEETING_IN_PROGRESS_BADGE, WAITING_MANAGER_PO_APPROVAL_BADGE, WAITING_MANAGER_PO_APPROVAL_PROSPECT_BADGE } from '../../../lib/client-status';
 import { getClientDeadlineInfo } from '../../../lib/client-deadline';
 import { getQualifiedAgendaMilestones } from '../../../lib/client-progress';
 import { getClientIdsWithPendingManagerTagAlong } from '../../../lib/tag-along-service';
-import { getClientIdsWithPendingPoConfirmation } from '../../../lib/po-confirmation-service';
+import { getClientIdsWithPendingPoConfirmation, getClientIdsWithPendingProspectPoConfirmation } from '../../../lib/po-confirmation-service';
 import { useActiveMeetingDrafts } from '../../../lib/use-active-meeting-drafts';
 import { useSession } from '../../../lib/session-store';
 import { useClientFlowRoutes } from '../../../lib/use-role-routes';
@@ -103,6 +103,7 @@ function ClientRow({
   waitingManagerApproval,
   meetingInProgress,
   waitingManagerPoApproval,
+  waitingManagerPoApprovalAtProspect,
 }: {
   client: Client;
   rowNumber: number;
@@ -110,6 +111,8 @@ function ClientRow({
   waitingManagerApproval: boolean;
   meetingInProgress: boolean;
   waitingManagerPoApproval: boolean;
+  /** ADR-061 Scenario 1 — prospect-stage counterpart of `waitingManagerPoApproval`. */
+  waitingManagerPoApprovalAtProspect: boolean;
 }) {
   const BIZLINK_COLORS = useBizlinkColors();
   const routes = useClientFlowRoutes();
@@ -186,6 +189,14 @@ function ClientRow({
               color={BIZLINK_COLORS[WAITING_MANAGER_PO_APPROVAL_BADGE.color]}
             />
           ) : null}
+          {/* ADR-061 Scenario 1: same overlay, prospect-stage variant — the client stays PROSPECT while this is pending. */}
+          {waitingManagerPoApprovalAtProspect ? (
+            <StatusBadge
+              label={WAITING_MANAGER_PO_APPROVAL_PROSPECT_BADGE.label}
+              background={BIZLINK_COLORS[WAITING_MANAGER_PO_APPROVAL_PROSPECT_BADGE.background]}
+              color={BIZLINK_COLORS[WAITING_MANAGER_PO_APPROVAL_PROSPECT_BADGE.color]}
+            />
+          ) : null}
           <Text color={BIZLINK_COLORS.muted} fontSize={16} marginLeft="auto">›</Text>
         </XStack>
 
@@ -229,6 +240,7 @@ export default function ClientsScreen() {
   // meetings/index.tsx's getMyCompanionRequests bulk-load).
   const [waitingManagerApprovalIds, setWaitingManagerApprovalIds] = useState<Set<string>>(new Set());
   const [waitingManagerPoApprovalIds, setWaitingManagerPoApprovalIds] = useState<Set<string>>(new Set());
+  const [waitingManagerPoApprovalAtProspectIds, setWaitingManagerPoApprovalAtProspectIds] = useState<Set<string>>(new Set());
   const { activeMeetingClientIds } = useActiveMeetingDrafts(profileId);
 
   // Refreshes on every return to this screen — e.g. right after Create
@@ -245,6 +257,9 @@ export default function ClientsScreen() {
       getClientIdsWithPendingPoConfirmation(profileId)
         .then(setWaitingManagerPoApprovalIds)
         .catch((err) => console.error('[MyClients] pending PO confirmation lookup failed:', err instanceof Error ? err.message : String(err)));
+      getClientIdsWithPendingProspectPoConfirmation(profileId)
+        .then(setWaitingManagerPoApprovalAtProspectIds)
+        .catch((err) => console.error('[MyClients] pending prospect PO confirmation lookup failed:', err instanceof Error ? err.message : String(err)));
     }, [profileId])
   );
 
@@ -416,6 +431,7 @@ export default function ClientsScreen() {
               waitingManagerApproval={waitingManagerApprovalIds.has(item.id)}
               meetingInProgress={activeMeetingClientIds.has(item.id)}
               waitingManagerPoApproval={waitingManagerPoApprovalIds.has(item.id)}
+              waitingManagerPoApprovalAtProspect={waitingManagerPoApprovalAtProspectIds.has(item.id)}
             />
           )}
           refreshControl={<RefreshControl refreshing={loading} onRefresh={refresh} />}

@@ -36,7 +36,12 @@ export async function getManagerAttendanceHistory(
   dbOverride?: AttendanceDb,
 ): Promise<ManagerAttendanceRecord[]> {
   const db = dbOverride ?? await getDb();
-  if (scope === 'team') return [];
+  // Guest Records (2026-08-22): unreachable today (the only caller,
+  // `app/(manager)/tag-along-history.tsx`, owns a local scope state limited
+  // to 'mine'/'combined') but guarded explicitly rather than left to fall
+  // through — this is a personal-attendance history, not a held-client
+  // record set, so 'guest' has nothing to return here, same as 'team'.
+  if (scope === 'team' || scope === 'guest') return [];
   const predicate = scope === 'mine'
     ? `m.agent_id = ?`
     : `(m.agent_id = ? OR EXISTS (

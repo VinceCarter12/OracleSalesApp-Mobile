@@ -9,6 +9,7 @@ import {
   getResultMessage,
   SYNC_HISTORY_OUTCOME_FILTERS,
   type SyncHistoryFilterValue,
+  type SyncHistoryOriginFilterValue,
 } from '../../lib/sync-history-display';
 import type { DateRange } from '../bizlink/DateRangePickerModal';
 import { DateRangeFilterRow } from '../bizlink/DateRangeFilterRow';
@@ -18,6 +19,7 @@ import { BizChip } from '../bizlink/BizChip';
 
 function getStatusIcon(entry: SyncHistoryEntry) {
   const status = getDisplayStatus(entry);
+  if (status === 'waiting') return RotateCcw;
   if (status === 'synced') return Check;
   if (status === 'resolved') return GitBranch;
   if (status === 'retried') return RotateCcw;
@@ -37,6 +39,8 @@ interface SyncHistoryListProps {
   onSearchChange: (value: string) => void;
   outcomeFilter: SyncHistoryFilterValue;
   onFilterChange: (value: SyncHistoryFilterValue) => void;
+  originFilter: SyncHistoryOriginFilterValue;
+  onOriginFilterChange: (value: SyncHistoryOriginFilterValue) => void;
   dateRange: DateRange | null;
   onDateRangeChange: (range: DateRange | null) => void;
   filtersActive: boolean;
@@ -64,6 +68,8 @@ export function SyncHistoryList({
   onSearchChange,
   outcomeFilter,
   onFilterChange,
+  originFilter,
+  onOriginFilterChange,
   dateRange,
   onDateRangeChange,
   filtersActive,
@@ -130,6 +136,13 @@ export function SyncHistoryList({
             ))}
           </XStack>
         </BizFilterSheetRow>
+        <BizFilterSheetRow label="Origin" value={originFilter === 'online' ? 'Direct to online' : originFilter === 'offline' ? 'Saved offline, then uploaded' : 'All'}>
+          <XStack gap="$2" flexWrap="wrap">
+            <BizChip label="All" selected={originFilter === 'all'} onPress={() => onOriginFilterChange('all')} />
+            <BizChip label="Direct to online" selected={originFilter === 'online'} onPress={() => onOriginFilterChange('online')} />
+            <BizChip label="Saved offline, then uploaded" selected={originFilter === 'offline'} onPress={() => onOriginFilterChange('offline')} />
+          </XStack>
+        </BizFilterSheetRow>
       </BizFilterSheet>
 
       {/* Sync History List */}
@@ -193,6 +206,7 @@ export function SyncHistoryList({
                 <Text fontSize={11.5} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted}>
                   {getResultMessage(entry)} · {new Date(entry.occurredAt).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true })}
                 </Text>
+                {entry.createdOnline !== null ? <Text fontSize={11} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted}>{entry.createdOnline ? 'Direct to online' : 'Saved offline, then uploaded'}{entry.partCount > 1 ? ` · ${entry.partCount} parts` : ''}</Text> : entry.partCount > 1 ? <Text fontSize={11} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted}>{entry.partCount} parts</Text> : null}
               </YStack>
 
               {/* Chevron */}

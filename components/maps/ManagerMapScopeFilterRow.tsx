@@ -6,10 +6,16 @@ import { useBizlinkColors, BIZLINK_FONTS } from '../../lib/theme';
 import type { ManagerScope } from '../../lib/manager-scope';
 import type { TeamMember } from '../../lib/manager-team-map-service';
 
+// Duplicated from BizScopeFilter's own SCOPE_OPTIONS (this row lives inside
+// Maps' Filters sheet, not the always-visible chip row BizScopeFilter
+// renders elsewhere — see that file's doc comment for why Maps has its own
+// copy). Kept in sync by hand; if a 5th scope value is ever added, update
+// both.
 const SCOPE_OPTIONS: BizFilterOption<ManagerScope>[] = [
   { value: 'mine', label: 'My Records' },
   { value: 'team', label: 'My Team' },
   { value: 'combined', label: 'Combined' },
+  { value: 'guest', label: 'Guest Records' },
 ];
 
 /**

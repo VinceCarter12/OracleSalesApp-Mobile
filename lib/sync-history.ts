@@ -14,7 +14,7 @@ import { SYNC_TABLE_LABEL } from './sync-history-display';
 // outcome — this reads THAT, not mock data, and excludes the internal
 // `sync_audit` lane (audit rows about other rows, not user-facing history).
 
-export type SyncHistoryOutcome = Exclude<OutboxStatus, 'pending' | 'syncing'>;
+export type SyncHistoryOutcome = OutboxStatus;
 
 export interface SyncHistoryEntry {
   id: string;
@@ -33,6 +33,9 @@ export interface SyncHistoryEntry {
   retryCount: number;
   failureClass: FailureClass | null;
   lastAttemptAt: string | null;
+  parentTable: string;
+  parentId: string;
+  partCount: number;
 }
 
 interface OutboxHistoryRow {
@@ -53,6 +56,8 @@ interface OutboxHistoryRow {
 
 interface PendingUploadHistoryRow {
   id: string;
+  parent_table: string;
+  parent_id: string;
   kind: PhotoKind;
   status: OutboxStatus;
   created_at: string;
@@ -73,6 +78,7 @@ const UPLOAD_KIND_LABEL: Record<PhotoKind, string> = {
   backload: 'Backload photo',
   cod: 'COD payment photo',
   signature: 'Receiver signature',
+  po_evidence: 'Purchase order photo',
 };
 
 function labelFor(tableName: string, payload: string): string {
@@ -90,6 +96,19 @@ function labelFor(tableName: string, payload: string): string {
 
 function toCreatedOnline(value: number | null): boolean | null {
   return value === null ? null : value === 1;
+}
+
+/** A request/photo belonging to a meeting rolls into that visit's card. */
+function parentForOutbox(tableName: string, recordId: string, payload: string): { table: string; id: string } {
+  if (tableName !== 'tag_along_requests' && tableName !== 'po_confirmation_requests') return { table: tableName, id: recordId };
+  try {
+    const parsed = JSON.parse(payload) as Record<string, unknown>;
+    const meetingId = parsed.related_meeting_id ?? parsed.meeting_id;
+    if (typeof meetingId === 'string' && meetingId.length > 0) return { table: 'meetings', id: meetingId };
+  } catch {
+    // A malformed historical payload is safest as its own record.
+  }
+  return { table: tableName, id: recordId };
 }
 
 /**
@@ -149,7 +168,7 @@ export const FAILURE_CLASS_LABEL: Record<FailureClass, string> = {
 };
 
 /**
- * Most-recent-first terminal outcomes (synced/conflict/failed), capped for a
+ * Most-recent-first local work, including waiting rows, capped for a
  * device-local list view.
  *
  * B-105: photo uploads (selfie, meeting start/end, collection payment,
@@ -165,12 +184,14 @@ export async function getSyncHistory(limit = 50): Promise<SyncHistoryEntry[]> {
   const rows = await db.getAllAsync<OutboxHistoryRow>(
     `SELECT id, record_id, table_name, operation, payload, status, created_at, synced_at, last_attempt_at, last_error, retry_count, created_online, failure_class
      FROM outbox
-     WHERE status IN ('synced', 'conflict', 'failed') AND table_name != ?
+     WHERE status IN ('pending', 'syncing', 'synced', 'conflict', 'failed') AND table_name != ?
      ORDER BY COALESCE(last_attempt_at, synced_at, created_at) DESC
      LIMIT ?`,
     [AUDIT_OUTBOX_TABLE_NAME, limit]
   );
-  const outboxEntries: SyncHistoryEntry[] = rows.map((row) => ({
+  const outboxEntries: SyncHistoryEntry[] = rows.map((row) => {
+    const parent = parentForOutbox(row.table_name, row.record_id, row.payload);
+    return {
     id: row.id,
     tableName: row.table_name,
     operation: row.operation,
@@ -184,12 +205,16 @@ export async function getSyncHistory(limit = 50): Promise<SyncHistoryEntry[]> {
     retryCount: row.retry_count,
     failureClass: row.failure_class,
     lastAttemptAt: row.last_attempt_at,
-  }));
+    parentTable: parent.table,
+    parentId: parent.id,
+    partCount: 1,
+  };
+  });
 
   const uploadRows = await db.getAllAsync<PendingUploadHistoryRow>(
-    `SELECT id, kind, status, created_at, synced_at, last_attempt_at, last_error, retry_count, failure_class
+    `SELECT id, parent_table, parent_id, kind, status, created_at, synced_at, last_attempt_at, last_error, retry_count, failure_class
      FROM pending_uploads
-     WHERE status IN ('synced', 'conflict', 'failed')
+     WHERE status IN ('pending', 'syncing', 'synced', 'conflict', 'failed')
      ORDER BY COALESCE(last_attempt_at, synced_at, created_at) DESC
      LIMIT ?`,
     [limit]
@@ -208,11 +233,32 @@ export async function getSyncHistory(limit = 50): Promise<SyncHistoryEntry[]> {
     retryCount: row.retry_count,
     failureClass: row.failure_class,
     lastAttemptAt: row.last_attempt_at,
+    parentTable: row.parent_table,
+    parentId: row.parent_id,
+    partCount: 1,
   }));
 
-  return [...outboxEntries, ...uploadEntries]
+  return groupSyncHistoryEntries([...outboxEntries, ...uploadEntries])
     .sort((a, b) => b.occurredAt.localeCompare(a.occurredAt))
     .slice(0, limit);
+}
+
+/** Rolls the outbox write and dependent photo-upload rows into one parent card. */
+export function groupSyncHistoryEntries(entries: readonly SyncHistoryEntry[]): SyncHistoryEntry[] {
+  const grouped = new Map<string, SyncHistoryEntry>();
+  for (const entry of entries) {
+    const key = `${entry.parentTable}:${entry.parentId}`;
+    const current = grouped.get(key);
+    if (!current) { grouped.set(key, { ...entry, id: key }); continue; }
+    const latest = entry.occurredAt > current.occurredAt ? entry : current;
+    grouped.set(key, {
+      ...latest,
+      id: key,
+      label: current.tableName === entry.parentTable ? current.label : latest.label,
+      partCount: current.partCount + 1,
+    });
+  }
+  return [...grouped.values()];
 }
 
 export interface PendingSyncEntry {
@@ -279,7 +325,41 @@ export async function getPendingSyncEntries(limit = 20): Promise<PendingSyncEntr
     adminMessage: adminMessageFor(row.status, row.retry_count, row.last_error, row.failure_class),
   }));
 
-  return [...outboxEntries, ...uploadEntries]
+  // B-127 (Vince, 2026-08-20): PO confirmation is the ONLY user-visible write
+  // in the app that never touches the outbox — ADR-044 decision 5 made
+  // approval actions online-only with a direct insert. That is why a PO that
+  // has not reached the server appears NOWHERE: not in Sync Center, not in
+  // Sync History, not in My Requests. Vince's point stands — the app is
+  // offline-first, so a captured PO waiting to upload belongs in this list
+  // like everything else.
+  //
+  // Merged here the same way `pending_uploads` already is (B-059): a
+  // non-outbox local source surfaced into the same pending view, without
+  // pretending it is an outbox row. This is display-only; the proper fix is
+  // to give PO a real outbox lane (see the ADR-044 decision 5 reversal), and
+  // this merge stays correct either way — once PO rows go through the outbox
+  // the query below simply stops matching anything.
+  const poRows = await db.getAllAsync<{ id: string; status: string; created_at: string; decision_note: string | null }>(
+    `SELECT id, status, created_at, decision_note
+       FROM po_confirmation_requests
+      WHERE status IN ('draft', 'duplicate_blocked')
+      ORDER BY created_at DESC
+      LIMIT ?`,
+    [limit]
+  );
+  const poEntries: PendingSyncEntry[] = poRows.map((row) => ({
+    id: row.id,
+    tableName: 'po_confirmation_requests',
+    // 'draft' means captured but never accepted by the server — the same
+    // user-facing meaning as an outbox row still waiting to push.
+    status: row.status === 'duplicate_blocked' ? 'failed' : 'pending',
+    label: 'Purchase order evidence',
+    createdAt: row.created_at,
+    createdOnline: null,
+    adminMessage: row.decision_note,
+  }));
+
+  return [...outboxEntries, ...uploadEntries, ...poEntries]
     .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
     .slice(0, limit);
 }

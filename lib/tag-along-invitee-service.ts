@@ -3,7 +3,7 @@ import { runSync } from './sync-engine';
 import { enqueueOutboxRow } from './sync/entity-registry';
 import { isLikelyOnline } from './sync/connectivity';
 import { uuidv4 } from './uuid';
-import type { RemoteTagAlongInviteeKind, RemoteTagAlongStatus } from '../types/database';
+import type { RemoteTagAlongContext, RemoteTagAlongInviteeKind, RemoteTagAlongStatus } from '../types/database';
 
 // ADR-030 Pass 3 (invitee side): reads/writes for the Manager Tag-Along
 // screen (`app/(manager)/tag-along.tsx`) — mirrors `lib/tag-along-service.ts`'s
@@ -32,6 +32,7 @@ export interface IncomingCompanionRequest {
   clientId: string | null;
   clientName: string | null;
   relatedMeetingId: string | null;
+  context: RemoteTagAlongContext;
 }
 
 export async function getOwnMeetingCompanionRequest(
@@ -43,7 +44,7 @@ export async function getOwnMeetingCompanionRequest(
     `SELECT tar.id, tar.requester_id, trs.full_name AS requester_name, tar.invitee_kind,
             tar.status, tar.sync_status, tar.created_at,
             tar.related_client_id AS client_id, c.company_name AS client_name,
-            tar.related_meeting_id
+            tar.related_meeting_id, tar.context
        FROM tag_along_requests tar
        LEFT JOIN team_roster_snapshot trs ON trs.profile_id = tar.requester_id
        LEFT JOIN clients c ON c.id = tar.related_client_id
@@ -64,6 +65,7 @@ export async function getOwnMeetingCompanionRequest(
     clientId: row.client_id,
     clientName: row.client_name,
     relatedMeetingId: row.related_meeting_id,
+    context: row.context,
   };
 }
 
@@ -78,6 +80,7 @@ interface IncomingCompanionRequestRow {
   client_id: string | null;
   client_name: string | null;
   related_meeting_id: string | null;
+  context: RemoteTagAlongContext;
 }
 
 /**
@@ -95,7 +98,7 @@ export async function getIncomingCompanionRequests(inviteeId: string): Promise<I
     `SELECT tar.id, tar.requester_id, trs.full_name AS requester_name, tar.invitee_kind,
             tar.status, tar.sync_status, tar.created_at,
             tar.related_client_id AS client_id, c.company_name AS client_name,
-            tar.related_meeting_id
+            tar.related_meeting_id, tar.context
        FROM tag_along_requests tar
        LEFT JOIN team_roster_snapshot trs ON trs.profile_id = tar.requester_id
        LEFT JOIN clients c ON c.id = tar.related_client_id
@@ -114,6 +117,7 @@ export async function getIncomingCompanionRequests(inviteeId: string): Promise<I
     clientId: row.client_id,
     clientName: row.client_name,
     relatedMeetingId: row.related_meeting_id,
+    context: row.context,
   }));
 }
 

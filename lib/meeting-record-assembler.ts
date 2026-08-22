@@ -1,6 +1,7 @@
 import type { CompanionSelection } from './tag-along-service';
 import type { NewMeetingRecord } from './meeting-service';
 import type { MeetingMode, MeetingOutcome } from '../types';
+import type { MeetingLocationOption } from '../components/meetings/MeetingLocationPicker';
 
 /**
  * Step B (meeting-recording controller consolidation): both `record.tsx`
@@ -38,7 +39,7 @@ export interface BuildFullMeetingRecordInput extends BuildMeetingRecordCommon {
   outcome: MeetingOutcome;
   contactName: string;
   contactPosition: string;
-  meetingLocation: 'Client Office' | 'Online' | 'Others';
+  meetingLocation: MeetingLocationOption;
   otherLocation: string;
   remarks: string;
   /** ADR-044/046 point 7 — already gated by isCloseDealPoEligible() at the call site; omitted/null when not applicable. */

@@ -4,6 +4,7 @@ import {
   canSubmitPoConfirmation,
   derivePoConfirmationDisplayStatus,
   isCloseDealPoEligible,
+  derivePoConfirmationSlotState,
   PO_CONFIRMATION_REQUEST_KIND,
   blocksPoConfirmationReplacement,
   hasActivePoConfirmation,
@@ -79,9 +80,15 @@ describe('isCloseDealPoEligible (ADR-046 point 2 / Wireframe-Sales-BizLink.html:
     expect(isCloseDealPoEligible('in_progress', 'Successful', ['Product / company presentation'])).toBe(false);
   });
 
-  it('is not eligible for any client status other than in_progress', () => {
-    expect(isCloseDealPoEligible('prospect', 'Successful', ['Close deal'])).toBe(false);
+  // ADR-061 (Vince, 2026-08-19/20): 'prospect' joins 'in_progress' as an
+  // eligible status (Scenario 1 — a prospect may submit PO evidence
+  // directly). Was: "is not eligible for any client status other than
+  // in_progress".
+  it('is eligible for in_progress and prospect only, never other statuses', () => {
+    expect(isCloseDealPoEligible('in_progress', 'Successful', ['Close deal'])).toBe(true);
+    expect(isCloseDealPoEligible('prospect', 'Successful', ['Close deal'])).toBe(true);
     expect(isCloseDealPoEligible('new', 'Successful', ['Close deal'])).toBe(false);
+    expect(isCloseDealPoEligible('existing', 'Successful', ['Close deal'])).toBe(false);
     expect(isCloseDealPoEligible(null, 'Successful', ['Close deal'])).toBe(false);
     expect(isCloseDealPoEligible(undefined, 'Successful', ['Close deal'])).toBe(false);
   });
@@ -90,5 +97,37 @@ describe('isCloseDealPoEligible (ADR-046 point 2 / Wireframe-Sales-BizLink.html:
 describe('PO_CONFIRMATION_REQUEST_KIND', () => {
   it('is the live RPC discriminator literal, never the "po" shorthand (ADR-046 correction addendum point 3)', () => {
     expect(PO_CONFIRMATION_REQUEST_KIND).toBe('po_confirmation');
+  });
+});
+
+describe('derivePoConfirmationSlotState (B-125, Vince 2026-08-20)', () => {
+  it('reports a free slot when there is no history at all', () => {
+    expect(derivePoConfirmationSlotState([])).toBe('free');
+  });
+
+  it.each(['rejected', 'cancelled'] as const)('treats terminal %s history as a free slot', (status) => {
+    expect(derivePoConfirmationSlotState([status])).toBe('free');
+  });
+
+  // The regression this whole change exists for: a draft that never reached
+  // Supabase used to block a new PO forever.
+  it.each(['draft', 'duplicate_blocked', 'superseded'] as const)(
+    'treats local-only %s as replaceable, never as a block',
+    (status) => {
+      expect(derivePoConfirmationSlotState([status])).toBe('replaceable_local');
+    }
+  );
+
+  it.each(['pending', 'approved'] as const)('still treats server-confirmed %s as a genuine reservation', (status) => {
+    expect(derivePoConfirmationSlotState([status])).toBe('server_confirmed');
+  });
+
+  it('lets a server-confirmed row win over local-only evidence on the same cycle', () => {
+    expect(derivePoConfirmationSlotState(['draft', 'pending'])).toBe('server_confirmed');
+    expect(derivePoConfirmationSlotState(['pending', 'draft'])).toBe('server_confirmed');
+  });
+
+  it('ignores terminal history sitting alongside a local-only row', () => {
+    expect(derivePoConfirmationSlotState(['rejected', 'draft'])).toBe('replaceable_local');
   });
 });

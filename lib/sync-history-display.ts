@@ -7,7 +7,7 @@ import type { BizFilterOption } from '../components/bizlink/BizFilterScroll';
  * `renderSyncHistory()`) because a `conflict`/`failed` row with zero retries
  * has no matching chip yet and falls through to its raw outbox status.
  */
-export type SyncHistoryDisplayStatus = 'synced' | 'resolved' | 'retried' | 'conflict' | 'failed';
+export type SyncHistoryDisplayStatus = 'waiting' | 'synced' | 'resolved' | 'retried' | 'conflict' | 'failed';
 
 /**
  * The values the wireframe's filter chips actually offer
@@ -18,10 +18,12 @@ export type SyncHistoryDisplayStatus = 'synced' | 'resolved' | 'retried' | 'conf
  * why `OUTCOME_FILTERS` was previously (incorrectly) typed against
  * `SyncHistoryOutcome` and failed `tsc --noEmit` for `'resolved'`/`'retried'`.
  */
-export type SyncHistoryFilterValue = 'all' | 'synced' | 'resolved' | 'retried';
+export type SyncHistoryFilterValue = 'all' | 'waiting' | 'synced' | 'resolved' | 'retried';
+export type SyncHistoryOriginFilterValue = 'all' | 'online' | 'offline';
 
 export const SYNC_HISTORY_OUTCOME_FILTERS: BizFilterOption<SyncHistoryFilterValue>[] = [
   { value: 'all', label: 'All' },
+  { value: 'waiting', label: 'Still waiting' },
   { value: 'synced', label: 'Uploaded' },
   { value: 'resolved', label: 'Fixed' },
   { value: 'retried', label: 'Retrying' },
@@ -29,6 +31,7 @@ export const SYNC_HISTORY_OUTCOME_FILTERS: BizFilterOption<SyncHistoryFilterValu
 
 /** Maps an outbox row's terminal status to the wireframe's display vocabulary. */
 export function getDisplayStatus(entry: SyncHistoryEntry): SyncHistoryDisplayStatus {
+  if (entry.status === 'pending' || entry.status === 'syncing') return 'waiting';
   if (entry.status === 'synced') return 'synced';
   if (entry.status === 'conflict' && entry.retryCount > 0) return 'resolved';
   if (entry.status === 'failed' && entry.retryCount > 0) return 'retried';
@@ -51,10 +54,15 @@ export const SYNC_TABLE_LABEL: Record<string, string> = {
   cod_remittances: 'COD remittance',
   tag_along_requests: 'Tag-along request',
   pending_uploads: 'Photo upload',
+  // B-127: not an outbox table — surfaced into the pending list from its own
+  // local table (see getPendingSyncEntries), so it needs a label here too.
+  po_confirmation_requests: 'Purchase order evidence',
 };
 
 /** Wireframe's per-row/per-detail "note" text (`h.note` in the mock data, both wireframes). */
 export function getResultMessage(entry: SyncHistoryEntry): string {
+  if (entry.status === 'pending') return 'Waiting to upload from this phone';
+  if (entry.status === 'syncing') return 'Uploading from this phone';
   if (entry.status === 'synced') return 'Uploaded from this phone';
   if (entry.status === 'conflict') return 'Conflict fixed: renamed';
   if (entry.status === 'failed' && entry.retryCount > 0) {

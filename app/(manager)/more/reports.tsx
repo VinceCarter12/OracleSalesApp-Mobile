@@ -6,6 +6,7 @@ import { Spinner, Text, XStack, YStack } from 'tamagui';
 import { BIZLINK_FONTS, BIZLINK_ON_INK, useBizlinkColors } from '../../../lib/theme';
 import { KeyboardAwareScrollView } from '../../../components/ui/KeyboardAwareScrollView';
 import { useTeamOverview } from '../../../lib/use-team-overview';
+import { useManagerScope } from '../../../lib/manager-scope-store';
 import { useSession } from '../../../lib/session-store';
 import { countNewClientsAcquired, filterMeetingsByTimeframe, type ReportTimeframe } from '../../../lib/report-timeframe';
 import {
@@ -24,6 +25,7 @@ import { BizFilterSheet } from '../../../components/bizlink/BizFilterSheet';
 import { BizFilterSheetRow } from '../../../components/bizlink/BizFilterSheetRow';
 import { BizSectionHeader } from '../../../components/bizlink/BizSectionHeader';
 import { BizStatCard } from '../../../components/bizlink/BizStatCard';
+import { BizScopeFilter } from '../../../components/bizlink/BizScopeFilter';
 import { FadeInPanel } from '../../../components/reports/FadeInPanel';
 import { TeamResultClientRow, TeamResultMeetingRow } from '../../../components/reports/PerformanceResultRows';
 import { WEEKDAY_LABELS, WeeklyMeetingsChart, meetingsForWeekday } from '../../../components/reports/WeeklyMeetingsChart';
@@ -51,8 +53,19 @@ const FILTER_TITLES: Record<Exclude<PerformanceFilter['kind'], 'day'>, string> =
 export default function ManagerReportsScreen() {
   const BIZLINK_COLORS = useBizlinkColors();
   const insets = useSafeAreaInsets();
-  const { overview, loading, error, reload } = useTeamOverview();
+  // Guest Records scope (2026-08-22, Vince's own addition): Reports now
+  // reads the shared scope selector too, so guest-record stats can be
+  // isolated ("Guest Records" chip) or blended ("Combined") rather than
+  // always hidden or always blended with real team performance.
+  const { scope } = useManagerScope();
+  const { overview, loading, error, reload } = useTeamOverview(scope);
   const { profileId, fullName } = useSession();
+  // `overview.meetings`/`.clients` are already scope-partitioned (empty for
+  // scope='guest', per `partitionByScope`'s explicit guest case) — this
+  // concat with `guestMeetings`/`guestClients` works uniformly for every
+  // scope value, same pattern as the Clients/Meetings list screens.
+  const meetingsAll = useMemo(() => [...(overview?.meetings ?? []), ...(overview?.guestMeetings ?? [])], [overview]);
+  const clientsAll = useMemo(() => [...(overview?.clients ?? []), ...(overview?.guestClients ?? [])], [overview]);
   const [timeframe, setTimeframe] = useState<ReportTimeframe>(TIMEFRAMES[0]);
   const [agentIds, setAgentIds] = useState<string[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
@@ -77,27 +90,25 @@ export default function ManagerReportsScreen() {
   }, [overview?.agents, profileId, fullName]);
 
   const filteredMeetings = useMemo(() => {
-    if (!overview) return [];
-    return filterMeetingsByTimeframe(overview.meetings, timeframe, new Date())
+    return filterMeetingsByTimeframe(meetingsAll, timeframe, new Date())
       .filter((meeting) => (agentIds.length === 0 || agentIds.includes(meeting.agentId))
-        && matchesManagerReportSearch(searchQuery, meeting, overview.clients, agents));
-  }, [overview, timeframe, agentIds, searchQuery, agents]);
+        && matchesManagerReportSearch(searchQuery, meeting, clientsAll, agents));
+  }, [meetingsAll, clientsAll, timeframe, agentIds, searchQuery, agents]);
 
   const teamMeetingsThisWeek = useMemo(
-    () => overview?.meetings.filter((meeting) => (agentIds.length === 0 || agentIds.includes(meeting.agentId))
-      && matchesManagerReportSearch(searchQuery, meeting, overview.clients, agents)) ?? [],
-    [overview, agentIds, searchQuery, agents]
+    () => meetingsAll.filter((meeting) => (agentIds.length === 0 || agentIds.includes(meeting.agentId))
+      && matchesManagerReportSearch(searchQuery, meeting, clientsAll, agents)),
+    [meetingsAll, clientsAll, agentIds, searchQuery, agents]
   );
   const successful = filteredMeetings.filter((meeting) => meeting.outcome === 'success').length;
   const lost = filteredMeetings.filter((meeting) => meeting.outcome === 'lost').length;
   const successRate = filteredMeetings.length ? Math.round((successful / filteredMeetings.length) * 100) : 0;
 
   const newClients = useMemo((): TeamClient[] => {
-    if (!overview) return [];
-    const scopedClients = agentIds.length === 0 ? overview.clients : overview.clients.filter((client) => agentIds.includes(client.agentId));
+    const scopedClients = agentIds.length === 0 ? clientsAll : clientsAll.filter((client) => agentIds.includes(client.agentId));
     return scopedClients.filter((client) => countNewClientsAcquired([client], timeframe, new Date()) === 1
       && matchesManagerClientReportSearch(searchQuery, client, agents));
-  }, [overview, timeframe, agentIds, searchQuery, agents]);
+  }, [clientsAll, timeframe, agentIds, searchQuery, agents]);
 
   const togglePerformanceFilter = (next: PerformanceFilter) => {
     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
@@ -159,6 +170,7 @@ export default function ManagerReportsScreen() {
     <YStack flex={1} backgroundColor={BIZLINK_COLORS.canvas} paddingTop={insets.top}>
       <BizTopBar title="Reports" fallbackHref="/(manager)" />
       <KeyboardAwareScrollView contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 24 }} keyboardShouldPersistTaps="handled">
+        <YStack marginBottom="$3"><BizScopeFilter /></YStack>
         <XStack gap="$2" alignItems="center" marginBottom="$3">
           <XStack flex={1} alignItems="center" gap="$2" height={52} paddingHorizontal={12} backgroundColor={BIZLINK_COLORS.card} borderRadius={16} borderWidth={1} borderColor={BIZLINK_COLORS.line}>
             <Search size={17} color={BIZLINK_COLORS.muted} strokeWidth={1.75} />
@@ -201,7 +213,7 @@ export default function ManagerReportsScreen() {
                   <YStack width="48%"><BizStatCard tone="tintB" value={lost} label="Lost opportunities" caption="watch" minWidth={0} onPress={() => togglePerformanceFilter({ kind: 'lost' })} selected={performanceFilter?.kind === 'lost'} /></YStack>
                 </XStack>
                 <WeeklyMeetingsChart title="Team meetings this week" meetings={teamMeetingsThisWeek} selectedDay={performanceFilter?.kind === 'day' ? performanceFilter.dayIndex : null} onSelectDay={(dayIndex) => togglePerformanceFilter({ kind: 'day', dayIndex })} />
-                {performanceFilter && panelTitle ? <FadeInPanel key={panelKey}><BizSectionHeader title={panelTitle} actionLabel="Clear" onAction={() => setPerformanceFilter(null)} />{resultMeetings?.map((meeting) => <TeamResultMeetingRow key={meeting.id} meeting={meeting} clientName={overview?.clients.find((client) => client.id === meeting.clientId)?.name ?? 'Unknown Client'} />)}{resultClients?.map((client) => <TeamResultClientRow key={client.id} client={client} />)}{(resultMeetings?.length === 0 || resultClients?.length === 0) ? <Text fontSize={13} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} paddingVertical="$3">Nothing here yet.</Text> : null}</FadeInPanel> : null}
+                {performanceFilter && panelTitle ? <FadeInPanel key={panelKey}><BizSectionHeader title={panelTitle} actionLabel="Clear" onAction={() => setPerformanceFilter(null)} />{resultMeetings?.map((meeting) => <TeamResultMeetingRow key={meeting.id} meeting={meeting} clientName={clientsAll.find((client) => client.id === meeting.clientId)?.name ?? 'Unknown Client'} />)}{resultClients?.map((client) => <TeamResultClientRow key={client.id} client={client} />)}{(resultMeetings?.length === 0 || resultClients?.length === 0) ? <Text fontSize={13} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} paddingVertical="$3">Nothing here yet.</Text> : null}</FadeInPanel> : null}
               </>}
 
         <YStack marginTop="$4">

@@ -96,6 +96,20 @@ export default function RecordVisitScreen() {
    */
   async function finishMeeting(endPhoto: CapturedPhoto): Promise<void> {
     if (!start || !session || !profileId || !clientId) return;
+    // B-117 (Vince, 2026-08-19): at least one agenda is required before a
+    // meeting can be saved, for EVERY client status — this fast path serves
+    // new/existing clients and previously allowed an agenda-less save. The
+    // agenda ticks already exist on this screen (`selectedAgendas` /
+    // `toggleAgenda`, rendered by the shared wrap-up section), so this is a
+    // validation gap only, not a missing control. Mirrors record.tsx's
+    // doSave() check.
+    //
+    // Placed before setSaving(true) so the alert never leaves the button
+    // stuck in its saving state.
+    if (selectedAgendas.length === 0) {
+      Alert.alert('Agenda Required', 'Please select at least one agenda before saving this visit.');
+      return;
+    }
     setSaving(true);
     try {
       const meetingId = await createMeeting(

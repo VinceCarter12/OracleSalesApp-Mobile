@@ -21,6 +21,7 @@ type RemoteTableName =
   | 'clients'
   | 'meetings'
   | 'tag_along_requests'
+  | 'po_confirmation_requests'
   | 'client_edit_requests'
   | 'collection_visits'
   | 'purchase_orders'
@@ -40,6 +41,7 @@ type AnyRemoteInsertPayload =
   | Database['public']['Tables']['clients']['Insert']
   | Database['public']['Tables']['meetings']['Insert']
   | Database['public']['Tables']['tag_along_requests']['Insert']
+  | Database['public']['Tables']['po_confirmation_requests']['Insert']
   | Database['public']['Tables']['client_edit_requests']['Insert']
   | Database['public']['Tables']['collection_visits']['Insert']
   | Database['public']['Tables']['purchase_orders']['Insert']
@@ -77,6 +79,15 @@ function upsertOne(remoteTable: RemoteTableName, payload: AnyRemoteInsertPayload
       return supabase
         .from('tag_along_requests')
         .upsert(payload as Database['public']['Tables']['tag_along_requests']['Insert'], { onConflict });
+    case 'po_confirmation_requests':
+      // B-127: Sales/RSR's own PO capture pushes as a fresh insert, same as
+      // client_edit_requests below. Manager/admin decisions never route
+      // through the outbox — they call decide_po_confirmation() directly
+      // (ADR-044 decision 5, the half of it that is still correct) — so this
+      // table never reaches `updateOne()`.
+      return supabase
+        .from('po_confirmation_requests')
+        .upsert(payload as Database['public']['Tables']['po_confirmation_requests']['Insert'], { onConflict });
     case 'client_edit_requests':
       // ADR-052: Sales/RSR's own creation always pushes as a fresh insert —
       // Manager decisions never route through the outbox at all (ADR-052
@@ -132,7 +143,7 @@ function upsertOne(remoteTable: RemoteTableName, payload: AnyRemoteInsertPayload
  * always `operation: 'insert'` and never reach this function.
  */
 function updateOne(
-  remoteTable: 'clients' | 'meetings' | 'tag_along_requests' | 'collection_visits' | 'purchase_orders',
+  remoteTable: 'clients' | 'meetings' | 'tag_along_requests' | 'collection_visits' | 'purchase_orders' | 'po_confirmation_requests',
   payload: AnyRemoteInsertPayload,
   recordId: string
 ) {
@@ -153,6 +164,16 @@ function updateOne(
       return supabase
         .from('tag_along_requests')
         .update(payload as Database['public']['Tables']['tag_along_requests']['Update'])
+        .eq('id', recordId);
+    case 'po_confirmation_requests':
+      // B-127: the ONLY update this table ever pushes is the photo-URL patch
+      // from the pending_uploads lane (enqueuePhotoUrlUpdate), swapping the
+      // local file:// path for the public Storage URL. Manager/admin
+      // decisions never come through here — they go through
+      // decide_po_confirmation() online.
+      return supabase
+        .from('po_confirmation_requests')
+        .update(payload as Database['public']['Tables']['po_confirmation_requests']['Update'])
         .eq('id', recordId);
     case 'collection_visits':
       // F-007 Phase 2: the collector works a row — collect / reschedule /
@@ -188,6 +209,10 @@ function upsertMany(remoteTable: RemoteTableName, payloads: AnyRemoteInsertPaylo
       return supabase
         .from('client_edit_requests')
         .upsert(payloads as Database['public']['Tables']['client_edit_requests']['Insert'][], { onConflict });
+    case 'po_confirmation_requests':
+      return supabase
+        .from('po_confirmation_requests')
+        .upsert(payloads as Database['public']['Tables']['po_confirmation_requests']['Insert'][], { onConflict });
     case 'collection_visits':
       return supabase
         .from('collection_visits')
@@ -215,13 +240,14 @@ function upsertMany(remoteTable: RemoteTableName, payloads: AnyRemoteInsertPaylo
 function assertUpdatableTable(
   remoteTable: RemoteTableName,
   row: OutboxRow
-): 'clients' | 'meetings' | 'tag_along_requests' | 'collection_visits' | 'purchase_orders' {
+): 'clients' | 'meetings' | 'tag_along_requests' | 'collection_visits' | 'purchase_orders' | 'po_confirmation_requests' {
   if (
     remoteTable === 'clients' ||
     remoteTable === 'meetings' ||
     remoteTable === 'tag_along_requests' ||
     remoteTable === 'collection_visits' ||
-    remoteTable === 'purchase_orders'
+    remoteTable === 'purchase_orders' ||
+    remoteTable === 'po_confirmation_requests'
   ) {
     return remoteTable;
   }

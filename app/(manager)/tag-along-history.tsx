@@ -11,7 +11,7 @@ import { BizFilterSheet } from '../../components/bizlink/BizFilterSheet';
 import { BizFilterSheetRow } from '../../components/bizlink/BizFilterSheetRow';
 import { StatusBadge } from '../../components/ui/StatusBadge';
 import { BIZLINK_COLORS, BIZLINK_FONTS, BIZLINK_ON_INK } from '../../lib/theme';
-import { useManagerScope } from '../../lib/manager-scope-store';
+import type { ManagerScope } from '../../lib/manager-scope';
 import { useManagerAttendanceHistory } from '../../lib/use-manager-attendance-history';
 import type { ManagerAttendanceRecord } from '../../lib/manager-attendance-history-service';
 import { usePagination } from '../../lib/use-pagination';
@@ -42,8 +42,17 @@ function decisionLabel(status: ManagerAttendanceRecord['decisionStatus']): strin
 
 export default function ManagerTagAlongHistoryScreen() {
   const insets = useSafeAreaInsets();
-  const { scope, setScope } = useManagerScope();
-  const { records, loading, error, reload } = useManagerAttendanceHistory();
+  // 2026-08-19 (Vince direction): this screen is the Manager's RECORD of
+  // tagged-along visits and the shortcut into each one, so it defaults to
+  // 'combined' — `getManagerAttendanceHistory()` returns tag-along rows ONLY
+  // under that scope ('mine' is own-agent meetings only, 'team' returns []),
+  // so a 'mine' default would keep this page looking empty even after
+  // B-119's sync-down fix lands. Deliberately LOCAL state rather than
+  // `useManagerScope()`: that store is shared with Manager Home, Clients,
+  // Maps and Meetings, and writing 'combined' into it here would silently
+  // re-scope all of them too.
+  const [scope, setScope] = useState<ManagerScope>('combined');
+  const { records, loading, error, reload } = useManagerAttendanceHistory(scope);
   const [query, setQuery] = useState('');
   const [photoFilter, setPhotoFilter] = useState<PhotoFilter>('all');
   const [attendanceFilter, setAttendanceFilter] = useState<AttendanceFilter>('all');
@@ -57,13 +66,14 @@ export default function ManagerTagAlongHistoryScreen() {
   }), [records, normalized, photoFilter, attendanceFilter]);
   const { page, totalPages, pageItems, setPage } = usePagination(filtered, `${scope}:${normalized}:${photoFilter}:${attendanceFilter}`);
   const countFor = (status: AttendanceFilter) => status === 'all' ? records.length : records.filter((record) => record.decisionStatus === status).length;
-  const filtersActive = scope !== 'mine' || photoFilter !== 'all' || attendanceFilter !== 'all';
+  const filtersActive = scope !== 'combined' || photoFilter !== 'all' || attendanceFilter !== 'all';
   const scopeLabel = scope === 'combined' ? 'Combined' : 'My Records';
   const photoLabel = PHOTO_FILTERS.find((item) => item.value === photoFilter)?.label ?? 'All';
   const attendanceLabel = ATTENDANCE_FILTERS.find((item) => item.value === attendanceFilter)?.label ?? 'All records';
 
+  /** Resets to this screen's own 'combined' baseline (see the scope state above), not the shared store's 'mine'. */
   function resetFilters(): void {
-    setScope('mine');
+    setScope('combined');
     setPhotoFilter('all');
     setAttendanceFilter('all');
   }

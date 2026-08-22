@@ -65,15 +65,30 @@ export function filterOfficePins<T extends { verified: boolean; companyName: str
   );
 }
 
-/** Reusable meeting-marker filter predicate — see `filterOfficePins` doc comment for why this is generic/shared. */
-export function filterMeetingMarkers<T extends { markerType: MeetingMarkerType; clientStatusAtMeeting: ClientStatus | null }>(
+/**
+ * Reusable meeting-marker filter predicate — see `filterOfficePins` doc
+ * comment for why this is generic/shared.
+ *
+ * B-130 (Vince, 2026-08-21): the Maps search bar filtered office pins only
+ * — this function never took a search term at all, so meeting markers (the
+ * majority of pins on a typical map) stayed on screen regardless of what
+ * was typed, making the search bar look broken. `search` defaults to `''`
+ * so every existing call site (there was only ever one signature) keeps
+ * compiling; callers now pass the same `officeSearch` string
+ * `filterOfficePins` already receives, so both marker types are searched
+ * by the one query box.
+ */
+export function filterMeetingMarkers<T extends { markerType: MeetingMarkerType; clientStatusAtMeeting: ClientStatus | null; clientName: string }>(
   markers: readonly T[],
   meetingTypeFilter: MeetingTypeFilterValue,
-  meetingStatusFilter: MeetingStatusFilterValue
+  meetingStatusFilter: MeetingStatusFilterValue,
+  search = ''
 ): T[] {
+  const q = search.trim().toLocaleLowerCase();
   return markers.filter((marker) => {
     if (meetingTypeFilter !== 'all' && marker.markerType !== meetingTypeFilter) return false;
-    return meetingStatusFilter === 'all' || marker.clientStatusAtMeeting === meetingStatusFilter;
+    if (meetingStatusFilter !== 'all' && marker.clientStatusAtMeeting !== meetingStatusFilter) return false;
+    return !q || marker.clientName.toLocaleLowerCase().includes(q);
   });
 }
 
@@ -110,8 +125,8 @@ export function useMapsScreen(
   const filteredPins = filterOfficePins(pins, pinFilter, officeSearch);
 
   const filteredMeetingMarkers = useMemo(
-    () => filterMeetingMarkers(meetingMarkers, meetingTypeFilter, meetingStatusFilter),
-    [meetingMarkers, meetingTypeFilter, meetingStatusFilter]
+    () => filterMeetingMarkers(meetingMarkers, meetingTypeFilter, meetingStatusFilter, officeSearch),
+    [meetingMarkers, meetingTypeFilter, meetingStatusFilter, officeSearch]
   );
 
   const mapMarkers = useMemo<LeafletMapMarker[]>(

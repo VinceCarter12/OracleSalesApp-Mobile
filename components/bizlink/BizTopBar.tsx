@@ -1,6 +1,6 @@
-import { Pressable } from 'react-native';
-import { useRef } from 'react';
-import { router } from 'expo-router';
+import { BackHandler, Pressable } from 'react-native';
+import { useCallback, useRef } from 'react';
+import { router, useFocusEffect } from 'expo-router';
 import type { Href } from 'expo-router';
 import { ArrowLeft } from 'lucide-react-native';
 import { Text, XStack } from 'tamagui';
@@ -63,6 +63,38 @@ export function BizTopBar({ title, right, fallbackHref, fallbackOnlyIfNoHistory 
       navigationLocked.current = false;
     }, 450);
   }
+
+  // B-118: the Android hardware/gesture back button had no handler anywhere
+  // in the app, so it popped the raw expo-router history across tab groups
+  // regardless of what this same screen's in-app back button (above) would
+  // do — the exact B-019 wrong-tab failure, just reachable a second way.
+  // Every screen with a BizTopBar already computes the correct `handleBack`
+  // for its own logical parent, so reusing it here (rather than a second,
+  // separately-maintained global handler) makes the two paths structurally
+  // unable to disagree. Returning `true` marks the event handled, preventing
+  // the default OS behavior (pop-or-exit) from also firing.
+  //
+  // `useFocusEffect`, not a plain `useEffect`: expo-router/React Navigation
+  // keep prior stack screens mounted for their exit animation, and
+  // BackHandler fires every registered listener in most-recently-added
+  // order until one returns `true`. A plain effect would leave a background
+  // screen's stale listener registered and able to intercept a press meant
+  // for the screen actually on top. Scoping the subscription to focus means
+  // at most one BizTopBar's listener is ever live at a time.
+  useFocusEffect(
+    useCallback(() => {
+      const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
+        handleBack();
+        return true;
+      });
+      return () => subscription.remove();
+      // eslint-disable-next-line react-hooks/exhaustive-deps -- handleBack is
+      // a plain function recreated every render, not a stable identity; the
+      // only values it actually reads besides module-level `router` and the
+      // always-current `navigationLocked` ref are these two props, so listing
+      // them (not `handleBack` itself) is the correct, minimal dep list.
+    }, [fallbackHref, fallbackOnlyIfNoHistory])
+  );
 
   return (
     <XStack alignItems="center" gap="$2.5" paddingHorizontal="$4" paddingVertical="$2.5">

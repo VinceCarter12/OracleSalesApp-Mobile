@@ -103,6 +103,35 @@ export const WAITING_MANAGER_PO_APPROVAL_BADGE = {
   color: 'orange' as const,
 };
 
+/**
+ * ADR-061 (Vince, 2026-08-19/20): the `prospect`-stage counterpart of
+ * `WAITING_MANAGER_PO_APPROVAL_BADGE` above, for Scenario 1 (a prospect
+ * submitting PO evidence directly, bypassing `in_progress`). Same amber/
+ * orange "waiting on a Manager decision" family as the badge it mirrors —
+ * deliberately not a new color, so the visual language for "something needs
+ * the Manager" stays consistent app-wide — but the label makes explicit
+ * that the client's STATUS itself has not moved (it stays PROSPECT while
+ * this is pending; see ADR-061 decision 3), which the in_progress version
+ * doesn't need to say since that badge never contradicts the status pill
+ * sitting next to it.
+ */
+export const WAITING_MANAGER_PO_APPROVAL_PROSPECT_BADGE = {
+  label: "Prospect · Awaiting Manager's Approval",
+  background: 'amberSoft' as const,
+  color: 'orange' as const,
+};
+
+/**
+ * ADR-061: the warning copy shown alongside `WAITING_MANAGER_PO_APPROVAL_PROSPECT_BADGE`
+ * on Client Detail and Meeting Detail (not the compact My Clients list card,
+ * which has no room for a second line) — Vince's "may warning message"
+ * instruction. Explains in plain language why the client hasn't visibly
+ * advanced yet, since PROSPECT + a submitted PO otherwise reads as "nothing
+ * happened."
+ */
+export const PROSPECT_PO_PENDING_WARNING =
+  'This client stays Prospect while the purchase order is pending. It moves to New only after your manager approves it.';
+
 /** True once a client's resolved status (via getClientStatus) reaches the photo-only fast path — 'new' or 'existing' (ADR-015). */
 export function isFastPathEligible(client: Pick<Client, 'status'>): boolean {
   const status = getClientStatus(client);

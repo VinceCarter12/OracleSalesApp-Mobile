@@ -4,10 +4,18 @@ import { MAP_ORG_WIDE_PROSPECT_COLOR } from './map-marker-colors';
 import { firstMarkerLetter } from './map-marker-letter';
 import type { LeafletMapMarker } from '../components/maps/LeafletWebViewMap';
 
-// 2026-08-16 (Vince direction) — opt-in, all-teams "org-wide prospect" pin
-// layer shared by all three Maps screens. Default OFF (a broad new
-// cross-team view is the less-surprising default until Vince says
-// otherwise). Online-only, same reasoning as
+// 2026-08-16 (Vince direction) — all-teams "org-wide prospect" pin layer
+// shared by all three Maps screens.
+//
+// 2026-08-19 (Vince direction): default is now **ON** for all three roles
+// (Sales/RSR, Manager, Executive). It shipped OFF on the assumption that a
+// broad cross-team view was the more surprising default; Vince has since
+// asked for it on by default. The server RPC this depends on
+// (`get_org_wide_prospect_map_markers()`, web migration 100) is confirmed
+// applied on BOTH staging and production, so defaulting ON no longer risks
+// showing every Maps screen an error banner on first load.
+//
+// Online-only, same reasoning as
 // `lib/po-confirmation-manager-service.ts::getManagerApprovalFeed()`: no
 // local SQLite mirror exists for this, so a failed fetch while the toggle is
 // ON surfaces an explicit error rather than silently showing zero pins.
@@ -35,7 +43,7 @@ function buildMapMarkers(markers: OrgWideProspectMarker[]): LeafletMapMarker[] {
 }
 
 export function useOrgWideProspectMarkers(): UseOrgWideProspectMarkers {
-  const [enabled, setEnabled] = useState(false);
+  const [enabled, setEnabled] = useState(true);
   const [markers, setMarkers] = useState<OrgWideProspectMarker[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);

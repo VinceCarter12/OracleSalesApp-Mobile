@@ -37,7 +37,19 @@ export default function ReassignClientScreen() {
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
-  const client = overview?.clients.find((c) => c.id === clientId);
+  // 2026-08-22 (corrected same day, Vince): a holder CAN reassign a held
+  // client — the earlier "explicit guard, never resolves guestClients" rule
+  // was reversed after device testing. A holder now gets the same
+  // functionality a team manager has for their own team's clients,
+  // including reassignment — the one constraint (enforced server-side by
+  // migration 125's widened `reassign_team_client()`) is that the
+  // destination must be one of the CALLER's own team agents, never an
+  // arbitrary agent elsewhere. `fetchTeamReassignCandidates(teamId, ...)`
+  // below already only ever lists the caller's own team, so no client-side
+  // change is needed there — this fix is purely about no longer refusing to
+  // resolve a guest-held client in the first place.
+  const client = overview?.clients.find((c) => c.id === clientId) ?? overview?.guestClients.find((c) => c.id === clientId);
+  const isHeldGuestClient = client?.isGuestRecord === true;
 
   const loadCandidates = useCallback(async () => {
     if (!teamId || !client) return;
@@ -114,13 +126,19 @@ export default function ReassignClientScreen() {
 
   if (!client) {
     return (
-      <YStack flex={1} justifyContent="center" alignItems="center" backgroundColor={BIZLINK_COLORS.canvas}>
-        <Text fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted}>Client not found.</Text>
+      <YStack flex={1} justifyContent="center" alignItems="center" backgroundColor={BIZLINK_COLORS.canvas} paddingHorizontal="$5">
+        <Text fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} textAlign="center">Client not found.</Text>
       </YStack>
     );
   }
 
-  const currentAgent = overview?.agents.find((a) => a.id === client.agentId);
+  // B-133 follow-up: a held client's current owner is never in
+  // `overview.agents` (own team roster only) — same fallback pattern as
+  // the Client Detail / Meeting Detail fixes.
+  const currentAgent = overview?.agents.find((a) => a.id === client.agentId)
+    ?? (isHeldGuestClient && client.guestOwnerAgentName
+      ? { id: client.agentId, name: client.guestOwnerAgentName }
+      : undefined);
 
   return (
     <YStack flex={1} backgroundColor={BIZLINK_COLORS.canvas} paddingTop={insets.top}>
@@ -132,6 +150,14 @@ export default function ReassignClientScreen() {
             Kasalukuyang agent: <Text color={BIZLINK_COLORS.text} fontFamily={BIZLINK_FONTS.semibold}>{currentAgent?.name ?? 'Unassigned'}</Text>
           </Text>
         </YStack>
+
+        {isHeldGuestClient ? (
+          <YStack backgroundColor={BIZLINK_COLORS.tintA} borderRadius={20} padding={14} marginBottom="$3.5">
+            <Text fontSize={12.5} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.brand}>
+              This is a held record from another team. Reassigning it moves it onto your own team — pick one of your own agents below.
+            </Text>
+          </YStack>
+        ) : null}
 
         {!online ? (
           <YStack backgroundColor={BIZLINK_COLORS.amberSoft} borderRadius={20} padding={14} marginBottom="$3.5">

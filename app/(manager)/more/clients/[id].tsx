@@ -1,7 +1,8 @@
+import { useEffect, useState } from 'react';
 import { ScrollView } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router, useLocalSearchParams } from 'expo-router';
-import { Calendar, Handshake, Pencil, Repeat, Users as UsersIcon } from 'lucide-react-native';
+import { Calendar, Handshake, Pencil, Repeat, ShieldCheck, Users as UsersIcon } from 'lucide-react-native';
 import { Spinner, Text, XStack, YStack } from 'tamagui';
 import { BIZLINK_COLORS, BIZLINK_FONTS } from '../../../../lib/theme';
 import { CLIENT_STATUS_BADGES } from '../../../../lib/client-status';
@@ -14,7 +15,10 @@ import { BizButton } from '../../../../components/bizlink/BizButton';
 import { ProgressRing } from '../../../../components/ui/ProgressRing';
 import { StatusBadge } from '../../../../components/ui/StatusBadge';
 import { meetingBadge } from '../../../../lib/meeting-badge';
+import { initialsFromName } from '../../../../lib/display-name';
 import { useSession } from '../../../../lib/session-store';
+import { getClientRecordHolders, type ClientRecordHolder } from '../../../../lib/client-holder-service';
+import { GuestHeldClientBanner } from '../../../../components/manager/GuestHeldClientBanner';
 
 const CHECKLIST_LABELS: Record<string, string> = {
   name: 'Company name',
@@ -36,6 +40,37 @@ export default function ManagerClientDetailScreen() {
   const { overview, loading, error, reload } = useTeamOverview();
   const { profileId } = useSession();
 
+  // ADR-067: read-only display of the client's current permanent record
+  // holder set. Fetched independently of `useTeamOverview()` (which has no
+  // holder data) — a client-scoped read, so it re-runs whenever the route's
+  // `id` param changes, same as any other per-client detail fetch on this
+  // screen. Errors are swallowed to a null-holders empty state rather than
+  // blocking the whole screen — this is a supplementary display, not the
+  // record itself.
+  const [holders, setHolders] = useState<ClientRecordHolder[] | null>(null);
+  const [holdersLoading, setHoldersLoading] = useState(true);
+  const [holdersError, setHoldersError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (typeof id !== 'string') return;
+    let cancelled = false;
+    setHoldersLoading(true);
+    setHoldersError(null);
+    getClientRecordHolders(id)
+      .then((rows) => {
+        if (!cancelled) setHolders(rows);
+      })
+      .catch((err) => {
+        if (!cancelled) setHoldersError(err instanceof Error ? err.message : 'Could not load record holders.');
+      })
+      .finally(() => {
+        if (!cancelled) setHoldersLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [id]);
+
   if (loading) {
     return (
       <YStack flex={1} justifyContent="center" alignItems="center" backgroundColor={BIZLINK_COLORS.canvas}>
@@ -53,7 +88,11 @@ export default function ManagerClientDetailScreen() {
     );
   }
 
-  const client = overview?.clients.find((c) => c.id === id);
+  // Guest Records fallback (2026-08-22): a held client from another team is
+  // never in `overview.clients` (team-scoped) — same class of bug B-131
+  // fixed for Meeting Detail, same fix pattern: fall back to
+  // `overview.guestClients` before declaring "not found".
+  const client = overview?.clients.find((c) => c.id === id) ?? overview?.guestClients.find((c) => c.id === id);
   if (!client) {
     return (
       <YStack flex={1} justifyContent="center" alignItems="center" backgroundColor={BIZLINK_COLORS.canvas}>
@@ -62,8 +101,18 @@ export default function ManagerClientDetailScreen() {
     );
   }
 
-  const agent = overview?.agents.find((a) => a.id === client.agentId);
-  const clientMeetings = overview?.meetings.filter((m) => m.clientId === client.id) ?? [];
+  const isGuestHeldClient = client.isGuestRecord === true;
+  // B-133 follow-up: a guest-held client's owning agent is never in
+  // `overview.agents` (own team roster only, by design) — same fallback
+  // pattern as B-131's Meeting Detail fix, using the name that travels on
+  // the client row itself.
+  const agent = overview?.agents.find((a) => a.id === client.agentId)
+    ?? (isGuestHeldClient && client.guestOwnerAgentName
+      ? { id: client.agentId, name: client.guestOwnerAgentName, initials: initialsFromName(client.guestOwnerAgentName) }
+      : undefined);
+  // A held client's meetings never live in `overview.meetings` (team-scoped)
+  // — `overview.guestMeetings` carries its full history (ADR-067 decision 2).
+  const clientMeetings = [...(overview?.meetings ?? []), ...(overview?.guestMeetings ?? [])].filter((m) => m.clientId === client.id);
   const presented = clientMeetings.some((m) => m.agenda.includes('Product / company presentation'));
   const progress = computeTeamClientProgress(client, clientMeetings);
   const isManagerOwned = client.agentId === profileId;
@@ -97,6 +146,8 @@ export default function ManagerClientDetailScreen() {
             />
           </YStack>
         </BizCard>
+
+        <GuestHeldClientBanner client={client} />
 
         <XStack gap="$1" marginTop="$3" paddingHorizontal="$1">
           {lifecycleStages.map((stage, index) => (
@@ -139,7 +190,9 @@ export default function ManagerClientDetailScreen() {
           <Text fontSize={12} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted} textAlign="center">
             {isManagerOwned
               ? "Manager-owned record: changes apply directly, but they're still version-checked on upload."
-              : "This is a team record. Sales edit requests go through Approvals; it won't be silently overwritten."}
+              : isGuestHeldClient
+                ? "This is a held record from another team — any edit request on it can go through you, and you can reassign it onto your own team."
+                : "This is a team record. Sales edit requests go through Approvals; it won't be silently overwritten."}
           </Text>
         </YStack>
 
@@ -154,6 +207,13 @@ export default function ManagerClientDetailScreen() {
               />
             </YStack>
           ) : null}
+          {/* B-134 (2026-08-22, reversed same day): a holder CAN reassign a
+              held client — Web migration 125 widens reassign_team_client()
+              with a holder OR-arm, scoped to the caller's own team as the
+              only valid destination. Button shown for both own-team and
+              guest-held clients now; reassign.tsx's own info banner
+              explains the "moves onto your own team" framing for the
+              guest-held case. */}
           <YStack flex={1}>
             <BizButton
               label="Reassign client"
@@ -163,6 +223,39 @@ export default function ManagerClientDetailScreen() {
             />
           </YStack>
         </XStack>
+
+        <BizSectionHeader title="Record holders" helper="Permanent once approved" />
+        {holdersLoading ? (
+          <YStack alignItems="center" paddingVertical="$3">
+            <Spinner size="small" color={BIZLINK_COLORS.brand} />
+          </YStack>
+        ) : holdersError ? (
+          <Text fontSize={12} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted}>{holdersError}</Text>
+        ) : !holders || holders.length === 0 ? (
+          <Text fontSize={12} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.muted}>
+            No manager has become a record holder for this client yet.
+          </Text>
+        ) : (
+          <BizCard gap="$0">
+            {holders.map((holder, index) => (
+              <XStack
+                key={holder.managerId}
+                alignItems="center"
+                gap="$2.5"
+                paddingVertical={9}
+                borderBottomWidth={index === holders.length - 1 ? 0 : 1}
+                borderBottomColor={BIZLINK_COLORS.line}
+              >
+                <YStack width={30} height={30} borderRadius={15} alignItems="center" justifyContent="center" backgroundColor={BIZLINK_COLORS.tintA}>
+                  <ShieldCheck size={14} color={BIZLINK_COLORS.brand} strokeWidth={1.75} />
+                </YStack>
+                <Text fontSize={13.5} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.text}>
+                  {holder.managerName ?? 'Manager'}
+                </Text>
+              </XStack>
+            ))}
+          </BizCard>
+        )}
 
         <BizSectionHeader title="Meeting history" />
         {clientMeetings.length === 0 ? (

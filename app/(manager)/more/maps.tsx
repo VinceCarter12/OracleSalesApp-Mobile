@@ -9,7 +9,7 @@ import { useManagerMapsScreen } from '../../../lib/use-manager-maps-screen';
 import { useOrgWideProspectMarkers } from '../../../lib/use-org-wide-prospect-markers';
 import { MEETING_MARKER_TYPE_LABEL } from '../../../lib/policies/meeting-marker-type';
 import type { MeetingTypeFilterValue, MeetingStatusFilterValue } from '../../../lib/use-maps-screen';
-import { MAP_TEAM_RECORD_COLOR } from '../../../lib/map-marker-colors';
+import { MAP_GUEST_RECORD_COLOR, MAP_TEAM_RECORD_COLOR } from '../../../lib/map-marker-colors';
 import { isLikelyOnline } from '../../../lib/sync/connectivity';
 import { BizTopBar } from '../../../components/bizlink/BizTopBar';
 import { useManagerScope } from '../../../lib/manager-scope-store';
@@ -141,7 +141,9 @@ export default function ManagerMapsScreen() {
     const [kind, recordId] = id.split(':');
     if (kind === 'office') {
       const pin = managerMaps.filteredPins.find((p) => p.id === recordId);
-      if (pin?.isTeam) {
+      // Guest Records pins are also "not my own pin" — same query-param
+      // routing as a team pin (neither lives in this manager's own SQLite).
+      if (pin?.isTeam || pin?.isGuest) {
         router.push({
           pathname: '/(manager)/more/office-map/[id]',
           params: {
@@ -231,13 +233,22 @@ export default function ManagerMapsScreen() {
         <Text fontSize={12} fontFamily={BIZLINK_FONTS.semibold} color={BIZLINK_COLORS.brand} marginTop="$2">
           {managerMaps.filteredPins.length} office · {displayedMeetings.length} meeting{displayedMeetings.length === 1 ? '' : 's'}
         </Text>
-        <MapLegend extraItems={[...(scope !== 'mine' ? [{ color: MAP_TEAM_RECORD_COLOR, label: 'Team record' }] : []), ...(orgWideProspects.enabled ? [ORG_WIDE_PROSPECT_LEGEND_ENTRY] : [])]} />
+        <MapLegend
+          extraItems={[
+            ...(scope === 'team' || scope === 'combined' ? [{ color: MAP_TEAM_RECORD_COLOR, label: 'Team record' }] : []),
+            ...(scope === 'guest' || scope === 'combined' ? [{ color: MAP_GUEST_RECORD_COLOR, label: 'Guest record' }] : []),
+            ...(orgWideProspects.enabled ? [ORG_WIDE_PROSPECT_LEGEND_ENTRY] : []),
+          ]}
+        />
 
         <ManagerTeamMapStatusBanner
           scope={scope}
-          loading={managerMaps.teamLoading}
-          error={managerMaps.teamError}
-          onRetry={managerMaps.reloadTeam}
+          loading={managerMaps.teamLoading || managerMaps.guestLoading}
+          error={managerMaps.teamError ?? managerMaps.guestError}
+          onRetry={() => {
+            managerMaps.reloadTeam();
+            managerMaps.reloadGuest();
+          }}
         />
 
         <MapsListSection

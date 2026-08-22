@@ -144,14 +144,18 @@ describe('computeCoveredAgendaIds', () => {
 });
 
 describe('getVisibleAgendasForStage', () => {
-  it('prospect shows exactly the six ordinary agendas (close_deal excluded, no stage-rule row for it)', () => {
+  // ADR-061 (Vince, 2026-08-19/20): Close deal is now available at prospect
+  // too (Scenario 1 — a prospect may submit PO evidence directly), optional
+  // rather than required. Was: "prospect shows exactly the six ordinary
+  // agendas (close_deal excluded, no stage-rule row for it)".
+  it('prospect shows all seven agendas, including close_deal (ADR-061)', () => {
     const visible = getVisibleAgendasForStage({
       stage: 'prospect',
       policyVersion: DEFAULT_AGENDA_POLICY_VERSION,
       catalog: DEFAULT_AGENDA_CATALOG,
       stageRules: DEFAULT_AGENDA_STAGE_RULES,
     });
-    expect(visible.map((entry) => entry.agendaId)).toEqual(ORDINARY_IDS);
+    expect(visible.map((entry) => entry.agendaId)).toEqual([...ORDINARY_IDS, CLOSE_DEAL_AGENDA_ID]);
   });
 
   it('in_progress hides an ordinary agenda already covered this cycle but always shows close_deal', () => {

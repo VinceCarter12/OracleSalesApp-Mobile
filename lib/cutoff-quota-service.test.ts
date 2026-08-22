@@ -26,18 +26,21 @@ describe('isQualifyingLocalMeeting', () => {
     expect(isQualifyingLocalMeeting({ ...baseMeeting, outcome: 'Lost Opportunity' })).toBe(false);
   });
 
-  it.each(['draft', 'superseded', null])(
-    'excludes an In Progress Close deal meeting when PO status is %s',
+  // ADR-062 (Vince, 2026-08-19): a meeting counts as soon as it is recorded.
+  // These four cases previously asserted the opposite for 'draft'/'superseded'/
+  // null — a PO gate that the server has never had. The live
+  // `attribute_meeting_cutoff()` (web migration 098) checks outcome and
+  // evidence only, so holding the local count back made mobile stricter than
+  // the server and told the agent "not counted yet" about a meeting already
+  // credited server-side. See B-121.
+  it.each(['draft', 'superseded', 'pending', 'approved', 'rejected', 'cancelled', null])(
+    'counts an In Progress Close deal meeting regardless of PO status (%s)',
     (po_confirmation_status) => {
-      expect(isQualifyingLocalMeeting({ ...baseMeeting, po_confirmation_status })).toBe(false);
+      expect(isQualifyingLocalMeeting({ ...baseMeeting, po_confirmation_status })).toBe(true);
     }
   );
 
-  it.each(['pending', 'approved', 'rejected', 'cancelled'])('counts an In Progress Close deal meeting when PO is %s', (po_confirmation_status) => {
-    expect(isQualifyingLocalMeeting({ ...baseMeeting, po_confirmation_status })).toBe(true);
-  });
-
-  it('does not add the PO gate to other meeting types', () => {
+  it('counts a prospect Close deal meeting with no PO evidence at all', () => {
     expect(
       isQualifyingLocalMeeting({
         ...baseMeeting,

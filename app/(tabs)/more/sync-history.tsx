@@ -24,7 +24,7 @@ export default function SyncHistoryScreen() {
   const insets = useSafeAreaInsets();
   const BIZLINK_COLORS = useBizlinkColors();
   const {
-    loading, reload, search, onSearchChange, outcomeFilter, onFilterChange,
+    loading, reload, search, onSearchChange, outcomeFilter, onFilterChange, originFilter, onOriginFilterChange,
     dateRange, onDateRangeChange, filtersActive, resetFilters,
     entries, pageItems, page, totalPages, setPage,
   } = useSyncHistory();
@@ -45,6 +45,8 @@ export default function SyncHistoryScreen() {
           onSearchChange={onSearchChange}
           outcomeFilter={outcomeFilter}
           onFilterChange={onFilterChange}
+          originFilter={originFilter}
+          onOriginFilterChange={onOriginFilterChange}
           dateRange={dateRange}
           onDateRangeChange={onDateRangeChange}
           filtersActive={filtersActive}

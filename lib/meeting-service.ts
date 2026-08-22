@@ -233,6 +233,10 @@ async function createMeetingOnce(record: NewMeetingRecord): Promise<string> {
       agendaIds,
       agendaCatalog,
       meetingValidityStatus: validityStatus,
+      // ADR-061: `record.poEvidence` is only ever built when isCloseDealPoEligible()
+      // passed (record.tsx), so its presence here is exactly "this meeting is
+      // submitting PO evidence" — no separate re-derivation needed.
+      hasPoEvidence: Boolean(record.poEvidence),
     });
   } catch (err) {
     // Best-effort only — a failure here must never affect the already-saved

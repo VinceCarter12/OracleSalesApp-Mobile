@@ -8,10 +8,11 @@
 // reliable signal — checked FIRST, before falling back to `location_type`
 // for the in-person case.
 
-export type MeetingMarkerType = 'client_office' | 'online' | 'others';
+export type MeetingMarkerType = 'client_office' | 'company_office' | 'online' | 'others';
 
 export const MEETING_MARKER_TYPE_LABEL: Record<MeetingMarkerType, string> = {
   client_office: 'Client Office',
+  company_office: 'Company Office',
   online: 'Online',
   others: 'Others',
 };
@@ -19,9 +20,10 @@ export const MEETING_MARKER_TYPE_LABEL: Record<MeetingMarkerType, string> = {
 /**
  * @param meetingMode `meetings.meeting_mode` — `'in_person' | 'online'` or
  *   null/undefined for pre-migration rows.
- * @param locationType `meetings.location_type` — `'Client Office' | 'Online'
- *   | 'Others'` on full-form meetings, `'Client Office' | 'Others'` only on
- *   fast-path meetings, or null.
+ * @param locationType `meetings.location_type` — `'Client Office' | 'Company
+ *   Office' | 'Online' | 'Others'` on full-form meetings, `'Client Office' |
+ *   'Others'` only on fast-path meetings, or null. ('Company Office' is
+ *   ADR-063, full-form only — the fast-path screen has no location chip.)
  */
 export function classifyMeetingMarkerType(
   meetingMode: string | null | undefined,
@@ -29,5 +31,6 @@ export function classifyMeetingMarkerType(
 ): MeetingMarkerType {
   if (meetingMode === 'online') return 'online';
   if (locationType === 'Others') return 'others';
+  if (locationType === 'Company Office') return 'company_office';
   return 'client_office';
 }

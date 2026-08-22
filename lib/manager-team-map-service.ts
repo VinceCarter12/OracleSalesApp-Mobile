@@ -23,6 +23,7 @@ export interface TeamOfficePin {
   companyName: string;
   officeLat: number;
   officeLng: number;
+  officePinUpdatedAt: string | null;
   verified: boolean;
   agentId: string;
 }
@@ -79,19 +80,25 @@ interface TeamOfficePinRow {
   company_name: string;
   office_lat: number | null;
   office_lng: number | null;
+  office_pin_updated_at: string | null;
   office_pin_source: 'manual' | 'client_office_meeting' | null;
   assigned_agent_id: string;
 }
 
+// B-130 (Vince, 2026-08-21): had no ordering at all — the "My Team" scope's
+// office pin cards came back in whatever order Postgres happened to scan
+// them, not the most recently pinned first. Same fix shape as B-129
+// (lib/manager-team-service.ts's clients/meetings queries).
 async function fetchTeamOfficePins(agentIds: string[]): Promise<TeamOfficePin[]> {
   if (agentIds.length === 0) return [];
   const { data, error } = await supabase
     .from('clients')
-    .select('id, company_name, office_lat, office_lng, office_pin_source, assigned_agent_id')
+    .select('id, company_name, office_lat, office_lng, office_pin_updated_at, office_pin_source, assigned_agent_id')
     .in('assigned_agent_id', agentIds)
     .not('office_lat', 'is', null)
     .not('office_lng', 'is', null)
-    .neq('status', 'inactive');
+    .neq('status', 'inactive')
+    .order('office_pin_updated_at', { ascending: false });
   if (error) throw error;
   return ((data ?? []) as TeamOfficePinRow[])
     .filter((row): row is TeamOfficePinRow & { office_lat: number; office_lng: number } => row.office_lat !== null && row.office_lng !== null)
@@ -100,6 +107,7 @@ async function fetchTeamOfficePins(agentIds: string[]): Promise<TeamOfficePin[]>
       companyName: row.company_name,
       officeLat: row.office_lat,
       officeLng: row.office_lng,
+      officePinUpdatedAt: row.office_pin_updated_at,
       verified: isOfficePinVerified(row.office_pin_source),
       agentId: row.assigned_agent_id,
     }));
@@ -137,7 +145,10 @@ async function fetchTeamMeetingRows(agentIds: string[], dateWindow?: TeamMapDate
     .not('start_captured_at', 'is', null);
   if (dateWindow?.startAt) query = query.gte('start_captured_at', dateWindow.startAt);
   if (dateWindow?.endAtExclusive) query = query.lt('start_captured_at', dateWindow.endAtExclusive);
-  const { data, error } = await query;
+  // B-130: same missing-order gap as the office pins query above — newest
+  // visit first, matching lib/use-meeting-map-markers.ts's own-records
+  // query, which already had this.
+  const { data, error } = await query.order('start_captured_at', { ascending: false });
   if (error) throw error;
 
   return ((data ?? []) as TeamMeetingRow[])

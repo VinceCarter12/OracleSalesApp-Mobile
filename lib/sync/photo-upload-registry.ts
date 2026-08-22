@@ -2,7 +2,7 @@ import { File } from 'expo-file-system';
 import { supabase } from '../supabase';
 import { uuidv4 } from '../uuid';
 import { isSyncRunning, runSync } from '../sync-engine';
-import { enqueueOutboxRow, type EntityTableName } from './entity-registry';
+import { enqueueOutboxRow, tableHasSyncStatusColumn, type EntityTableName } from './entity-registry';
 import { isLikelyOnline } from './connectivity';
 import { withTimeout } from '../with-timeout';
 import type { SQLiteDatabase } from 'expo-sqlite';
@@ -16,7 +16,7 @@ import type { SQLiteDatabase } from 'expo-sqlite';
 // meeting-named wrappers but delegates here so there is one source of truth,
 // and lib/sync/photo-uploads.ts drives the queue generically for every kind.
 
-export type PhotoParentTable = 'meetings' | 'collection_visits' | 'purchase_orders';
+export type PhotoParentTable = 'meetings' | 'collection_visits' | 'purchase_orders' | 'po_confirmation_requests';
 
 // selfie/start/end = meetings (existing); the rest are F-007 collection &
 // delivery proofs. 'start' intentionally has NO registry entry below and so
@@ -34,7 +34,11 @@ export type PhotoKind =
   | 'proof'
   | 'backload'
   | 'cod'
-  | 'signature';
+  | 'signature'
+  // B-127: PO evidence joins the offline photo lane so a captured PO uploads
+  // and self-patches like a meeting selfie, instead of being uploaded inline
+  // by an online-only submit that had no retry.
+  | 'po_evidence';
 
 export interface PhotoUploadKindConfig {
   parentTable: PhotoParentTable;
@@ -61,6 +65,9 @@ export const PHOTO_UPLOAD_KINDS: Partial<Record<PhotoKind, PhotoUploadKindConfig
   // meetings (unchanged from the original meeting-only lane)
   selfie: { parentTable: 'meetings', bucket: 'meeting-photos', remoteColumn: 'photo_url', localColumn: 'selfie_url' },
   end: { parentTable: 'meetings', bucket: 'meeting-photos', remoteColumn: 'end_photo_url', localColumn: 'end_photo_url' },
+  // B-127: same bucket as meeting photos — web migration 078 already grants
+  // the scoped SELECT/UPDATE this lane needs on `meeting-photos`.
+  po_evidence: { parentTable: 'po_confirmation_requests', bucket: 'meeting-photos', remoteColumn: 'po_photo_path', localColumn: 'po_photo_path' },
   // collection_visits (web 043) — bucket `collection-proofs`
   payment: {
     parentTable: 'collection_visits',
@@ -116,7 +123,12 @@ export function buildPhotoStoragePath(
   kind: PhotoKind,
 ): string {
   const prefix =
-    parentTable === 'meetings' ? 'meetings' : parentTable === 'collection_visits' ? 'collection' : 'delivery';
+    parentTable === 'meetings' || parentTable === 'po_confirmation_requests'
+      // B-127: PO evidence keeps the `meetings/` prefix its original
+      // online-only path already used (buildPoEvidenceStoragePath), so
+      // storage objects written before this change stay addressable.
+      ? 'meetings'
+      : parentTable === 'collection_visits' ? 'collection' : 'delivery';
   return `${prefix}/${userId}/${parentId}-${kind}.jpg`;
 }
 
@@ -168,10 +180,23 @@ export async function enqueuePhotoUrlUpdate(
   const createdOnline = await isLikelyOnline();
 
   await db.withTransactionAsync(async () => {
-    await db.runAsync(
-      `UPDATE ${parentTable} SET ${config.localColumn} = ?, sync_status = 'pending', local_updated_at = ? WHERE id = ?`,
-      [publicUrl, now, parentId],
-    );
+    // B-127: `po_confirmation_requests` carries neither `sync_status` nor
+    // `local_updated_at` — its own `status` column is the sync state (same as
+    // client_edit_requests). Writing the generic mirror columns there threw
+    // `no such column: sync_status`, which expo-sqlite surfaced as
+    // `NativeDatabase.prepareAsync has been rejected` and killed the WHOLE
+    // sync pass, not just this row.
+    if (tableHasSyncStatusColumn(parentTable as EntityTableName)) {
+      await db.runAsync(
+        `UPDATE ${parentTable} SET ${config.localColumn} = ?, sync_status = 'pending', local_updated_at = ? WHERE id = ?`,
+        [publicUrl, now, parentId],
+      );
+    } else {
+      await db.runAsync(
+        `UPDATE ${parentTable} SET ${config.localColumn} = ?, updated_at = ? WHERE id = ?`,
+        [publicUrl, now, parentId],
+      );
+    }
     await enqueueOutboxRow(db, {
       outboxId,
       recordId: parentId,

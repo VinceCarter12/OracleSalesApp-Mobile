@@ -15,8 +15,8 @@ import {
   type ClientCompanionRequest,
 } from '../../../lib/tag-along-service';
 import { OUTCOME_BADGE_STYLES, useBizlinkColors, BIZLINK_FONTS, BIZLINK_ON_INK } from '../../../lib/theme';
-import { SALES_CLIENT_STATUS_BADGES, getClientStatus, WAITING_MANAGER_APPROVAL_BADGE, WAITING_MANAGER_PO_APPROVAL_BADGE } from '../../../lib/client-status';
-import { getClientIdsWithPendingPoConfirmation } from '../../../lib/po-confirmation-service';
+import { SALES_CLIENT_STATUS_BADGES, getClientStatus, WAITING_MANAGER_APPROVAL_BADGE, WAITING_MANAGER_PO_APPROVAL_BADGE, WAITING_MANAGER_PO_APPROVAL_PROSPECT_BADGE, PROSPECT_PO_PENDING_WARNING } from '../../../lib/client-status';
+import { getClientIdsWithPendingPoConfirmation, getClientIdsWithPendingProspectPoConfirmation } from '../../../lib/po-confirmation-service';
 import { getClientProgressBreakdown, getInfoChecklist, isInfoComplete } from '../../../lib/client-progress';
 import { useMeetings } from '../../../lib/useMeetings';
 import { useClientFlowRoutes } from '../../../lib/use-role-routes';
@@ -41,6 +41,7 @@ export default function ClientDetailScreen() {
   const [companionRequests, setCompanionRequests] = useState<ClientCompanionRequest[]>([]);
   const [waitingManagerApproval, setWaitingManagerApproval] = useState(false);
   const [waitingManagerPoApproval, setWaitingManagerPoApproval] = useState(false);
+  const [waitingManagerPoApprovalAtProspect, setWaitingManagerPoApprovalAtProspect] = useState(false);
   const { meetings } = useMeetings(id);
 
   // Local SQLite is the primary read path (ADR-001/T-003) — a `pending`
@@ -83,6 +84,13 @@ export default function ClientDetailScreen() {
     setWaitingManagerPoApproval(ids.has(id));
   }, [id, profileId]);
 
+  // ADR-061 Scenario 1: prospect-stage counterpart, same batch-helper pattern.
+  const loadWaitingManagerPoApprovalAtProspect = useCallback(async () => {
+    if (!id || !profileId) return;
+    const ids = await getClientIdsWithPendingProspectPoConfirmation(profileId);
+    setWaitingManagerPoApprovalAtProspect(ids.has(id));
+  }, [id, profileId]);
+
   useEffect(() => {
     loadCompanionRequests();
   }, [loadCompanionRequests]);
@@ -95,6 +103,10 @@ export default function ClientDetailScreen() {
     loadWaitingManagerPoApproval();
   }, [loadWaitingManagerPoApproval]);
 
+  useEffect(() => {
+    loadWaitingManagerPoApprovalAtProspect();
+  }, [loadWaitingManagerPoApprovalAtProspect]);
+
   // Refresh after Complete Info saves and navigates back.
   useFocusEffect(
     useCallback(() => {
@@ -102,7 +114,14 @@ export default function ClientDetailScreen() {
       loadCompanionRequests();
       loadWaitingManagerApproval();
       loadWaitingManagerPoApproval();
-    }, [loadClient, loadCompanionRequests, loadWaitingManagerApproval, loadWaitingManagerPoApproval])
+      loadWaitingManagerPoApprovalAtProspect();
+    }, [
+      loadClient,
+      loadCompanionRequests,
+      loadWaitingManagerApproval,
+      loadWaitingManagerPoApproval,
+      loadWaitingManagerPoApprovalAtProspect,
+    ])
   );
 
   if (loading) {
@@ -160,10 +179,24 @@ export default function ClientDetailScreen() {
                   color={BIZLINK_COLORS[WAITING_MANAGER_PO_APPROVAL_BADGE.color]}
                 />
               ) : null}
+              {/* ADR-061 Scenario 1: prospect-stage variant — the client stays PROSPECT while this is pending. */}
+              {waitingManagerPoApprovalAtProspect ? (
+                <StatusBadge
+                  label={WAITING_MANAGER_PO_APPROVAL_PROSPECT_BADGE.label}
+                  background={BIZLINK_COLORS[WAITING_MANAGER_PO_APPROVAL_PROSPECT_BADGE.background]}
+                  color={BIZLINK_COLORS[WAITING_MANAGER_PO_APPROVAL_PROSPECT_BADGE.color]}
+                />
+              ) : null}
               {client.sales_channel ? (
                 <StatusBadge label={client.sales_channel} background={BIZLINK_COLORS.soft} color={BIZLINK_COLORS.navy} />
               ) : null}
             </XStack>
+            {/* ADR-061: Vince's "warning message" ask — explains why the client hasn't visibly advanced. */}
+            {waitingManagerPoApprovalAtProspect ? (
+              <Text fontSize={11.5} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.orange} marginTop="$1" lineHeight={16}>
+                {PROSPECT_PO_PENDING_WARNING}
+              </Text>
+            ) : null}
             {/* States plainly that the ring is a Record Meeting -> Agenda
                 outcome, not an info-completion score (B-001, corrected
                 2026-07-11 — info completion has zero weight here). */}

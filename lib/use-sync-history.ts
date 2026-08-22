@@ -1,6 +1,6 @@
 import { useCallback, useMemo, useState } from 'react';
 import { getSyncHistory, type SyncHistoryEntry } from './sync-history';
-import { getDisplayStatus, type SyncHistoryFilterValue } from './sync-history-display';
+import { getDisplayStatus, type SyncHistoryFilterValue, type SyncHistoryOriginFilterValue } from './sync-history-display';
 import { usePagination } from './use-pagination';
 import { isWithinDateRange } from './date-range';
 import type { DateRange } from '../components/bizlink/DateRangePickerModal';
@@ -20,6 +20,7 @@ export function useSyncHistory() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [outcomeFilter, setOutcomeFilter] = useState<SyncHistoryFilterValue>('all');
+  const [originFilter, setOriginFilter] = useState<SyncHistoryOriginFilterValue>('all');
   const [dateRange, setDateRange] = useState<DateRange | null>(null);
 
   const reload = useCallback(() => {
@@ -34,6 +35,8 @@ export function useSyncHistory() {
     return entries.filter((entry) => {
       const displayStatus = getDisplayStatus(entry);
       if (outcomeFilter !== 'all' && displayStatus !== outcomeFilter) return false;
+      if (originFilter === 'online' && entry.createdOnline !== true) return false;
+      if (originFilter === 'offline' && entry.createdOnline !== false) return false;
       if (!isWithinDateRange(new Date(entry.occurredAt), dateRange)) return false;
       if (!query) return true;
       return (
@@ -42,15 +45,16 @@ export function useSyncHistory() {
         (entry.lastError ?? '').toLowerCase().includes(query)
       );
     });
-  }, [entries, search, outcomeFilter, dateRange]);
+  }, [entries, search, outcomeFilter, originFilter, dateRange]);
 
-  const resetKey = `${outcomeFilter}:${dateRange ? `${dateRange.start.getTime()}-${dateRange.end.getTime()}` : 'all'}:${search.trim().toLowerCase()}`;
+  const resetKey = `${outcomeFilter}:${originFilter}:${dateRange ? `${dateRange.start.getTime()}-${dateRange.end.getTime()}` : 'all'}:${search.trim().toLowerCase()}`;
   const { page, totalPages, pageItems, setPage } = usePagination(filteredEntries, resetKey);
 
-  const filtersActive = outcomeFilter !== 'all' || dateRange !== null;
+  const filtersActive = outcomeFilter !== 'all' || originFilter !== 'all' || dateRange !== null;
 
   const resetFilters = useCallback(() => {
     setOutcomeFilter('all');
+    setOriginFilter('all');
     setDateRange(null);
   }, []);
 
@@ -62,6 +66,8 @@ export function useSyncHistory() {
     onSearchChange: setSearch,
     outcomeFilter,
     onFilterChange: setOutcomeFilter,
+    originFilter,
+    onOriginFilterChange: setOriginFilter,
     dateRange,
     onDateRangeChange: setDateRange,
     filtersActive,

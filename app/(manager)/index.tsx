@@ -32,7 +32,9 @@ import type { ManagerScope } from '../../lib/manager-scope';
 // Wireframe-Manager-BizLink.html renderManagerScope() (~line 1123/1127-1132):
 // `meta={mine:{...label:'My'},team:{...label:'Team'},combined:{...label:'Combined'}}`
 // — the stat-card labels below change with scope, not just their numbers.
-const SCOPE_LABEL: Record<ManagerScope, string> = { mine: 'My', team: 'Team', combined: 'Combined' };
+// Guest Records (2026-08-22): no wireframe entry (skip-authorized) — 'Guest'
+// follows the same short-caption style as the other three.
+const SCOPE_LABEL: Record<ManagerScope, string> = { mine: 'My', team: 'Team', combined: 'Combined', guest: 'Guest' };
 
 // Wireframe-Manager-BizLink.html renderManagerScope() (~line 1147-1149):
 // `document.getElementById('managerScopeNote').textContent = managerScope==='mine'
@@ -51,6 +53,10 @@ function scopeHelperNote(scope: ManagerScope, lastSyncAt: string | null): string
     const syncLabel = lastSyncAt ? timeAgo(lastSyncAt) : 'never synced yet';
     return `Team snapshot. Last authorized sync: ${syncLabel}.`;
   }
+  // Guest Records (2026-08-22): held clients from other teams — always a
+  // live Supabase read (`lib/manager-held-clients.ts`), same online-only
+  // caveat as "My Team".
+  if (scope === 'guest') return 'Held clients from other teams. Requires an internet connection.';
   return 'Combined view. Team data is the last authorized sync when offline.';
 }
 
