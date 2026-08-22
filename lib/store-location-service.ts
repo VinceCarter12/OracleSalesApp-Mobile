@@ -227,12 +227,13 @@ export async function addStoreLocation(input: AddStoreLocationInput): Promise<St
  * Delete semantics depend on whether the pin ever reached the server:
  * - NEVER pushed (`remote_id IS NULL`) → HARD delete. It only ever lived on this
  *   device, so removing the row is clean (like cancelling an un-pushed create).
- * - ALREADY pushed (`remote_id` set) → SOFT delete (`local_deleted = 1`). Web has
- *   no delete RPC yet, so the row still exists on the server; a hard delete would
- *   just be re-pulled by the down-sync and reappear. The tombstone hides it from
- *   every read here and the down-sync skips re-applying it, so the delete sticks
- *   on THIS device. ⚠️ Teammates still see the server row until web ships a real
- *   delete this can convert into a server-side removal (STORE_LOCATIONS_CONTRACT).
+ * - ALREADY pushed (`remote_id` set) → SOFT delete (`local_deleted = 1`,
+ *   `sync_status = 'pending'`). The tombstone hides the pin from every read here
+ *   and the down-sync skips re-applying it, so the delete sticks immediately on
+ *   THIS device; the push lane (store-location-push) then calls the web
+ *   `delete_client_location` RPC (migration 124), removes the server row, and
+ *   hard-deletes the local tombstone — a real team-wide delete. Until that push
+ *   lands (offline) it stays a local hide.
  */
 export async function deleteStoreLocation(clientId: string, locationId: string): Promise<void> {
   const db = await getDb();
@@ -247,8 +248,10 @@ export async function deleteStoreLocation(clientId: string, locationId: string):
     if (target.remote_id == null) {
       await db.runAsync('DELETE FROM client_locations WHERE id = ? AND client_id = ?', [locationId, clientId]);
     } else {
+      // Tombstone + enqueue for the delete push. sync_status='pending' is what the
+      // push lane scans; local_deleted=1 is how it tells a delete from a create.
       await db.runAsync(
-        'UPDATE client_locations SET local_deleted = 1, is_current = 0, local_updated_at = ? WHERE id = ? AND client_id = ?',
+        "UPDATE client_locations SET local_deleted = 1, is_current = 0, sync_status = 'pending', local_updated_at = ? WHERE id = ? AND client_id = ?",
         [now, locationId, clientId]
       );
     }

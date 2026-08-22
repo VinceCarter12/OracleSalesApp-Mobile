@@ -282,12 +282,10 @@ the pin on those detail screens. Note: the ", Bataan" province suffix is hardcod
 the screens for EVERY store (sales-created too) — an app-wide operating-province
 assumption, not per-record data; unchanged here to stay consistent with sales/RSR.
 
-🔴 **WEB owes, for the typed area to reach web/admin + other devices** (today it's
-local to the setting device, like the pin's field_set tier): add an **`area`** column
-to `client_locations` + an `p_area` param on `set_client_location()`, and either
-denormalize it onto the visits/POs (like `client_lat/lng`, so it rides the existing
-pull) **or** ship the deferred `client_locations` down-sync. Mobile's push
-(`store-location-push.ts`) will pass it once the RPC accepts it.
+✅ **DONE (web migration 123 + mobile wired 2026-08-22):** `area`/`province`/`kind`
+columns + `p_area`/`p_province`/`p_kind` params landed; mobile push sends them and the
+down-sync applies them. See **§area+branch → "✅ WEB SHIPPED (123)"** below for the
+authoritative status. (This paragraph was the original 🔴 web-owes ask.)
 
 ### `client_locations` down-sync SHIPPED (2026-08-21) — verified push works first
 
@@ -307,9 +305,9 @@ the server. So the down-sync has real data.
 - **`StoreLocationCard`** now shows **"Relocated · set by {name} · {when}"** whenever
   the resolved origin is `field_set` — so a co-worker opening the stop sees a colleague
   moved it and who/when, not just a silently-relocated dot.
-- **Still local-only:** `area`/`province` (web's `client_locations` has no such
-  columns; the down-sync intentionally doesn't touch them). Co-workers get the correct
-  pin + who/when; the municipality/province TEXT still needs the web add below.
+- **~~Still local-only: `area`/`province`~~ → now synced (web 123, 2026-08-22):** the
+  down-sync selects + applies `area`/`province`/`kind`, so co-workers also get the field
+  municipality and the branch flag. Superseded — see §area+branch below.
 
 ## §area+branch — Relocation vs. additional branch + additive municipality (2026-08-22)
 
@@ -350,38 +348,38 @@ things changed, both **additive and non-destructive**:
 - `CollectionStore` / `DeliveryPo` now carry **`registeredArea`** (the original
   `visits/POs.area`, preserved unconditionally alongside the possibly-overridden
   `area`). `StoreLocationCard` shows both when they differ.
-- Push/down-sync unchanged on the wire (see below) — `kind`/`area`/`province`
-  remain **local-only** until web adds the params.
+- Push/down-sync now carry `kind`/`area`/`province` on the wire (web 123 + mobile
+  wired 2026-08-22 — see below).
 
-### 👉 What WEB must add (so both values + the branch flag reach all roles)
+### ✅ WEB SHIPPED (migration 123) + MOBILE WIRED (2026-08-22)
 
-Until this ships, a branch flag and the field municipality live **only on the
-setting device** — the RSR/admin/other officers will NOT see them.
+Items 1–3 below are DONE — the branch flag and the field municipality now reach
+the admin board and other officers' devices. Only item 4 (the sales/RSR + admin
+**UI**) remains, and it needs a read-RLS grant (see note under it).
 
-1. **Columns on `client_locations`:**
-   ```sql
-   ALTER TABLE client_locations ADD COLUMN IF NOT EXISTS area     text;
-   ALTER TABLE client_locations ADD COLUMN IF NOT EXISTS province text;
-   ALTER TABLE client_locations ADD COLUMN IF NOT EXISTS kind     text NOT NULL DEFAULT 'relocation';
-   -- kind ∈ ('relocation','additional_branch')
-   ```
-2. **RPC params on `set_client_location()`** — add `p_area text`, `p_province
-   text`, `p_kind text default 'relocation'`. Persist them on the inserted row.
-   **Crucially:** when `p_kind = 'additional_branch'`, insert the row with
-   `is_current = false` and **do NOT** flip the client's current pin, and **do
-   NOT** re-stamp `client_lat/lng` on the visits/POs (114 keep-fresh) — a branch
-   is not the store's location. Only a relocation touches current/keep-fresh.
-3. **Down-sync** — include `area`, `province`, `kind` in whatever field roles read
-   (the denormalized visit/PO area column, or the `client_locations` pull). Mobile
-   already reads `area`/`province` locally and will map `kind` from the pull the
-   moment it's returned.
-4. **Sales/RSR + admin UI (the "visible in all records" part):** on the client /
-   store record, show the **field-observed municipality alongside** the registered
-   one (do not overwrite the registered field). Show **who/when** (`set_by_name`,
-   `captured_at`). Surface **additional-branch** rows as a distinct, triageable
-   list — this is where admin decides whether a branch becomes a real account. The
-   registered municipality remains the value that feeds territory/assignment until
-   admin promotes a field value.
+1. ✅ **Columns on `client_locations`** — `area`, `province`, `kind` (CHECK
+   `IN ('relocation','additional_branch')`, default `'relocation'`). Migration 123.
+2. ✅ **RPC params on `set_client_location()`** — `p_area` / `p_province` /
+   `p_kind` added (old 4-arg form dropped; new params default so a 4-arg call still
+   resolves). `p_kind='additional_branch'` inserts `is_current=false` and skips the
+   114 keep-fresh restamp. `set_current_client_location()` now rejects promoting a
+   branch. Migration 123.
+   - Mobile: `store-location-push.ts` passes `p_area`/`p_province`/`p_kind` on the
+     create; `types/database.ts` updated with the 7-arg signature.
+3. ✅ **Down-sync** — `store-location-sync-down.ts` now selects + applies `area`,
+   `province`, `kind`, so a co-worker sees the field municipality and an
+   `additional_branch` as a branch (not a silent relocation).
+4. ⏳ **Sales/RSR + admin UI (the "visible in all records" part) — STILL TODO
+   (Option 2).** On the client / store record, show the **field-observed
+   municipality alongside** the registered one (do not overwrite the registered
+   field). Show **who/when** (`set_by_name`, `captured_at`). Surface
+   **additional-branch** rows as a distinct, triageable list — where admin decides
+   whether a branch becomes a real account. The registered municipality remains the
+   value that feeds territory/assignment until admin promotes a field value.
+   ⚠️ **Also needs a read-RLS grant:** today `client_locations` SELECT is scoped to
+   field roles (113 RLS). Sales/RSR/admin roles must be granted read access (direct
+   or via a SECURITY DEFINER read fn) or the UI will render nothing. **So Option 1
+   alone does NOT make sales/RSR see field locations — Option 2 + this grant does.**
 
 ## Open questions for the owner / web
 
@@ -401,15 +399,18 @@ setting device** — the RSR/admin/other officers will NOT see them.
   it — a synced pin still exists on the server, and `store-location-sync-down` re-pulls
   it seconds later):
   - **Never-pushed** pin (`remote_id IS NULL`) → **hard** local delete. Clean.
-  - **Already-pushed** pin → **soft** local tombstone (`client_locations.local_deleted = 1`).
-    Every read filters `local_deleted = 0` and the down-sync skips re-applying it, so the
-    delete sticks on THIS device.
-  ⚠️ **Web owes a real delete (contract §delete):** the soft tombstone is LOCAL — the
-  server row is untouched, so **teammates still see the pin** and it returns on a fresh
-  reinstall. Web needs a `delete_client_location(p_id)` RPC (RLS: field role may delete
-  a pin for a client on their board) so a tombstone can be pushed as a real server
-  delete, plus the down-sync must stop returning deleted rows. Until then delete is a
-  per-device cleanup, not a team-wide removal.
+  - **Already-pushed** pin → **soft** local tombstone (`client_locations.local_deleted = 1`,
+    `sync_status='pending'`). Every read filters `local_deleted = 0` and the down-sync
+    skips re-applying it, so the delete sticks on THIS device immediately; then the push
+    lane turns it into a real server delete (below).
+  ✅ **REAL delete SHIPPED (web migration 124 + mobile wired 2026-08-22).** Web added
+  `delete_client_location(p_location_id)` (SECURITY DEFINER; `can_set_client_location`
+  authorizes a C&D admin or a field role with the client on their board). It hard-deletes
+  the server row and, if it was the current pin, promotes the newest remaining relocation
+  (else office-pin fallback) + re-stamps the denormalized coordinate (114 semantics).
+  Mobile: `store-location-push.ts` scans pending tombstones, calls the RPC, and
+  hard-deletes the local row — so a delete is now **team-wide**, not per-device. The
+  local tombstone is just the offline-interim state until that push lands.
 
   **Numbering compacts after delete (2026-08-22):** the "Location N" shown is a
   contiguous DISPLAY index recomputed over surviving rows in `listStoreLocations`, not
@@ -471,3 +472,73 @@ administrative-boundary polygons + a point-in-polygon lookup. That belongs serve
   the app) for instant offline area feedback — larger bundle, sourcing/licensing work,
   edge-accuracy caveats. Recommendation: **web-only resolver**; revisit on-device only
   if offline instant-area proves necessary in the field.
+
+## §visibility+autoderive — COMBINED Option 2 + 3 (one workflow, owner decision 2026-08-22)
+
+Owner decision: do **Option 2 (visibility)** and **Option 3 (auto-derive)** as **ONE
+coordinated workstream** across both repos, not two separate rounds — less rework, one
+review cycle. Option 1 (migrations 123/124, done) put the data on the wire; this makes
+it (a) **visible to sales/RSR/admin** and (b) **trustworthy** (pin-derived, not typed).
+
+The two must ship together because they touch the same rows: the admin/sales view (2)
+is only worth building once the area it shows is the reliable pin-derived value (3).
+Building 2 first would surface a typed area that can contradict the pin — the exact
+confusion we're removing.
+
+### Shared interface (BUILD BOTH SIDES TO THIS — web implements exactly, mobile calls exactly)
+
+So the two repos build in lockstep with zero guessing, these are the agreed signatures:
+
+- **Read path for non-field roles (Option 2):** a SECURITY DEFINER function
+  ```
+  get_client_locations(p_client_id uuid)
+    RETURNS TABLE(id uuid, seq int, label text, lat numeric, lng numeric,
+                  is_current boolean, kind text, area text, province text,
+                  set_by_name text, captured_at timestamptz)
+  ```
+  Authorized for a sales/RSR who owns/can-see the client + any C&D admin. This is the
+  ONLY read path granted to non-field roles (113 RLS keeps the base table field-only).
+  Returns rows ordered `seq ASC`. Mobile calls this; the admin **web** UI can use it or
+  a direct RLS-scoped select.
+- **Auto-derive (Option 3):** `resolve_locality(p_lat, p_lng)` (PostGIS, per
+  §area-autoderive) wired **inside `set_client_location()`** so the server overwrites
+  `area`/`province` with the canonical pin-derived locality, ignoring any client-sent
+  `p_area`/`p_province` (which become a no-op — mobile keeps sending them harmlessly, or
+  stops; see mobile part). Derived value lands on the SAME `area`/`province` columns that
+  already sync (123), so **no new sync plumbing** — it rides the existing down-sync.
+
+### 👉 WEB deliverables (one migration set + admin UI)
+
+1. `psgc_boundaries` table + `resolve_locality(lat,lng)` (ST_Contains, nearest-boundary
+   fallback). Names must match `clients.city` canonical PSGC spelling.
+2. Call `resolve_locality` inside `set_client_location()` (and `delete_client_location`'s
+   promote path, so a promoted relocation's area is derived too); persist derived
+   `area`/`province`. Client-sent `p_area`/`p_province` become advisory/no-op.
+3. `get_client_locations(p_client_id)` SECURITY DEFINER read fn + grant to sales/RSR/admin.
+4. **Admin/sales web UI:** on the client/store record, show field-observed
+   municipality + who/when **alongside** the registered `clients.city` (never overwrite);
+   a **branch triage list** (`kind='additional_branch'`) where admin promotes a branch to
+   a real account. Registered stays authoritative for territory/assignment.
+
+### 👉 MOBILE deliverables (I own these — build to the interface above)
+
+1. **Sales/RSR client-detail location card:** a read service + hook calling
+   `get_client_locations`, rendered on the mobile client-detail screen for sales/RSR
+   (mirrors `StoreLocationCard`) — field pin(s), area, who/when, branch flag, shown
+   **alongside** the registered city. Graceful-degrades to hidden if the fn isn't
+   deployed yet (PGRST202 → empty), so it can merge before/after web without breaking.
+2. **Auto-derive picker reframe:** once `resolve_locality` is live, demote the PSGC
+   picker in `SetStoreLocationScreen` to an **optional override** ("Area auto-fills from
+   the pin after sync — pick only to correct it"), since the pin now drives the area.
+   Keep sending `p_area`/`p_province` (harmless; server overrides) OR drop them — decide
+   when wiring. NOTE: ship this copy change **with** web's resolver, not before, or it
+   lies (the pin doesn't derive the area until the resolver exists).
+3. No new sync code — derived area/branch already flow via the 123 columns wired
+   2026-08-22.
+
+### Sequencing within the one workflow
+
+Web migration set (1–3 above) + admin UI (4) land together on staging → mobile wires
+deliverable 1 (guarded) and deliverable 2 (gated on the resolver) in the same cycle →
+verify the round-trip on staging (set pin → derived area on server → visible to a
+sales/RSR read) before prod.

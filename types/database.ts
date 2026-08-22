@@ -666,8 +666,8 @@ export type Database = {
       // Store Locations (migration 113): numbered relocation pins a C&D field
       // officer sets on the ground. Field roles read (RLS) the pins for any
       // client on their board; writes go through the set_client_location /
-      // set_current_client_location RPCs, not a direct upsert. area/province are
-      // mobile-local only for now (not on the web table) — see STORE_LOCATIONS_CONTRACT.md.
+      // set_current_client_location RPCs, not a direct upsert. area/province/kind
+      // added web-side in migration 123 (field-observed municipality + branch flag).
       client_locations: {
         Row: {
           id: string;
@@ -683,6 +683,12 @@ export type Database = {
           captured_at: string;
           created_at: string;
           updated_at: string;
+          // Migration 123: field-observed municipality/province (kept alongside
+          // the registered clients.city, never replaces it) + relocation vs.
+          // additional_branch intent.
+          area: string | null;
+          province: string | null;
+          kind: string;
         };
         Insert: Partial<Database['public']['Tables']['client_locations']['Row']>;
         Update: Partial<Database['public']['Tables']['client_locations']['Row']>;
@@ -731,11 +737,31 @@ export type Database = {
       // pin and returns its id; set_current re-selects an existing saved pin.
       // set_client_location also re-copies the new pin onto the client's
       // still-open visits/POs (client_lat/client_lng keep-fresh, 114).
+      // Migration 123 added p_area/p_province (field-observed municipality) and
+      // p_kind ('relocation' | 'additional_branch'). The old 4-arg form was
+      // dropped, but the new params default, so a 4-arg call still resolves.
+      // p_kind='additional_branch' inserts the pin NON-current (no keep-fresh).
       set_client_location: {
-        Args: { p_client_id: string; p_lat: number; p_lng: number; p_label?: string | null };
+        Args: {
+          p_client_id: string;
+          p_lat: number;
+          p_lng: number;
+          p_label?: string | null;
+          p_area?: string | null;
+          p_province?: string | null;
+          p_kind?: string;
+        };
         Returns: string;
       };
       set_current_client_location: {
+        Args: { p_location_id: string };
+        Returns: undefined;
+      };
+      // Migration 124: hard-delete a pin. Authorized for a C&D admin or a field
+      // role with the client on their day list. Deleting the current pin promotes
+      // the newest remaining relocation server-side (else office-pin fallback) and
+      // re-stamps the denormalized coordinate — see STORE_LOCATIONS_CONTRACT.md §delete.
+      delete_client_location: {
         Args: { p_location_id: string };
         Returns: undefined;
       };

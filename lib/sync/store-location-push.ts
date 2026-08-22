@@ -19,21 +19,21 @@ import type { SQLiteDatabase } from 'expo-sqlite';
 //     PK and records the server id in `remote_id` on first push — needed to
 //     re-select that saved pin later via set_current_client_location().
 //
-// A pending local row is one of two intents, distinguished by remote_id:
+// A pending local row is one of THREE intents:
+//   * local_deleted = 1  → a DELETE (deleteStoreLocation on an already-pushed pin).
+//     Call delete_client_location(remote_id) (migration 124), then hard-delete the
+//     local tombstone. A never-pushed pin is deleted locally on the spot, so a
+//     tombstone always has a remote_id.
 //   * remote_id IS NULL  → a NEW pin (addStoreLocation). Call set_client_location,
 //     store the returned server id, mark synced.
 //   * remote_id present  → an existing saved pin re-selected as current
 //     (setCurrentStoreLocation). Call set_current_client_location(remote_id).
 //
-// LOCAL-ONLY today (web owes RPC params — STORE_LOCATIONS_CONTRACT.md §area+branch):
-// `area`, `province`, and `kind` ('relocation' | 'additional_branch') are NOT sent
-// — set_client_location currently accepts only (client_id, lat, lng, label), and
-// passing extra params would fail PostgREST (PGRST202). Once web adds p_area /
-// p_province / p_kind, thread them here so the municipality + branch flag reach
-// the admin board and other devices. An 'additional_branch' is pending like any
-// pin; when web accepts p_kind it should be inserted server-side as NON-current.
-// Rows are pushed oldest-first (by seq) so that, when several were added offline,
-// the newest ends up current server-side — matching the local state.
+// area/province/kind now travel on the create (web migration 123 added p_area /
+// p_province / p_kind): the field-observed municipality + relocation-vs-branch flag
+// reach the admin board and other devices. p_kind='additional_branch' is inserted
+// server-side as NON-current (no keep-fresh). Rows are pushed oldest-first (by seq)
+// so that, when several were added offline, the newest ends up current server-side.
 
 interface PendingLocationRow {
   id: string;
@@ -41,7 +41,11 @@ interface PendingLocationRow {
   lat: number;
   lng: number;
   label: string | null;
+  area: string | null;
+  province: string | null;
+  kind: string;
   remote_id: string | null;
+  local_deleted: number;
 }
 
 /**
@@ -54,7 +58,7 @@ interface PendingLocationRow {
  */
 export async function pushStoreLocations(db: SQLiteDatabase): Promise<void> {
   const pending = await db.getAllAsync<PendingLocationRow>(
-    `SELECT id, client_id, lat, lng, label, remote_id
+    `SELECT id, client_id, lat, lng, label, area, province, kind, remote_id, local_deleted
        FROM client_locations
       WHERE sync_status = 'pending'
       ORDER BY seq ASC, created_at ASC`
@@ -69,13 +73,29 @@ export async function pushStoreLocations(db: SQLiteDatabase): Promise<void> {
 
   for (const row of pending) {
     try {
-      if (row.remote_id === null) {
+      if (row.local_deleted === 1) {
+        // DELETE — remove the server row, then drop the local tombstone. A
+        // tombstone is only enqueued for an already-pushed pin, so remote_id is
+        // set; guard anyway so a stray row can't spin.
+        if (row.remote_id === null) {
+          await db.runAsync('DELETE FROM client_locations WHERE id = ?', [row.id]);
+          continue;
+        }
+        const { error } = await supabase.rpc('delete_client_location', {
+          p_location_id: row.remote_id,
+        });
+        if (error) throw error;
+        await db.runAsync('DELETE FROM client_locations WHERE id = ?', [row.id]);
+      } else if (row.remote_id === null) {
         // NEW pin — server appends the next "Location N" and returns its id.
         const { data, error } = await supabase.rpc('set_client_location', {
           p_client_id: row.client_id,
           p_lat: row.lat,
           p_lng: row.lng,
           p_label: row.label,
+          p_area: row.area,
+          p_province: row.province,
+          p_kind: row.kind,
         });
         if (error) throw error;
         await db.runAsync(
