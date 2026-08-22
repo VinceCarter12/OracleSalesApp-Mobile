@@ -522,11 +522,19 @@ So the two repos build in lockstep with zero guessing, these are the agreed sign
 
 ### 👉 MOBILE deliverables (I own these — build to the interface above)
 
-1. **Sales/RSR client-detail location card:** a read service + hook calling
-   `get_client_locations`, rendered on the mobile client-detail screen for sales/RSR
-   (mirrors `StoreLocationCard`) — field pin(s), area, who/when, branch flag, shown
-   **alongside** the registered city. Graceful-degrades to hidden if the fn isn't
-   deployed yet (PGRST202 → empty), so it can merge before/after web without breaking.
+1. ✅ **Sales/RSR client-detail location card — DONE (mobile, 2026-08-22; web 126
+   deployed staging+prod, RPC live).** `lib/client-field-locations-service.ts`
+   (`fetchClientFieldLocations` → `get_client_locations` RPC, PGRST202 → empty
+   graceful-degrade) + `lib/use-client-field-locations.ts` hook (derives current
+   pin + branches) + `components/clients/ClientFieldLocationCard.tsx` (read-only:
+   field pin on a map, who/when, registered-vs-field municipality side-by-side,
+   additional-branch triage rows), rendered in `app/(tabs)/clients/[id].tsx`
+   between the location buttons and Meeting history. Renders NOTHING until a field
+   pin/branch exists, so the common never-relocated client is unchanged — and that
+   same empty state is the graceful-degrade when 126 isn't deployed / offline. RPC
+   signature added to `types/database.ts`. ⏳ Needs an on-device pass against
+   **staging** (prod webhook/derive still pending per web note) to confirm the
+   derived-area round-trip renders.
 2. **Auto-derive picker reframe:** once `resolve_locality` is live, demote the PSGC
    picker in `SetStoreLocationScreen` to an **optional override** ("Area auto-fills from
    the pin after sync — pick only to correct it"), since the pin now drives the area.
