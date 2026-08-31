@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { classifyDecisionCode } from './approval-decision-outcome';
+import { classifyDecisionCode, describeDecisionFailure } from './approval-decision-outcome';
 
 describe('classifyDecisionCode', () => {
   it('classifies approved/rejected as success', () => {
@@ -24,5 +24,25 @@ describe('classifyDecisionCode', () => {
   it('falls back to error for any unrecognized code', () => {
     expect(classifyDecisionCode('cancelled')).toBe('error');
     expect(classifyDecisionCode('')).toBe('error');
+  });
+});
+
+describe('describeDecisionFailure', () => {
+  it('gives each refusal its own phrase, so a bulk run can list several at once', () => {
+    expect(describeDecisionFailure('already_decided')).toBe('already decided by someone else');
+    expect(describeDecisionFailure('base_conflict')).toBe('the client record changed since it was filed');
+    expect(describeDecisionFailure('role_not_eligible')).toBe('not yours to review');
+    expect(describeDecisionFailure('not_found')).toBe('no longer exists');
+  });
+
+  it('returns empty for the two success codes, which are never failures', () => {
+    expect(describeDecisionFailure('approved')).toBe('');
+    expect(describeDecisionFailure('rejected')).toBe('');
+  });
+
+  it('falls back to a generic phrase for anything unrecognized, including transport_error', () => {
+    expect(describeDecisionFailure('transport_error')).toBe("couldn't be processed");
+    expect(describeDecisionFailure('invalid_decision')).toBe("couldn't be processed");
+    expect(describeDecisionFailure('')).toBe("couldn't be processed");
   });
 });
