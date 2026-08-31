@@ -62,3 +62,59 @@ export async function decideClientEditRequest(
   }
   return data;
 }
+
+export interface ClientEditBulkFailure {
+  requestId: string;
+  /** A documented decision code, or 'transport_error' when `supabase.rpc()` itself failed. */
+  code: ClientEditDecisionCode | 'transport_error';
+}
+
+export interface ClientEditBulkResult {
+  approved: string[];
+  failures: ClientEditBulkFailure[];
+}
+
+/**
+ * Approve several client-edit requests — the Manager Requests inbox's bulk
+ * action (`app/(manager)/approvals/index.tsx`).
+ *
+ * There is no bulk RPC and this deliberately does not add one.
+ * `decide_client_edit_request()` re-checks the base-conflict, reassignment and
+ * lost-client guards per request against the CURRENT client row, and those
+ * checks are the whole reason a stale request must not be applied. A set-based
+ * RPC would either duplicate that logic or skip it. So a bulk approve is N
+ * independent decisions, each free to refuse on its own.
+ *
+ * That makes PARTIAL SUCCESS the normal outcome, not an edge case: an admin
+ * approving one from web's /approvals a second earlier yields
+ * 'already_decided', and an agent editing the client since yields
+ * 'base_conflict'. Both lists come back and the caller must report both —
+ * silently claiming "7 approved" when 5 landed is the failure worth avoiding.
+ *
+ * Sequential, not `Promise.all`: each call takes a row lock and then writes
+ * `public.clients`, and two requests from the same agent frequently target the
+ * SAME client. Firing those concurrently has them racing to read the base
+ * value the other is about to change, turning a clean 'base_conflict' into an
+ * order-dependent one. A batch here is at most a screenful.
+ *
+ * Never throws for a domain outcome — matching `decideClientEditRequest()`
+ * above. A transport failure on one request is recorded as that request's
+ * failure and the run CONTINUES, because a dropped connection mid-batch must
+ * not silently abandon the requests after it.
+ */
+export async function approveClientEditRequests(requestIds: readonly string[]): Promise<ClientEditBulkResult> {
+  const approved: string[] = [];
+  const failures: ClientEditBulkFailure[] = [];
+
+  for (const requestId of requestIds) {
+    try {
+      const code = await decideClientEditRequest(requestId, 'approved', null);
+      if (code === 'approved') approved.push(requestId);
+      else failures.push({ requestId, code });
+    } catch {
+      failures.push({ requestId, code: 'transport_error' });
+    }
+  }
+
+  return { approved, failures };
+}

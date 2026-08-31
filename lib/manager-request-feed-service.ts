@@ -25,6 +25,16 @@ interface ManagerRequestRowBase {
   requestId: string;
   status: ApprovalDecisionStatus;
   createdAt: string;
+  /**
+   * Who filed it. Lifted onto the base row (2026-08-31) so the inbox can
+   * filter by agent without caring which kind a row is — both underlying
+   * feeds already carry it (`ManagerApprovalFeedRow.requesterId` and
+   * `IncomingCompanionRequest.requesterId`), it was simply not surfaced.
+   * Names are NOT a usable key here: `requesterName` is a best-effort join
+   * against `team_roster_snapshot` and falls back to 'Agent' when that entry
+   * is stale, which would silently merge two agents into one filter option.
+   */
+  requesterId: string;
   requesterName: string;
   clientName: string;
   /** Single display line — field count, "PO evidence attached", or the tag-along ask. */
@@ -53,6 +63,7 @@ function toApprovalRow(row: ManagerApprovalFeedRow): ManagerRequestRow {
     kind: row.requestKind,
     status: row.status,
     createdAt: row.createdAt,
+    requesterId: row.requesterId,
     requesterName: row.requesterName,
     clientName: row.clientName,
     summary,
@@ -71,6 +82,7 @@ function toTagAlongRow(row: IncomingCompanionRequest): ManagerRequestRow {
     // declined remotely, while this unified screen uses approval badges.
     status: row.status === 'accepted' ? 'approved' : row.status === 'declined' ? 'rejected' : 'pending',
     createdAt: row.createdAt,
+    requesterId: row.requesterId,
     requesterName,
     clientName: row.clientName ?? 'Client',
     summary: `Kasama sana kita: ${requesterName}`,
