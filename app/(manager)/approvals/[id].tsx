@@ -7,9 +7,9 @@ import { Spinner, Text, XStack, YStack } from 'tamagui';
 import { BIZLINK_FONTS, useBizlinkColors } from '../../../lib/theme';
 import { useManagerApprovalFeed } from '../../../lib/use-manager-approval-feed';
 import { isLikelyOnline } from '../../../lib/sync/connectivity';
-import { decideClientEditRequest } from '../../../lib/client-edit-decision-service';
+import { decideClientEditRequest, fetchClientEditConflictDetail } from '../../../lib/client-edit-decision-service';
 import { decidePoConfirmation } from '../../../lib/po-confirmation-manager-service';
-import { classifyDecisionCode } from '../../../lib/policies/approval-decision-outcome';
+import { classifyDecisionCode, describeConflictReason, GENERIC_CONFLICT_MESSAGE } from '../../../lib/policies/approval-decision-outcome';
 import { getClientEditFieldLabel, formatClientEditFieldValue } from '../../../lib/client-edit-field-labels';
 import { showToast } from '../../../lib/toast';
 import { BizTopBar } from '../../../components/bizlink/BizTopBar';
@@ -43,7 +43,10 @@ export default function ManagerApprovalDetailScreen() {
   const [online, setOnline] = useState(true);
   const [deciding, setDeciding] = useState(false);
   const [decideError, setDecideError] = useState<string | null>(null);
-  const [conflict, setConflict] = useState(false);
+  // The banner's TEXT, not just its visibility: migration 128 lets us say
+  // which of the three conflicts happened, and they need different wording —
+  // a superseded request must not be described as "review again".
+  const [conflict, setConflict] = useState<string | null>(null);
   const [previewImageUrl, setPreviewImageUrl] = useState<string | null>(null);
 
   const checkOnline = useCallback(() => {
@@ -62,7 +65,7 @@ export default function ManagerApprovalDetailScreen() {
     if (!row) return;
     setDeciding(true);
     setDecideError(null);
-    setConflict(false);
+    setConflict(null);
     try {
       const code =
         row.requestKind === 'client_edit'
@@ -85,8 +88,15 @@ export default function ManagerApprovalDetailScreen() {
           break;
         case 'conflict':
           // Client record changed since the request was created — keep it
-          // pending, surface the conflict banner, require a manual re-review.
-          setConflict(true);
+          // pending and surface the conflict banner. The reason lookup only
+          // applies to client edits; decide_po_confirmation() never returns
+          // 'base_conflict' (see approval-decision-outcome.ts's header), so a
+          // PO falls straight through to the generic wording.
+          setConflict(
+            row.requestKind === 'client_edit'
+              ? describeConflictReason(await fetchClientEditConflictDetail(row.requestId))
+              : GENERIC_CONFLICT_MESSAGE
+          );
           await reload();
           break;
         case 'error':
@@ -162,7 +172,7 @@ export default function ManagerApprovalDetailScreen() {
 
         {isPending ? <YStack marginTop="$3"><BizPendingBanner since={row.createdAt} /></YStack> : null}
 
-        {conflict ? (
+        {conflict !== null ? (
           <XStack
             alignItems="center"
             gap="$2.5"
@@ -174,7 +184,7 @@ export default function ManagerApprovalDetailScreen() {
           >
             <CircleAlert size={16} color={BIZLINK_COLORS.red} strokeWidth={1.75} />
             <Text flex={1} fontSize={12} fontFamily={BIZLINK_FONTS.medium} color={BIZLINK_COLORS.red} lineHeight={17}>
-              Client record changed — please review again.
+              {conflict}
             </Text>
           </XStack>
         ) : null}

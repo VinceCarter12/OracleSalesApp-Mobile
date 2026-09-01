@@ -841,6 +841,28 @@ export type Database = {
         Args: { p_request_id: string; p_decision: string; p_note?: string | null };
         Returns: string;
       };
+      // Migration 128 (web repo). Read-only companion to the RPC above:
+      // decide_client_edit_request() collapses reassignment, a lost client
+      // and a per-field mismatch into one flat 'base_conflict', and it must
+      // keep doing so -- this file's code union is validated at runtime by
+      // lib/client-edit-decision-service.ts, which THROWS on anything
+      // unrecognized, so widening the returned code set would break every
+      // shipped build. This function carries the detail instead. Call it
+      // only after a 'base_conflict'. `reason` is one of 'reassigned',
+      // 'lost', 'stage_already_new', 'field_changed', 'none',
+      // 'not_found', 'role_not_eligible'; the other keys are present only
+      // for the reason that names them.
+      explain_client_edit_conflict: {
+        Args: { p_request_id: string };
+        Returns: {
+          reason: string;
+          current_agent_name?: string | null;
+          po_decided_at?: string | null;
+          field?: string | null;
+          expected_old?: string | null;
+          current_value?: string | null;
+        };
+      };
       // Migration 042 (Migration-042-Report.md lines 33-52): SECURITY
       // INVOKER — RLS on the underlying tables does the authorization work,
       // this RPC just reshapes. `summary` shape depends on `request_kind`
