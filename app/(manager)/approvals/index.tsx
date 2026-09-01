@@ -11,7 +11,7 @@ import type { ManagerRequestKind, ManagerRequestRow } from '../../../lib/manager
 import type { ApprovalDecisionStatus } from '../../../lib/manager-approval-feed-service';
 import { updateCompanionRequestStatus, StaleCompanionRequestError } from '../../../lib/tag-along-invitee-service';
 import { approveClientEditRequests } from '../../../lib/client-edit-decision-service';
-import { describeDecisionFailure } from '../../../lib/policies/approval-decision-outcome';
+import { describeConflictReason, describeDecisionFailure } from '../../../lib/policies/approval-decision-outcome';
 import {
   isBulkApprovable,
   isLockedBySelection,
@@ -276,7 +276,19 @@ export default function ManagerRequestsScreen() {
       } else {
         // Distinct reasons, not one line per request: the failures are still
         // ticked on screen, so this has to answer "why", not "which".
-        const reasons = [...new Set(failures.map((failure) => describeDecisionFailure(failure.code)))].join('; ');
+        // A 'base_conflict' covers three unrelated causes, so it gets the
+        // specific sentence migration 128 makes available; every other code
+        // keeps its short phrase. De-duplicated either way, because the rows
+        // are still ticked on screen and this has to answer "why", not "which".
+        const reasons = [
+          ...new Set(
+            failures.map((failure) =>
+              failure.code === 'base_conflict'
+                ? describeConflictReason(failure.conflictDetail ?? null)
+                : describeDecisionFailure(failure.code)
+            )
+          ),
+        ].join('; ');
         showToast(
           approved.length > 0
             ? `${approved.length} approved, ${failures.length} skipped — ${reasons}.`

@@ -1,4 +1,5 @@
 import { supabase } from './supabase';
+import type { ClientEditConflictDetail } from './policies/approval-decision-outcome';
 
 // ADR-052 section D (2026-08-01 correction, migration 056, confirmed live
 // 2026-08-02): `decide_client_edit_request()` — SECURITY DEFINER, idempotent
@@ -63,10 +64,46 @@ export async function decideClientEditRequest(
   return data;
 }
 
+/**
+ * Why a `'base_conflict'` happened — migration 128's read-only companion RPC.
+ *
+ * Call this ONLY after `decideClientEditRequest()` returned `'base_conflict'`.
+ * That code covers three unrelated conditions (reassignment, a lost client, a
+ * per-field mismatch) and cannot be split without breaking this file's own
+ * `KNOWN_DECISION_CODES` check on every shipped build, so the detail arrives
+ * out of band instead.
+ *
+ * Returns `null` rather than throwing on ANY failure — transport, permission,
+ * or an unrecognized shape. This is a copy-improving lookup on a path that has
+ * already failed; losing the better sentence is acceptable, turning a handled
+ * refusal into an unhandled crash is not. `describeConflictReason(null)` falls
+ * back to the generic wording.
+ */
+export async function fetchClientEditConflictDetail(
+  requestId: string
+): Promise<ClientEditConflictDetail | null> {
+  try {
+    const { data, error } = await supabase.rpc('explain_client_edit_conflict', {
+      p_request_id: requestId,
+    });
+    if (error || !data || typeof data !== 'object' || Array.isArray(data)) return null;
+    const detail = data as ClientEditConflictDetail;
+    return typeof detail.reason === 'string' ? detail : null;
+  } catch {
+    return null;
+  }
+}
+
 export interface ClientEditBulkFailure {
   requestId: string;
   /** A documented decision code, or 'transport_error' when `supabase.rpc()` itself failed. */
   code: ClientEditDecisionCode | 'transport_error';
+  /**
+   * Populated only for `'base_conflict'`, and only when the lookup succeeded.
+   * Lets the bulk toast say WHICH conflict rather than repeating one generic
+   * line for several unrelated causes.
+   */
+  conflictDetail?: ClientEditConflictDetail | null;
 }
 
 export interface ClientEditBulkResult {
@@ -109,8 +146,15 @@ export async function approveClientEditRequests(requestIds: readonly string[]): 
   for (const requestId of requestIds) {
     try {
       const code = await decideClientEditRequest(requestId, 'approved', null);
-      if (code === 'approved') approved.push(requestId);
-      else failures.push({ requestId, code });
+      if (code === 'approved') {
+        approved.push(requestId);
+      } else if (code === 'base_conflict') {
+        // One extra round-trip, on the failure path only. Sequential like the
+        // decisions themselves, for the same reason.
+        failures.push({ requestId, code, conflictDetail: await fetchClientEditConflictDetail(requestId) });
+      } else {
+        failures.push({ requestId, code });
+      }
     } catch {
       failures.push({ requestId, code: 'transport_error' });
     }
