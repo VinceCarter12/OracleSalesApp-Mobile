@@ -52,6 +52,8 @@
   },
   "scripts": {
     "start": "expo start",
+    "start:staging": "node scripts/dev-env.mjs staging",
+    "start:prod": "node scripts/dev-env.mjs prod",
     "android": "expo run:android",
     "ios": "expo run:ios",
     "web": "expo start --web",
